@@ -1,31 +1,31 @@
 const Database = require('better-sqlite3');
-const path = require('path');
+const { DB_PATH } = require('../config/db-path');
 
 /**
  * DATABASE SERVICE V2 - ИСПРАВЛЕННЫЙ
  * Точный маппинг на 191 столбец БД
  */
 class DatabaseServiceV2 {
-  
+
   constructor(dbPath) {
-    this.dbPath = dbPath || path.join(__dirname, '../database/eubike.db');
+    this.dbPath = dbPath || DB_PATH;
     this.db = new Database(this.dbPath);
-    
+
     console.log(`✅ Database Service v2.0 initialized`);
     console.log(`   Database: ${this.dbPath}`);
   }
-  
+
   /**
    * Сохранить велосипед из Unified Format
    */
   insertBike(unifiedData) {
     const u = unifiedData;
-    
+
     console.log(`\n💾 Saving bike to database...`);
     console.log(`   Name: ${u.basic_info.name}`);
     console.log(`   Brand: ${u.basic_info.brand}`);
     console.log(`   Price: €${u.pricing.price}`);
-    
+
     try {
       // ТОЧНЫЙ СПИСОК СТОЛБЦОВ ИЗ ТВОЕЙ БД
       const stmt = this.db.prepare(`
@@ -83,7 +83,7 @@ class DatabaseServiceV2 {
           ?, ?, ?
         )
       `);
-      
+
       const result = stmt.run(
         // Basic Info (9)
         u.basic_info.name,
@@ -95,7 +95,7 @@ class DatabaseServiceV2 {
         u.basic_info.breadcrumb,
         u.basic_info.description,
         u.basic_info.language,
-        
+
         // Pricing (8)
         u.pricing.price,
         u.pricing.original_price,
@@ -107,7 +107,7 @@ class DatabaseServiceV2 {
         u.pricing.fmv_confidence,
         u.pricing.market_comparison,
         u.pricing.days_on_market,
-        
+
         // Condition (7)
         u.condition.status,
         u.condition.score,
@@ -118,7 +118,7 @@ class DatabaseServiceV2 {
         u.condition.crash_history ? 1 : 0,
         u.condition.frame_damage ? 1 : 0,
         u.condition.issues.join('; ') || null,
-        
+
         // Seller (7)
         u.seller.name,
         u.seller.type,
@@ -129,19 +129,19 @@ class DatabaseServiceV2 {
         u.seller.verified ? 1 : 0,
         u.meta.platform_trust?.reviews_count || null,
         u.meta.platform_trust?.source || null,
-        
+
         // Logistics (5)
         u.logistics.location,
         u.logistics.country,
         u.logistics.shipping_cost,
         u.logistics.pickup_available ? 1 : 0,
         u.logistics.international ? 1 : 0,
-        
+
         // Media (3)
         u.media.main_image,
         JSON.stringify(u.media.gallery),
         u.media.photo_quality,
-        
+
         // Ranking (7)
         u.ranking.score,
         u.ranking.value_score,
@@ -150,7 +150,7 @@ class DatabaseServiceV2 {
         u.ranking.is_hot_offer ? 1 : 0,
         u.ranking.is_super_deal ? 1 : 0,
         u.ranking.tier,
-        
+
         // Specs (23 expanded)
         u.specs.frame_size,
         u.specs.wheel_size,
@@ -175,7 +175,7 @@ class DatabaseServiceV2 {
         u.specs.pedals_included ? 1 : 0,
         u.specs.fork || null,
         u.specs.shock || null,
-        
+
         // Metadata (8)
         u.meta.source_platform,
         u.meta.source_ad_id,
@@ -185,7 +185,7 @@ class DatabaseServiceV2 {
         u.meta.created_at,
         u.meta.updated_at,
         u.meta.last_checked_at,
-        
+
         // JSON Fields (11)
         JSON.stringify(u),
         JSON.stringify(u.specs),
@@ -198,29 +198,81 @@ class DatabaseServiceV2 {
         JSON.stringify(u.ai_analysis),
         JSON.stringify(u.market_data),
         JSON.stringify(u.specs.component_upgrades || []),
-        
+
         // Quality (4)
         u.quality_score,
         u.completeness,
         u.ranking.views || 0
       );
-      
+
       const bikeId = result.lastInsertRowid;
-      
+
       console.log(`   ✅ Bike saved successfully!`);
       console.log(`   📊 Database ID: ${bikeId}`);
       console.log(`   🏆 Quality Score: ${u.quality_score}`);
       console.log(`   📈 Completeness: ${u.completeness.toFixed(1)}%`);
-      
+
       return bikeId;
-      
+
     } catch (error) {
       console.error(`   ❌ Database insert failed: ${error.message}`);
       console.error(`   Full error:`, error);
       throw error;
     }
   }
-  
+
+  /**
+   * Сохранить массив велосипедов
+   * @param {Array} bikes - Массив unified bike objects
+   * @param {Object} options - Опции 
+   */
+  async saveBikesToDB(bikes, options = {}) {
+    const summary = {
+      total: bikes.length,
+      inserted: 0,
+      duplicates: 0,
+      failed: 0,
+      photosDownloaded: 0,
+      photosTotal: 0,
+      results: []
+    };
+
+    console.log(`\n📦 Batch saving ${bikes.length} bikes...`);
+
+    for (const bike of bikes) {
+      try {
+        // Check existence logic
+        const sourceAdId = bike.meta?.source_ad_id;
+        const sourcePlatform = bike.meta?.source_platform;
+
+        if (this.bikeExists(sourceAdId, sourcePlatform)) {
+          console.log(`   ⚠️ Skipped duplicate: ${sourceAdId}`);
+          summary.duplicates++;
+          summary.results.push({ success: false, reason: 'duplicate', id: sourceAdId });
+          continue;
+        }
+
+        const id = this.insertBike(bike);
+        summary.inserted++;
+        summary.results.push({ success: true, id });
+
+        // Photo stats are mocked here since V2 assumes photos are processed elsewhere or in JSON
+        // If we need real photo counting, we'd check media.gallery length
+        if (bike.media?.gallery?.length) {
+          summary.photosTotal += bike.media.gallery.length;
+          summary.photosDownloaded += bike.media.gallery.length; // Assuming they are URLs we "have"
+        }
+
+      } catch (err) {
+        console.error(`   ❌ Failed to save bike: ${err.message}`);
+        summary.failed++;
+        summary.results.push({ success: false, reason: err.message });
+      }
+    }
+
+    return summary;
+  }
+
   /**
    * Проверить существует ли велосипед
    */
@@ -230,11 +282,11 @@ class DatabaseServiceV2 {
       WHERE source_ad_id = ? AND source_platform = ?
       LIMIT 1
     `);
-    
+
     const result = stmt.get(sourceAdId, sourcePlatform);
     return !!result;
   }
-  
+
   /**
    * Получить велосипед по ID
    */
@@ -242,7 +294,7 @@ class DatabaseServiceV2 {
     const stmt = this.db.prepare('SELECT * FROM bikes WHERE id = ?');
     return stmt.get(id);
   }
-  
+
   /**
    * Удалить тестовый велосипед (для очистки)
    */
@@ -251,11 +303,34 @@ class DatabaseServiceV2 {
       DELETE FROM bikes 
       WHERE source_ad_id = ? AND source_platform = ?
     `);
-    
+
     const result = stmt.run(sourceAdId, sourcePlatform);
     return result.changes > 0;
   }
-  
+
+  /**
+   * Execute a query and return results (for SmartModelSelector compatibility)
+   * @param {string} sql - SQL query with ? placeholders
+   * @param {Array} params - Parameters for the query
+   * @returns {Array} Query results
+   */
+  query(sql, params = []) {
+    try {
+      const stmt = this.db.prepare(sql);
+      // Determine if it's a SELECT or modifying query
+      if (sql.trim().toUpperCase().startsWith('SELECT')) {
+        return stmt.all(...params);
+      } else {
+        const result = stmt.run(...params);
+        return { insertId: result.lastInsertRowid, changes: result.changes };
+      }
+    } catch (err) {
+      console.error('[DatabaseServiceV2] Query failed:', err.message);
+      console.error('[DatabaseServiceV2] SQL:', sql);
+      throw err;
+    }
+  }
+
   /**
    * Закрыть соединение
    */

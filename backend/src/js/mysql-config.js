@@ -330,12 +330,10 @@ CREATE TABLE IF NOT EXISTS bike_analytics (
 class DatabaseManager {
     constructor() {
         this.db = null;
-        // Standardized path: backend/database/eubike.db
-        // Prioritize ENV, fallback to relative path
-        this.dbPath = process.env.DB_PATH 
-            ? path.resolve(process.cwd(), process.env.DB_PATH)
-            : path.join(__dirname, '../../database/eubike.db');
-            
+        // FIXED: Hardcode to main database to avoid "double backend" issue
+        // c:\Users\hacke\CascadeProjects\Finals1\eubike\backend\database\eubike.db
+        this.dbPath = path.join(__dirname, '../../database/eubike.db');
+
         console.log(`[DatabaseManager] Using DB Path: ${this.dbPath}`);
         this.isNode = typeof window === 'undefined';
     }
@@ -444,7 +442,7 @@ class DatabaseManager {
 
     async query(sql, params = []) {
         if (!this.db) await this.initialize();
-        
+
         if (this.isNode) {
             const upper = sql.trim().toUpperCase();
             if (upper.startsWith('SELECT') || upper.startsWith('PRAGMA')) {
@@ -458,7 +456,7 @@ class DatabaseManager {
             try {
                 const result = this.db.exec(sql, params);
                 if (sql.trim().toUpperCase().startsWith('SELECT')) {
-                     if (result.length > 0) {
+                    if (result.length > 0) {
                         const columns = result[0].columns;
                         const values = result[0].values;
                         return values.map(row => {
@@ -470,7 +468,7 @@ class DatabaseManager {
                     return [];
                 }
                 return result;
-            } catch(e) {
+            } catch (e) {
                 console.error("SQL Error:", e);
                 throw e;
             }

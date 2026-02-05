@@ -2,7 +2,7 @@ const UnifiedHunter = require('../scripts/unified-hunter');
 const DatabaseManager = require('../database/db-manager');
 const HotnessPredictor = require('../ai/hotness-predictor');
 const SmartPriorityManager = require('../services/smart-priority-manager');
-const HotDealHunter = require('../scrapers/HotDealHunter');
+const HotDealHunter = require('../src/services/HotDealHunter');
 
 class HourlyHunter {
   constructor() {
@@ -86,9 +86,9 @@ class HourlyHunter {
 
       const startTime = Date.now();
 
-      await this.hunter.startHunt({
-        totalBikes: bikesToAdd,
-        smartMode: true
+      await UnifiedHunter.run({
+        limit: bikesToAdd,
+        mode: 'smart'
       });
 
       const duration = ((Date.now() - startTime) / 1000 / 60).toFixed(1);

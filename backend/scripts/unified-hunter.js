@@ -6,9 +6,8 @@ const CatalogGapAnalyzer = require('../src/services/catalog-gap-analyzer.js');
 const BuycycleCollector = require('../scrapers/buycycle-collector.js');
 const KleinanzeigenCollector = require('../src/scrapers/kleinanzeigen-collector.js');
 const UnifiedNormalizer = require('../src/services/UnifiedNormalizer.js');
-const DatabaseService = require('../src/services/DatabaseService.js');
+const DatabaseServiceV2 = require('../services/database-service-v2.js');
 const SmartModelSelector = require('../src/services/SmartModelSelector.js');
-const { DatabaseManager } = require('../src/js/mysql-config');
 const brandsConfig = require('../config/brands-config.json');
 
 function formatTimestamp() {
@@ -231,18 +230,18 @@ class UnifiedHunter {
         const limit = options.limit ?? (mode === 'full' ? 100 : mode === 'test' ? 5 : 20);
         const maxTargets = options.targets && options.targets.length > 0 ? options.targets.length : (mode === 'test' ? 1 : mode === 'full' ? 12 : 6);
         const start = Date.now();
-        const dbService = new DatabaseService({ logger: createLogger('DatabaseService') });
-        const dbManager = new DatabaseManager();
+        const dbService = new DatabaseServiceV2();
+        // SmartModelSelector expects a service with .query(), which V2 now has
+        const selector = new SmartModelSelector(new CatalogGapAnalyzer(), dbService);
+
+        log('🚀 Unified Hunter initialized (V2 Database Service)');
+        log(`🎯 Mode: ${mode.toUpperCase()} | Limit: ${limit}`);
 
         let targets;
         if (options.targets && options.targets.length > 0) {
             targets = options.targets;
         } else {
-            // Initialize database before using SmartModelSelector
-            await dbManager.initialize();
-
             // Используем SmartModelSelector для выбора целей на основе дефицита
-            const selector = new SmartModelSelector(CatalogGapAnalyzer, dbManager);
             targets = await selector.selectModelsForHunting(maxTargets);
         }
         const summary = {
@@ -353,7 +352,11 @@ async function smartHunt(brand, model) {
     return result.bikes;
 }
 
-module.exports = { run, smartHunt };
+// Attach static methods directly to the class for backwards compatibility
+UnifiedHunter.run = run;
+UnifiedHunter.smartHunt = smartHunt;
+
+module.exports = UnifiedHunter;
 
 if (require.main === module) {
     const args = process.argv.slice(2);
@@ -395,4 +398,3 @@ if (require.main === module) {
     }
 }
 
-module.exports = UnifiedHunter;

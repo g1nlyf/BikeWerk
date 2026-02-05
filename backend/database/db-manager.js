@@ -1,12 +1,9 @@
 const Database = require('better-sqlite3');
-const path = require('path');
+const { DB_PATH } = require('../config/db-path');
 
 class DatabaseManager {
     constructor() {
-        this.dbPath = process.env.BOT_DB_PATH || process.env.DB_PATH
-            ? path.resolve(process.cwd(), process.env.BOT_DB_PATH || process.env.DB_PATH)
-            : path.resolve(__dirname, 'eubike.db');
-
+        this.dbPath = DB_PATH;
         this.db = null;
     }
 
