@@ -3,16 +3,22 @@ const { Telegraf } = require('telegraf');
 const { HttpsProxyAgent } = require('https-proxy-agent');
 
 // Config
-const BOT_TOKEN = '8422123572:AAEOO0PoP3QOmkgmpa53USU_F24hJdSNA3g';
-const PROXY_URL = 'http://user258350:otuspk@191.101.73.161:8984';
-const ADMIN_ID = '183921355';
+const BOT_TOKEN = process.env.BOT_TOKEN || process.env.MANAGER_BOT_TOKEN || '';
+const PROXY_URL = process.env.GEMINI_PROXY_URL || process.env.PROXY_URL || process.env.HTTPS_PROXY || process.env.HTTP_PROXY || '';
+const ADMIN_ID = process.env.ADMIN_CHAT_ID || '';
 
 async function checkBot() {
     console.log('🤖 Bot Emergency Check Started...');
-    console.log(`📡 Using Proxy: ${PROXY_URL}`);
+    if (!BOT_TOKEN) {
+        throw new Error('BOT_TOKEN is not configured');
+    }
+    if (!ADMIN_ID) {
+        throw new Error('ADMIN_CHAT_ID is not configured');
+    }
+    console.log(`📡 Using Proxy: ${PROXY_URL || 'none'}`);
 
     try {
-        const agent = new HttpsProxyAgent(PROXY_URL);
+        const agent = PROXY_URL ? new HttpsProxyAgent(PROXY_URL) : undefined;
         
         // Telegraf Instance with Proxy
         const bot = new Telegraf(BOT_TOKEN, {

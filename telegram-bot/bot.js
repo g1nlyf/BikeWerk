@@ -32,7 +32,7 @@ const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 // Конфигурация
 const CONFIG = {
-    BOT_TOKEN: '8457657822:AAF0qWyj5SztKkUXrnAJbk2X8JV87SsC6cY',
+    BOT_TOKEN: process.env.BOT_TOKEN || process.env.TG_BOT_TOKEN || '',
     GEMINI_API_KEY: process.env.GEMINI_API_KEY || '',
     GEMINI_API_URL: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
     CATALOG_DB_PATH: path.resolve(__dirname, '../src/js/bikes-database.js'),
@@ -41,6 +41,11 @@ const CONFIG = {
     EUR_RATE_URL: 'https://www.otpbank.ru/retail/currency/',
     RATE_STATE_PATH: path.resolve(__dirname, 'rate-state.json')
 };
+
+if (!CONFIG.BOT_TOKEN) {
+    console.error('❌ BOT_TOKEN is missing. Set BOT_TOKEN or TG_BOT_TOKEN in the environment.');
+    process.exit(1);
+}
 
 // Инициализируем модули
 const parser = new KleinanzeigenParser();

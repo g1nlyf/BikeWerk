@@ -241,21 +241,22 @@ totalTests++;
   console.log(`  Price: €${highEndBike.price}\n`);
   
   const fmv = await valuationService.calculateFMV(highEndBike);
+  const fmvValue = (typeof fmv === 'object' && fmv !== null) ? fmv.fmv : fmv;
   
-  console.log(`Calculated FMV: €${fmv}\n`);
+  console.log(`Calculated FMV: €${fmvValue}\n`);
   
   // For €4299 bike, FMV should be at least €4000 (not €1874 like before)
-  const fmvReasonable = fmv >= 4000;
+  const fmvReasonable = fmvValue >= 4000;
   
   if (fmvReasonable) {
-    const margin = ((fmv - highEndBike.price) / highEndBike.price * 100).toFixed(1);
+    const margin = ((fmvValue - highEndBike.price) / highEndBike.price * 100).toFixed(1);
     console.log(`Margin: ${margin}%`);
     console.log('✅ PASS: FMV is reasonable for high-end bike\n');
     passedTests++;
   } else {
     console.log('❌ FAIL: FMV too low for high-end bike\n');
     console.log(`  Expected: ≥ €4000`);
-    console.log(`  Got: €${fmv}\n`);
+    console.log(`  Got: €${fmvValue}\n`);
     failedTests++;
   }
   
@@ -277,11 +278,12 @@ totalTests++;
   console.log(`  Price: €${midRangeBike.price}\n`);
   
   const fmv2 = await valuationService.calculateFMV(midRangeBike);
+  const fmv2Value = (typeof fmv2 === 'object' && fmv2 !== null) ? fmv2.fmv : fmv2;
   
-  console.log(`Calculated FMV: €${fmv2}\n`);
+  console.log(`Calculated FMV: €${fmv2Value}\n`);
   
-  if (fmv2 && fmv2 > 0) {
-    const margin = ((fmv2 - midRangeBike.price) / midRangeBike.price * 100).toFixed(1);
+  if (fmv2Value && fmv2Value > 0) {
+    const margin = ((fmv2Value - midRangeBike.price) / midRangeBike.price * 100).toFixed(1);
     console.log(`Margin: ${margin}%`);
     console.log('✅ PASS: FMV calculated for mid-range bike\n');
     passedTests++;

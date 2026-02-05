@@ -12,7 +12,11 @@ try {
 
 const axios = axiosLib.default || axiosLib;
 
-const key = 'AIzaSyCS6qbM0otGtFcrLbqi_X44oQUCMkCV8kY'; // Backend key
+const key = process.env.GEMINI_API_KEY || (process.env.GEMINI_API_KEYS || '').split(/[,;|\s]+/).filter(Boolean)[0] || '';
+if (!key) {
+    console.error('No GEMINI_API_KEY configured. Set GEMINI_API_KEY or GEMINI_API_KEYS.');
+    process.exit(1);
+}
 
 async function listModels() {
     console.log(`\n📋 Listing Models for key ${key.substring(0, 5)}...`);

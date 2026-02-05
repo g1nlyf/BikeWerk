@@ -12,7 +12,7 @@ const { HttpsProxyAgent } = require('https-proxy-agent');
 
 puppeteer.use(StealthPlugin());
 
-const DEFAULT_PROXY_URL = 'http://user258350:otuspk@191.101.73.161:8984';
+const DEFAULT_PROXY_URL = '';
 
 // Ensure directories exist
 function ensureDir(dirPath) {
@@ -137,6 +137,7 @@ async function launchBrowser(opts = {}) {
   const proxyUrl =
     opts.proxyUrl ||
     process.env.EUBIKE_PROXY_URL ||
+    process.env.HUNTER_PROXY_URL ||
     process.env.HTTPS_PROXY ||
     process.env.HTTP_PROXY ||
     process.env.PROXY_URL ||

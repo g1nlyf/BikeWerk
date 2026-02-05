@@ -5,6 +5,13 @@ const path = require('path');
 const ssh = new NodeSSH();
 const PROJECT_ROOT = path.resolve(__dirname, '../');
 const PASS_FILE = path.join(PROJECT_ROOT, 'deploy_password.txt');
+const PROXY_URL =
+    process.env.EUBIKE_PROXY_URL ||
+    process.env.HUNTER_PROXY_URL ||
+    process.env.HTTPS_PROXY ||
+    process.env.HTTP_PROXY ||
+    process.env.PROXY_URL ||
+    '';
 
 async function readPassword() {
     if (!fs.existsSync(PASS_FILE)) {
@@ -19,9 +26,12 @@ async function readPassword() {
         const password = await readPassword();
         console.log('🔑 Connecting to server...');
         
+        const host = process.env.DEPLOY_HOST;
+        if (!host) throw new Error('DEPLOY_HOST env var is required for remote_test_hunter.js');
+
         await ssh.connect({
-            host: '45.9.41.232',
-            username: 'root',
+            host,
+            username: process.env.DEPLOY_USER || 'root',
             password: password
         });
         
@@ -41,7 +51,8 @@ async function readPassword() {
         
         // Test 1: Homepage
         console.log('Testing Homepage...');
-        await ssh.execCommand('curl -x http://user258350:otuspk@191.101.73.161:8984 -I https://www.kleinanzeigen.de --connect-timeout 10', { cwd: '/root/eubike' }).then(r => console.log(r.stdout));
+        const proxyArg = PROXY_URL ? `-x ${PROXY_URL}` : '';
+        await ssh.execCommand(`curl ${proxyArg} -I https://www.kleinanzeigen.de --connect-timeout 10`, { cwd: '/root/eubike' }).then(r => console.log(r.stdout));
 
         // Test 2: Search URL Variations
         const variations = [
@@ -56,7 +67,7 @@ async function readPassword() {
             // Use debug_page_<index>.html to avoid overwriting
             const filename = `/root/eubike/debug_page_${variations.indexOf(v)}.html`;
             
-            const searchCheck = await ssh.execCommand(`curl -x http://user258350:otuspk@191.101.73.161:8984 -L -v "${v.url}" -o ${filename} --connect-timeout 15`, {
+            const searchCheck = await ssh.execCommand(`curl ${proxyArg} -L -v "${v.url}" -o ${filename} --connect-timeout 15`, {
                 cwd: '/root/eubike'
             });
             console.log(`${v.name} Curl Status:`, searchCheck.stderr.includes('200 OK') ? '200 OK' : 'Check Logs');
@@ -73,8 +84,12 @@ async function readPassword() {
         }
 
         // 1. Run the trigger script
-        // Inject GEMINI_API_KEY explicitly to ensure it's available
-        const result = await ssh.execCommand('export GEMINI_API_KEY=AIzaSyBwFKlgRwTPpx8Ufss9_aOYm9zikt9SGj0; node backend/scripts/trigger_hunter.js', {
+        const geminiKey = process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY_1;
+        const exportCmd = geminiKey ? `export GEMINI_API_KEY=${geminiKey.replace(/'/g, '')}; ` : '';
+        if (!geminiKey) {
+            console.warn('⚠️ GEMINI_API_KEY is not configured locally. Remote run will rely on server env.');
+        }
+        const result = await ssh.execCommand(`${exportCmd}node backend/scripts/trigger_hunter.js`, {
             cwd: '/root/eubike'
         });
         

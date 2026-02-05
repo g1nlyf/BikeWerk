@@ -1,16 +1,26 @@
 const axios = require('axios');
 const { HttpsProxyAgent } = require('https-proxy-agent');
 
-const PROXY_URL = 'http://user258350:otuspk@191.101.73.161:8984';
-const API_KEY = 'AIzaSyBwFKlgRwTPpx8Ufss9_aOYm9zikt9SGj0'; // STATIC_KEY from geminiProcessor.js
+const PROXY_URL =
+    process.env.EUBIKE_PROXY_URL ||
+    process.env.HUNTER_PROXY_URL ||
+    process.env.HTTPS_PROXY ||
+    process.env.HTTP_PROXY ||
+    process.env.PROXY_URL ||
+    '';
+const API_KEY = process.env.GEMINI_API_KEY || (process.env.GEMINI_API_KEYS || '').split(/[,;|\s]+/).filter(Boolean)[0] || '';
+if (!API_KEY) {
+    console.error('No GEMINI_API_KEY configured. Set GEMINI_API_KEY or GEMINI_API_KEYS.');
+    process.exit(1);
+}
 const API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 
 async function testProxy() {
     console.log('Testing Gemini API via Proxy...');
-    console.log('Proxy:', PROXY_URL);
+    console.log('Proxy:', PROXY_URL || '(none)');
     console.log('Model:', API_URL);
 
-    const agent = new HttpsProxyAgent(PROXY_URL);
+    const agent = PROXY_URL ? new HttpsProxyAgent(PROXY_URL) : undefined;
 
     try {
         const response = await axios.post(

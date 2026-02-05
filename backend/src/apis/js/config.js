@@ -1,7 +1,8 @@
 // Конфигурация для BikeEU калькулятора
 const CONFIG = {
     // Gemini API настройки
-    GEMINI_API_KEY: 'AIzaSyBjngHVn2auhLXRMTCY0q9mrqVaiRkfj4g',
+    // NOTE: Do not ship API keys in client code. Set via server-side env/config.
+    GEMINI_API_KEY: '',
     GEMINI_API_URL: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent',
 
     // Supabase CRM настройки

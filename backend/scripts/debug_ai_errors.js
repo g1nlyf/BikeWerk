@@ -11,8 +11,7 @@ const GeminiProcessor = require('../src/services/geminiProcessor');
 // Configuration
 const API_KEY = process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY_1;
 const API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
-// Optional Proxy for testing (comment out to test direct connection)
-// const PROXY_URL = 'http://user258350:otuspk@191.101.73.161:8984';
+// Optional Proxy for testing (set EUBIKE_PROXY_URL/HUNTER_PROXY_URL/HTTPS_PROXY)
 
 console.log('═══════════════════════════════════════');
 console.log('🤖 GEMINI API DEBUGGER');

@@ -8,6 +8,69 @@ class FMVAnalyzer {
         this.db = db;
     }
 
+    normalizeText(value) {
+        if (!value) return '';
+        return String(value)
+            .toLowerCase()
+            .replace(/[\u2019']/g, '')
+            .replace(/[^a-z0-9\s-]/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
+    sanitizeModel(model) {
+        if (!model) return '';
+        let cleaned = this.normalizeText(model);
+        cleaned = cleaned.replace(/\b(19|20)\d{2}\b/g, ' ');
+        cleaned = cleaned.replace(/\b(cf|al|sl|slx|s-works|expert|comp|pro|race|rc|factory|team|ultimate|select|r|rs|gx|sx|nx)\b/g, ' ');
+        cleaned = cleaned.replace(/\s+/g, ' ').trim();
+        return cleaned;
+    }
+
+    buildModelPatterns(model) {
+        const cleaned = this.sanitizeModel(model);
+        if (!cleaned) return [];
+        const tokens = cleaned.split(' ').filter(Boolean);
+        const patterns = new Set();
+        if (tokens.length >= 2) patterns.add(tokens.slice(0, 2).join(' '));
+        if (tokens.length >= 1) patterns.add(tokens[0]);
+        patterns.add(cleaned);
+        return Array.from(patterns)
+            .filter((p) => p.length >= 2)
+            .map((p) => `%${p}%`);
+    }
+
+    extractYearFromTitle(title) {
+        if (!title) return null;
+        const match = String(title).match(/\b(19|20)\d{2}\b/);
+        if (!match) return null;
+        const year = Number(match[0]);
+        if (!Number.isFinite(year)) return null;
+        const current = new Date().getFullYear();
+        if (year < 1990 || year > current + 1) return null;
+        return year;
+    }
+
+    adjustPriceForYear(price, rowYear, targetYear) {
+        if (!price || !targetYear || !rowYear) return price;
+        const diff = Math.max(-6, Math.min(6, targetYear - rowYear));
+        if (diff === 0) return price;
+        const annualDep = 0.12;
+        const factor = Math.pow(1 - annualDep, -diff);
+        return price * factor;
+    }
+
+    selectBestYearSubset(rows, targetYear) {
+        if (!targetYear) return rows;
+        const exact = rows.filter(r => r.year === targetYear);
+        if (exact.length >= 3) return exact;
+        const near1 = rows.filter(r => r.year && Math.abs(r.year - targetYear) <= 1);
+        if (near1.length >= 5) return near1;
+        const near2 = rows.filter(r => r.year && Math.abs(r.year - targetYear) <= 2);
+        if (near2.length >= 5) return near2;
+        return rows;
+    }
+
     /**
      * Главный метод: получить FMV для модели
      * @param {string} brand - "Specialized"
@@ -34,7 +97,7 @@ class FMVAnalyzer {
         console.log(`   🔍 After outlier removal: ${filtered.length} listings`);
 
         // 3. Рассчитываем median (более устойчив чем average)
-        const prices = filtered.map(item => item.price);
+        const prices = filtered.map(item => item.price_adjusted || item.price);
         const median = this.calculateMedian(prices);
 
         // 4. Рассчитываем confidence
@@ -64,43 +127,78 @@ class FMVAnalyzer {
      * Получить market data из БД
      */
     async getMarketData(brand, model, year, options) {
-        // Adjust column names to match actual schema (price_eur)
-        // Also handling optional columns if they exist or just ignoring them for now if not critical
-        const query = `
-            SELECT price_eur as price, created_at, frame_size
-            FROM market_history
-            WHERE LOWER(brand) = LOWER(?)
-              AND LOWER(model) LIKE LOWER(?)
-              AND year = ?
-              AND price_eur > 0
-              AND created_at > datetime('now', '-90 days')
-            ORDER BY created_at DESC
-            LIMIT 100
-        `;
+        const patterns = this.buildModelPatterns(model);
+        const recentDays = options?.recentDays || 365;
 
-        const modelPattern = `%${model}%`;
-        const results = await this.db.query(query, [brand, modelPattern, year]);
+        let results = [];
+        if (brand) {
+            if (patterns.length > 0) {
+                const orClauses = patterns.map(() => '(LOWER(model) LIKE LOWER(?) OR LOWER(title) LIKE LOWER(?))').join(' OR ');
+                const query = `
+                    SELECT price_eur as price, created_at, frame_size, frame_material, year, model, title
+                    FROM market_history
+                    WHERE LOWER(brand) = LOWER(?)
+                      AND price_eur > 0
+                      AND created_at > datetime('now', ?)
+                      AND (${orClauses})
+                    ORDER BY created_at DESC
+                    LIMIT 300
+                `;
+                const params = [brand, `-${recentDays} days`];
+                patterns.forEach(p => params.push(p, p));
+                results = await this.db.query(query, params);
+            }
 
-        // Фильтруем по frame_size и frame_material если указаны
+            if (results.length < 3) {
+                const query = `
+                    SELECT price_eur as price, created_at, frame_size, frame_material, year, model, title
+                    FROM market_history
+                    WHERE LOWER(brand) = LOWER(?)
+                      AND price_eur > 0
+                      AND created_at > datetime('now', ?)
+                    ORDER BY created_at DESC
+                    LIMIT 300
+                `;
+                results = await this.db.query(query, [brand, `-${recentDays} days`]);
+            }
+        }
+
+        // Filter by frame_size and frame_material if provided
         let filtered = results;
 
         if (options.frameSize) {
-            filtered = filtered.filter(item => 
-                item.frame_size && item.frame_size.toLowerCase() === options.frameSize.toLowerCase()
+            const sizeFiltered = filtered.filter(item =>
+                item.frame_size && item.frame_size.toLowerCase() === String(options.frameSize).toLowerCase()
             );
+            if (sizeFiltered.length >= 3) {
+                filtered = sizeFiltered;
+            }
         }
 
-        // Frame material filtering is tricky if not in DB. 
-        // For now, we skip it or assume market data matches broadly.
-        // if (options.frameMaterial) { ... }
+        if (options.frameMaterial) {
+            const materialFiltered = filtered.filter(item =>
+                item.frame_material && item.frame_material.toLowerCase().includes(String(options.frameMaterial).toLowerCase())
+            );
+            if (materialFiltered.length >= 3) {
+                filtered = materialFiltered;
+            }
+        }
 
-        // Если фильтры слишком строгие (< 3 результатов), вернём нефильтрованные
         if (filtered.length < 3 && results.length >= 3) {
-            console.log(`   ⚠️ Too few results with filters (${filtered.length}), using unfiltered (${results.length})`);
-            return results;
+            console.log(`   [WARN] Too few results with filters (${filtered.length}), using unfiltered (${results.length})`);
+            filtered = results;
         }
 
-        return filtered;
+        const withYears = filtered.map(item => ({
+            ...item,
+            year: item.year || this.extractYearFromTitle(item.title)
+        }));
+        const yearFiltered = this.selectBestYearSubset(withYears, year);
+
+        return yearFiltered.map(item => ({
+            ...item,
+            price_adjusted: this.adjustPriceForYear(item.price, item.year, year)
+        }));
     }
 
     /**
@@ -109,7 +207,7 @@ class FMVAnalyzer {
     removeOutliers(data) {
         if (data.length < 4) return data; // Слишком мало данных
 
-        const prices = data.map(item => item.price).sort((a, b) => a - b);
+        const prices = data.map(item => item.price_adjusted || item.price).sort((a, b) => a - b);
         
         const q1 = this.calculatePercentile(prices, 25);
         const q3 = this.calculatePercentile(prices, 75);
@@ -118,9 +216,10 @@ class FMVAnalyzer {
         const lowerBound = q1 - 1.5 * iqr;
         const upperBound = q3 + 1.5 * iqr;
 
-        return data.filter(item => 
-            item.price >= lowerBound && item.price <= upperBound
-        );
+        return data.filter(item => {
+            const p = item.price_adjusted || item.price;
+            return p >= lowerBound && p <= upperBound;
+        });
     }
 
     /**
@@ -173,7 +272,7 @@ class FMVAnalyzer {
 
         // Корректируем на основе variance (если prices сильно разбросаны = меньше confidence)
         if (data.length >= 3) {
-            const prices = data.map(item => item.price);
+            const prices = data.map(item => item.price_adjusted || item.price);
             const mean = prices.reduce((sum, p) => sum + p, 0) / prices.length;
             const variance = prices.reduce((sum, p) => sum + Math.pow(p - mean, 2), 0) / prices.length;
             const coefficientOfVariation = Math.sqrt(variance) / mean;
@@ -216,7 +315,14 @@ class FMVAnalyzer {
         else if (age <= 7) depreciationFactor = 0.30;
         else depreciationFactor = 0.20;
 
-        const fmv = Math.round(basePriceNew * depreciationFactor);
+        let fmv = Math.round(basePriceNew * depreciationFactor);
+        const listingPrice = options?.listingPrice;
+        if (listingPrice && Number.isFinite(listingPrice) && listingPrice > 0) {
+            const floor = Math.round(listingPrice * 0.8);
+            if (fmv < floor) {
+                fmv = floor;
+            }
+        }
 
         return {
             fmv: fmv,

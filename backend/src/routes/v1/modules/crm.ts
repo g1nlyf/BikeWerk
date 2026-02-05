@@ -225,9 +225,12 @@ router.post('/orders/:orderId/ask', async (req, res) => {
         // --- Telegram Notification Logic ---
         try {
             const { ManagerBotService } = require('../../../services/ManagerBotService'); // Adjust path as needed, or use global
-            // Or use axios if simpler
-            const botToken = process.env.BOT_TOKEN || '8422123572:AAEOO0PoP3QOmkgmpa53USU_F24hJdSNA3g'; // Hardcoded fallback for now
+            const botToken = process.env.BOT_TOKEN || process.env.MANAGER_BOT_TOKEN || '';
             const axios = require('axios');
+            if (!botToken) {
+                console.warn('⚠️ BOT_TOKEN missing. Skipping Telegram notification.');
+                return res.status(200).json({ success: true, task, warning: 'BOT_TOKEN missing' });
+            }
 
             // Find Manager TG ID
             let managerTgId = null;
@@ -238,7 +241,11 @@ router.post('/orders/:orderId/ask', async (req, res) => {
             }
 
             // Fallback to Admin/Group if no manager or manager has no TG
-            const targetChatId = managerTgId || process.env.ADMIN_CHAT_ID || '183921355'; // Fallback to main admin
+            const targetChatId = managerTgId || process.env.ADMIN_CHAT_ID;
+            if (!targetChatId) {
+                console.warn('⚠️ ADMIN_CHAT_ID missing. Skipping Telegram notification.');
+                return;
+            }
 
             const msg = `
 📩 <b>ВОПРОС ОТ КЛИЕНТА</b>
@@ -331,9 +338,13 @@ router.post('/orders/:orderId/delivery', async (req, res) => {
 
         // 4. Notify Manager
         try {
-            const botToken = process.env.BOT_TOKEN || '8422123572:AAEOO0PoP3QOmkgmpa53USU_F24hJdSNA3g';
+            const botToken = process.env.BOT_TOKEN || process.env.MANAGER_BOT_TOKEN || '';
             const axios = require('axios');
-            const targetChatId = process.env.ADMIN_CHAT_ID || '183921355'; // Admin fallback
+            const targetChatId = process.env.ADMIN_CHAT_ID || '';
+            if (!botToken || !targetChatId) {
+                console.warn('⚠️ BOT_TOKEN / ADMIN_CHAT_ID missing. Skipping Telegram notification.');
+                return;
+            }
 
             const msg = `
 🚚 <b>СМЕНА ДОСТАВКИ</b>

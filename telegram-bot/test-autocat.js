@@ -58,7 +58,8 @@ const parser = new KleinanzeigenParser();
 const imageHandler = new ImageHandler();
 const bikesDB = new BikesDatabase();
 // const { geminiClient } = require('./autocat-klein/dist/autocat-klein/src/lib/geminiClient.js');
-const gp = new GeminiProcessor('AIzaSyBwFKlgRwTPpx8Ufss9_aOYm9zikt9SGj0', 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.0-pro-preview:generateContent');
+const geminiKey = process.env.GEMINI_API_KEY || (process.env.GEMINI_API_KEYS || '').split(/[,;|\s]+/).filter(Boolean)[0] || '';
+const gp = new GeminiProcessor(geminiKey, 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.0-pro-preview:generateContent');
 // gp.setMultiKeyClient(geminiClient);
 const { analyzeWithLLM } = require('./llm-analyzer.ts');
 

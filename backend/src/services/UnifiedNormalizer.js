@@ -54,7 +54,13 @@ class UnifiedNormalizer {
             
             if (brand && model && year) {
                 console.log(`   💰 [UnifiedNormalizer] Calculating FMV for ${brand} ${model} ${year}...`);
-                const fmvData = await this.fmvAnalyzer.getFairMarketValue(brand, model, year);
+                const fmvOptions = {
+                    frameSize: processed.specs?.frame_size || preprocessed.size,
+                    frameMaterial: processed.specs?.frame_material,
+                    listingPrice: processed.pricing?.price,
+                    recentDays: Number(process.env.FMV_RECENT_DAYS || 365)
+                };
+                const fmvData = await this.fmvAnalyzer.getFairMarketValue(brand, model, year, fmvOptions);
                 
                 if (fmvData) {
                     processed.pricing.fmv = fmvData.fmv;
@@ -66,6 +72,7 @@ class UnifiedNormalizer {
                     if (price && fmvData.fmv) {
                          const comparison = this.fmvAnalyzer.getMarketComparison(price, fmvData.fmv);
                          processed.pricing.market_comparison = comparison;
+                         processed.pricing.profit_margin = Math.round(((fmvData.fmv - price) / fmvData.fmv) * 1000) / 10;
                     }
                     console.log(`   ✅ FMV: ${fmvData.fmv} (${processed.pricing.market_comparison})`);
                 }

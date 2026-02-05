@@ -1428,8 +1428,14 @@ class UnifiedHunter {
             const axios = require('axios');
             const { HttpsProxyAgent } = require('https-proxy-agent');
             
-            const proxyUrl = 'http://user258350:otuspk@191.101.73.161:8984';
-            const agent = new HttpsProxyAgent(proxyUrl);
+            const proxyUrl =
+                process.env.EUBIKE_PROXY_URL ||
+                process.env.HUNTER_PROXY_URL ||
+                process.env.HTTPS_PROXY ||
+                process.env.HTTP_PROXY ||
+                process.env.PROXY_URL ||
+                '';
+            const agent = proxyUrl ? new HttpsProxyAgent(proxyUrl) : undefined;
 
             // Random User Agents
             const uas = [

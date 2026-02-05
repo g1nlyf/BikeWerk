@@ -7,7 +7,7 @@ const sharp = require('sharp');
 const { HttpsProxyAgent } = require('https-proxy-agent');
 const imageKitService = require('./ImageKitService');
 
-const DEFAULT_PROXY_URL = 'http://user258350:otuspk@191.101.73.161:8984';
+const DEFAULT_PROXY_URL = '';
 
 class PhotoManager {
     constructor(options = {}) {

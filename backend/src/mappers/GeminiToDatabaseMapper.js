@@ -43,6 +43,9 @@ class GeminiToDatabaseMapper {
             market_comparison: pricing.market_comparison || null,
             optimal_price: pricing.optimal_price || null,
             days_on_market: pricing.days_on_market || 0,
+            profit_margin: pricing.profit_margin !== undefined
+                ? pricing.profit_margin
+                : (pricing.price && pricing.fmv ? Math.round(((pricing.fmv - pricing.price) / pricing.fmv) * 1000) / 10 : null),
 
             // --- SPECS ---
             frame_size: specs.frame_size || null,

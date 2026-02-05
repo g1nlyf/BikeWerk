@@ -1,9 +1,16 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { HttpsProxyAgent } = require('https-proxy-agent');
 
-// Proxy Configuration
-const PROXY_URL = 'http://user258350:otuspk@191.101.73.161:8984';
-const agent = new HttpsProxyAgent(PROXY_URL);
+// Proxy Configuration (optional)
+const PROXY_URL =
+    process.env.EUBIKE_PROXY_URL ||
+    process.env.MANAGER_BOT_PROXY_URL ||
+    process.env.HUNTER_PROXY_URL ||
+    process.env.HTTPS_PROXY ||
+    process.env.HTTP_PROXY ||
+    process.env.PROXY_URL ||
+    '';
+const agent = PROXY_URL ? new HttpsProxyAgent(PROXY_URL) : undefined;
 
 // Gemini Configuration
 const MODEL_NAME = 'gemini-3.0-pro-preview';
@@ -14,7 +21,8 @@ class GeminiVision {
         
         this.genAI = new GoogleGenerativeAI(apiKey, {
             fetch: (url, options) => {
-                return fetch(url, { ...options, agent });
+                const opts = agent ? { ...options, agent } : options;
+                return fetch(url, opts);
             }
         });
         this.model = this.genAI.getGenerativeModel({ model: MODEL_NAME });

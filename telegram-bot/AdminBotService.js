@@ -22,20 +22,29 @@ class AdminBotService {
 
     initCommands() {
         // /start - Security Check & ID Discovery
-        this.bot.onText(/\/start/, (msg) => {
+        this.bot.onText(/\/start/, async (msg) => {
             const chatId = msg.chat.id;
             console.log(`[AdminBot] Connection attempt from ID: ${chatId}`);
-            
-            if (this.adminChatId && String(chatId) === String(this.adminChatId)) {
+
+            // Resolve admin from env/DB or auto-register first user
+            const resolved = await this._resolveAdminChatId();
+            if (resolved && String(chatId) === String(resolved)) {
                 this.bot.sendMessage(chatId, `🫡 Welcome back, Commander.\nSystem Status: *ONLINE*\nUse /stats, /top, /health`, { parse_mode: 'Markdown' });
-            } else {
-                this.bot.sendMessage(chatId, `🛑 *ACCESS DENIED*\nYour ID: \`${chatId}\`\nPlease add this ID to .env as ADMIN_CHAT_ID`, { parse_mode: 'Markdown' });
+                return;
             }
+
+            if (!resolved) {
+                await this._registerAdmin(chatId, msg.from);
+                this.bot.sendMessage(chatId, `✅ Admin registered.\nYour ID: \`${chatId}\`\nSet ADMIN_CHAT_ID in .env for permanent pin.`, { parse_mode: 'Markdown' });
+                return;
+            }
+
+            this.bot.sendMessage(chatId, `🛑 *ACCESS DENIED*\nYour ID: \`${chatId}\`\nAsk admin to add ADMIN_CHAT_ID or re-register.`, { parse_mode: 'Markdown' });
         });
 
         // /stats - General Statistics
         this.bot.onText(/\/stats/, async (msg) => {
-            if (!this._checkAuth(msg)) return;
+            if (!(await this._checkAuth(msg))) return;
             
             const stats = await this._getSystemStats();
             const text = `
@@ -58,7 +67,7 @@ class AdminBotService {
 
         // /top or /last - Last 3 Gold Deals
         this.bot.onText(/\/(top|last)/, async (msg) => {
-            if (!this._checkAuth(msg)) return;
+            if (!(await this._checkAuth(msg))) return;
             
             const bikes = await this.db.allQuery(`
                 SELECT * FROM bikes 
@@ -79,7 +88,7 @@ class AdminBotService {
 
         // /health - System Health
         this.bot.onText(/\/health/, async (msg) => {
-            if (!this._checkAuth(msg)) return;
+            if (!(await this._checkAuth(msg))) return;
             
             // Mock API Limit Check (Real implementation would track usage)
             const apiStatus = "✅ Gemini (Multi-Key): OK"; 
@@ -89,8 +98,8 @@ class AdminBotService {
         });
 
         // /restart - Restart all services (Server Side)
-        this.bot.onText(/\/restart/, (msg) => {
-            if (!this._checkAuth(msg)) return;
+        this.bot.onText(/\/restart/, async (msg) => {
+            if (!(await this._checkAuth(msg))) return;
 
             this.bot.sendMessage(msg.chat.id, '🔄 Initiating system-wide restart (PM2)... Hold tight!');
             
@@ -109,7 +118,7 @@ class AdminBotService {
 
         // /clear [id] - Delete specific bike
         this.bot.onText(/\/clear\s+(\d+)/, async (msg, match) => {
-            if (!this._checkAuth(msg)) return;
+            if (!(await this._checkAuth(msg))) return;
             const id = match[1];
             const res = await this._clearBike(id);
             if (res.success) {
@@ -121,7 +130,7 @@ class AdminBotService {
 
         // /clear_all - Delete all bikes
         this.bot.onText(/\/clear_all/, async (msg) => {
-            if (!this._checkAuth(msg)) return;
+            if (!(await this._checkAuth(msg))) return;
             
             // Confirmation via custom keyboard
             const opts = {
@@ -150,12 +159,70 @@ class AdminBotService {
         });
     }
 
-    _checkAuth(msg) {
-        if (!this.adminChatId || String(msg.chat.id) !== String(this.adminChatId)) {
+    async _checkAuth(msg) {
+        const resolved = await this._resolveAdminChatId();
+        if (!resolved || String(msg.chat.id) !== String(resolved)) {
             console.log(`[AdminBot] Unauthorized access attempt by ${msg.chat.id}`);
+            if (!resolved) {
+                try {
+                    this.bot.sendMessage(msg.chat.id, `⚠️ Admin not registered. Send /start to register.`, { parse_mode: 'Markdown' });
+                } catch (_) {}
+            }
             return false;
         }
         return true;
+    }
+
+    async _resolveAdminChatId() {
+        if (this.adminChatId) return this.adminChatId;
+        try {
+            const row = await this.db.getQuery(`SELECT telegram_id FROM telegram_users WHERE role = 'admin' ORDER BY id LIMIT 1`);
+            if (row && row.telegram_id) {
+                this.adminChatId = row.telegram_id;
+                return this.adminChatId;
+            }
+        } catch (_) {}
+        return null;
+    }
+
+    async _registerAdmin(chatId, from) {
+        this.adminChatId = chatId;
+        try {
+            await this._upsertTelegramUser(from, 'admin');
+        } catch (e) {
+            console.warn(`Admin registration warning: ${e.message}`);
+        }
+    }
+
+    async _upsertTelegramUser(from, role = 'user') {
+        if (!from) return;
+        const payload = {
+            telegram_id: from.id,
+            username: from.username || null,
+            first_name: from.first_name || null,
+            last_name: from.last_name || null,
+            language_code: from.language_code || null,
+            is_bot: from.is_bot ? 1 : 0,
+            is_active: 1,
+            role: role || 'user',
+            user_id: null
+        };
+        await this.db.runQuery(
+            `INSERT OR REPLACE INTO telegram_users
+            (telegram_id, username, first_name, last_name, language_code, is_bot, is_active, role, user_id, updated_at, last_interaction)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+            [
+                payload.telegram_id,
+                payload.username,
+                payload.first_name,
+                payload.last_name,
+                payload.language_code,
+                payload.is_bot,
+                payload.is_active,
+                payload.role,
+                payload.user_id
+            ]
+        );
     }
 
     async _getSystemStats() {
@@ -190,7 +257,8 @@ class AdminBotService {
     }
 
     async sendInstantAlert(bike, profitData) {
-        if (!this.adminChatId) return;
+        const adminId = await this._resolveAdminChatId();
+        if (!adminId) return;
 
         const isMarburg = bike.guaranteed_pickup;
         const profit = profitData ? profitData.profit : (bike.original_price - bike.price);
@@ -222,11 +290,12 @@ ${isMarburg ? "✅ Guaranteed Pickup (3h Zone)" : "💬 Negotiation Service"}
             }
         };
 
-        await this.bot.sendMessage(this.adminChatId, msg.trim(), opts);
+        await this.bot.sendMessage(adminId, msg.trim(), opts);
     }
 
     async sendDailyDigest() {
-        if (!this.adminChatId) return;
+        const adminId = await this._resolveAdminChatId();
+        if (!adminId) return;
         const stats = await this._getSystemStats();
         
         const msg = `
@@ -240,12 +309,13 @@ Yesterday's Performance:
 System Status: *Healthy* ✅
         `;
         
-        await this.bot.sendMessage(this.adminChatId, msg.trim(), { parse_mode: 'Markdown' });
+        await this.bot.sendMessage(adminId, msg.trim(), { parse_mode: 'Markdown' });
     }
 
     async sendSystemAlert(errorMsg) {
-        if (!this.adminChatId) return;
-        await this.bot.sendMessage(this.adminChatId, `⚠️ *SYSTEM ALERT*\n\n${errorMsg}`, { parse_mode: 'Markdown' });
+        const adminId = await this._resolveAdminChatId();
+        if (!adminId) return;
+        await this.bot.sendMessage(adminId, `⚠️ *SYSTEM ALERT*\n\n${errorMsg}`, { parse_mode: 'Markdown' });
     }
 
     async sendBikeCard(chatId, bike) {

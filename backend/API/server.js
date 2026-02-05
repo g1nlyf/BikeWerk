@@ -1085,7 +1085,7 @@ Text to translate:
                     },
                     {
                         headers: { 'Content-Type': 'application/json' },
-                        timeout: 5000 // 5s timeout for Gemini to fail fast
+                        timeout: Number(process.env.GEMINI_TIMEOUT_MS || 60000)
                     }
                 );
 

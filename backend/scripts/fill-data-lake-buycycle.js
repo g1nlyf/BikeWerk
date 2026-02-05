@@ -4,7 +4,13 @@ const { HttpsProxyAgent } = require('https-proxy-agent');
 const DatabaseManager = require('../database/db-manager');
 const BuycycleURLBuilder = require('../services/buycycle-url-builder');
 
-const PROXY_URL = 'http://user258350:otuspk@191.101.73.161:8984';
+const PROXY_URL =
+  process.env.EUBIKE_PROXY_URL ||
+  process.env.HUNTER_PROXY_URL ||
+  process.env.HTTPS_PROXY ||
+  process.env.HTTP_PROXY ||
+  process.env.PROXY_URL ||
+  '';
 
 (async () => {
   console.log('🚲 BUYCYCLE DATA LAKE BUILDER - START\n');
@@ -51,10 +57,10 @@ const PROXY_URL = 'http://user258350:otuspk@191.101.73.161:8984';
 
 async function fetchAndParse(url) {
   return new Promise((resolve) => {
-    const agent = new HttpsProxyAgent(PROXY_URL);
+    const agent = PROXY_URL ? new HttpsProxyAgent(PROXY_URL) : undefined;
     
     https.get(url, { 
-        agent: agent,
+        agent,
         headers: { 
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',

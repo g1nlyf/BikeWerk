@@ -5,15 +5,30 @@ const sharp = require('sharp');
 const axios = require('axios');
 const { HttpsProxyAgent } = require('https-proxy-agent');
 
-const proxyUrl = 'http://user258350:otuspk@191.101.73.161:8984';
-const STATIC_KEY = 'AIzaSyBjngHVn2auhLXRMTCY0q9mrqVaiRkfj4g';
+const proxyUrl = process.env.GEMINI_PROXY_URL || process.env.PROXY_URL || process.env.HTTPS_PROXY || process.env.HTTP_PROXY || '';
+const parseGeminiKeys = () => {
+    const keys = [];
+    const addKey = (key) => {
+        const trimmed = typeof key === 'string' ? key.trim() : '';
+        if (trimmed && !keys.includes(trimmed)) keys.push(trimmed);
+    };
+    const pool = process.env.GEMINI_API_KEYS || process.env.GEMINI_KEYS;
+    if (pool) pool.split(/[,;|\s]+/).forEach(addKey);
+    for (let i = 1; i <= 10; i++) {
+        addKey(process.env[`GEMINI_API_KEY_${i}`]);
+    }
+    addKey(process.env.GEMINI_API_KEY);
+    return keys;
+};
+const pickPrimaryKey = () => parseGeminiKeys()[0] || '';
 
 class GeminiProcessor {
     constructor(apiKey, apiUrl) {
-        // STRICT FORCE: Ignore passed apiKey, use only the authorized one
-        this.apiKey = 'AIzaSyBjngHVn2auhLXRMTCY0q9mrqVaiRkfj4g';
+        this.apiKey = apiKey || pickPrimaryKey();
         this.apiUrl = apiUrl;
-        this.timeout = 60000;
+        this.timeout = Number(process.env.GEMINI_TIMEOUT_MS || 60000);
+        this.allowFallback = process.env.GEMINI_ALLOW_FALLBACK === 'true';
+        this.httpsAgent = proxyUrl ? new HttpsProxyAgent(proxyUrl) : undefined;
         this.cooldownMs = 0; // User confirms no limits
         this._lastCallAt = 0;
         this.rpmLimit = 1000; // Unlimited
@@ -37,8 +52,12 @@ class GeminiProcessor {
 
         try {
             if (!this.apiKey) {
-                console.warn('⚠️ Gemini API ключ не найден, использую тестовые данные');
-                return this.generateTestData(rawBikeData);
+                const msg = 'GEMINI_API_KEY is not configured';
+                if (this.allowFallback) {
+                    console.warn(`⚠️ ${msg}. Falling back to test data.`);
+                    return this.generateTestData(rawBikeData);
+                }
+                throw new Error(msg);
             }
 
             // Check if we have images
@@ -166,8 +185,12 @@ class GeminiProcessor {
     async processBikeDataFromImages(imagePaths, context = {}) {
         try {
             if (!this.apiKey) {
-                const base = this.generateTestData(context);
-                return { ...context, ...base, processedByGemini: false };
+                const msg = 'GEMINI_API_KEY is not configured';
+                if (this.allowFallback) {
+                    const base = this.generateTestData(context);
+                    return { ...context, ...base, processedByGemini: false };
+                }
+                throw new Error(msg);
             }
 
             const slices = Array.isArray(imagePaths) ? imagePaths.slice(0, 2) : [];
@@ -236,8 +259,12 @@ class GeminiProcessor {
 
         try {
             if (!this.apiKey) {
-                const base = this.generateTestData(context);
-                return { ...context, ...base, processedByGemini: false };
+                const msg = 'GEMINI_API_KEY is not configured';
+                if (this.allowFallback) {
+                    const base = this.generateTestData(context);
+                    return { ...context, ...base, processedByGemini: false };
+                }
+                throw new Error(msg);
             }
             const parts1 = [];
             parts1.push({ text: 'Тебе будет предоставлено 2 скриншота одной страницы. Сейчас прилагаю первый. После получения второго скриншота через 5 секунд проанализируй оба изображения комплексно.' });
@@ -268,7 +295,7 @@ class GeminiProcessor {
     async extractEurSellRateFromImages(imagePaths) {
         try {
             if (!this.apiKey) {
-                return { eur_sell_rate: null, processedByGemini: false };
+                return { eur_sell_rate: null, processedByGemini: false, processingError: 'GEMINI_API_KEY is not configured' };
             }
             const slices = Array.isArray(imagePaths) ? imagePaths.slice(0, 2) : [];
             const imgParts = [];
@@ -527,6 +554,9 @@ JSON Structure (Return ONLY this JSON):
     }
 
     async callGeminiAPI(prompt) {
+        if (!this.apiKey) {
+            throw new Error('GEMINI_API_KEY is not configured');
+        }
         if (this._mkClient) {
             const contents = [{ parts: [{ text: prompt }] }];
             const responseText = await this._mkClient.generateContent({ contents });
@@ -547,19 +577,19 @@ JSON Structure (Return ONLY this JSON):
         };
 
         const fullUrl = `${this.apiUrl}?key=${this.apiKey}`;
-        const agent = new HttpsProxyAgent(proxyUrl);
+        const agent = this.httpsAgent;
 
         try {
             const estTokens = this._estimateTokensFromText(prompt);
             await this._acquirePermit(estTokens);
             await this._ensureCooldown();
-            const response = await fetch(fullUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(requestBody),
-                timeout: this.timeout,
-                agent: agent
-            });
+                const response = await fetch(fullUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestBody),
+                    timeout: this.timeout,
+                    agent: agent
+                });
 
             if (!response.ok) {
                 const errorText = await response.text();
@@ -818,8 +848,12 @@ JSON Structure (Return ONLY this JSON):
     async processBikeDataFromShots(imagePaths, context = {}) {
         try {
             if (!this.apiKey) {
-                const base = this.generateTestData(context);
-                return { ...context, ...base, processedByGemini: false };
+                const msg = 'GEMINI_API_KEY is not configured';
+                if (this.allowFallback) {
+                    const base = this.generateTestData(context);
+                    return { ...context, ...base, processedByGemini: false };
+                }
+                throw new Error(msg);
             }
             const imgs = Array.isArray(imagePaths) ? imagePaths.slice(0, 3) : [];
             if (imgs.length === 0) return { ...context, processedByGemini: false, processingError: 'no_images' };
@@ -1169,9 +1203,12 @@ JSON Structure (Return ONLY this JSON):
 
     async translateText(text) {
         if (!text) return '';
-        const key = STATIC_KEY;
+        if (!this.apiKey) {
+            return text;
+        }
+        const key = this.apiKey;
         const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent';
-        const agent = new HttpsProxyAgent(proxyUrl);
+        const agent = this.httpsAgent;
 
         const prompt = `
         Task: Translate the following text from German (or English) to Russian.
@@ -1204,9 +1241,12 @@ JSON Structure (Return ONLY this JSON):
     }
 
     async analyzeCondition(imageUrls, title = '', description = '') {
-        const key = STATIC_KEY;
+        if (!this.apiKey) {
+            return { error: 'GEMINI_API_KEY is not configured' };
+        }
+        const key = this.apiKey;
         const targetUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.0-pro-preview:generateContent';
-        const agent = new HttpsProxyAgent(proxyUrl);
+        const agent = this.httpsAgent;
 
         try {
             const images = Array.isArray(imageUrls) ? imageUrls : [imageUrls];

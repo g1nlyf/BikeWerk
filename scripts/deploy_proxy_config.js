@@ -3,19 +3,33 @@ const path = require('path');
 
 const ssh = new NodeSSH();
 
-// Configuration
+// Configuration (use env to avoid leaking secrets)
 const config = {
-    host: '45.9.41.232',
-    username: 'root',
-    password: '&9&%4q6631vI',
-    remoteBase: '/root/eubike',
-    localBase: 'c:\\Users\\hacke\\CascadeProjects\\Finals1\\eubike'
+    host: process.env.DEPLOY_HOST,
+    username: process.env.DEPLOY_USER || 'root',
+    password: process.env.DEPLOY_PASSWORD,
+    remoteBase: process.env.DEPLOY_REMOTE_BASE || '/root/eubike',
+    localBase: process.env.DEPLOY_LOCAL_BASE || path.resolve(__dirname, '..')
 };
 
-const PROXY_STRING = 'http://user258350:otuspk@191.101.73.161:8984';
+const PROXY_STRING =
+    process.env.EUBIKE_PROXY_URL ||
+    process.env.HUNTER_PROXY_URL ||
+    process.env.HTTPS_PROXY ||
+    process.env.HTTP_PROXY ||
+    process.env.PROXY_URL ||
+    '';
 
 async function deploy() {
     try {
+        if (!config.host || !config.password) {
+            console.error('Missing DEPLOY_HOST or DEPLOY_PASSWORD env vars.');
+            process.exit(1);
+        }
+        if (!PROXY_STRING) {
+            console.error('Missing proxy env (EUBIKE_PROXY_URL/HUNTER_PROXY_URL/HTTPS_PROXY).');
+            process.exit(1);
+        }
         console.log('🚀 Configuring Gemini Proxy...');
         
         // Connect to server

@@ -28,6 +28,7 @@ frontend/public/*.jpg
 frontend/public/*.jpeg
 frontend/public/ext photos/
 frontend/public/images/
+telegram-bot/screenshots/
 
 # Logs
 logs/

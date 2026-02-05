@@ -266,6 +266,15 @@ class DatabaseServiceV2 {
 
       const bikeId = result.lastInsertRowid;
 
+      if (u.pricing.fmv && u.pricing.price) {
+        const margin = Math.round(((u.pricing.fmv - u.pricing.price) / u.pricing.fmv) * 1000) / 10;
+        try {
+          this.db.prepare(`UPDATE bikes SET profit_margin = ? WHERE id = ?`).run(margin, bikeId);
+        } catch (e) {
+          console.warn(`[DatabaseServiceV2] Failed to set profit_margin: ${e.message}`);
+        }
+      }
+
       console.log(`   ✅ Bike saved successfully!`);
       console.log(`   📊 Database ID: ${bikeId}`);
       console.log(`   🏆 Quality Score: ${u.quality_score}`);

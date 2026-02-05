@@ -43,7 +43,7 @@ if (!loaded) console.warn('⚠️ No .env file loaded successfully.');
 
 class GeminiClient {
     constructor() {
-        this.timeout = 20000;
+        this.timeout = Number(process.env.GEMINI_TIMEOUT_MS || 60000);
         this.cooldownMs = 1000;
         this._lastCallAt = 0;
         this.lastUsedProjectIndex = 0;
@@ -82,7 +82,8 @@ class GeminiClient {
     }
 
     _parseEnvKeys() {
-        return ['AIzaSyBwFKlgRwTPpx8Ufss9_aOYm9zikt9SGj0'];
+        const pool = process.env.GEMINI_API_KEYS || process.env.GEMINI_KEYS || process.env.GEMINI_API_KEY || '';
+        return pool.split(/[,;|\s]+/).filter(Boolean);
     }
 
     _markKeyMinuteExhausted(keyState) {
@@ -100,7 +101,7 @@ class GeminiClient {
 
     async generateContent(prompt) {
         const startTime = Date.now();
-        const totalTimeoutMs = Number(process.env.GEMINI_CLIENT_TOTAL_TIMEOUT_MS || 8000);
+        const totalTimeoutMs = Number(process.env.GEMINI_CLIENT_TOTAL_TIMEOUT_MS || process.env.GEMINI_TIMEOUT_MS || 60000);
         let contents = [];
         let customConfig = {};
 

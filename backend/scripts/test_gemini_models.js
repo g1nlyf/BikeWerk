@@ -1,8 +1,19 @@
 const axios = require('axios');
 const { HttpsProxyAgent } = require('https-proxy-agent');
 
-const STATIC_KEY = 'AIzaSyBwFKlgRwTPpx8Ufss9_aOYm9zikt9SGj0';
-const PROXY_URL = 'http://user258350:otuspk@191.101.73.161:8984';
+const KEY_POOL = process.env.GEMINI_API_KEYS || process.env.GEMINI_KEYS || process.env.GEMINI_API_KEY || '';
+const STATIC_KEY = KEY_POOL.split(/[,;|\s]+/).filter(Boolean)[0] || '';
+if (!STATIC_KEY) {
+    console.error('No GEMINI_API_KEY configured. Set GEMINI_API_KEY or GEMINI_API_KEYS.');
+    process.exit(1);
+}
+const PROXY_URL =
+    process.env.EUBIKE_PROXY_URL ||
+    process.env.HUNTER_PROXY_URL ||
+    process.env.HTTPS_PROXY ||
+    process.env.HTTP_PROXY ||
+    process.env.PROXY_URL ||
+    '';
 const MODELS = [
     'gemini-3.0-pro-preview',
     'gemini-2.5-flash',
@@ -14,9 +25,9 @@ const MODELS = [
 ];
 const REQUESTS_PER_MODEL = Number(process.env.GEMINI_STRESS_REQUESTS || 20);
 const CONCURRENCY = Number(process.env.GEMINI_STRESS_CONCURRENCY || 5);
-const TIMEOUT_MS = Number(process.env.GEMINI_STRESS_TIMEOUT_MS || 10000);
+const TIMEOUT_MS = Number(process.env.GEMINI_STRESS_TIMEOUT_MS || process.env.GEMINI_TIMEOUT_MS || 60000);
 
-const agent = new HttpsProxyAgent(PROXY_URL);
+const agent = PROXY_URL ? new HttpsProxyAgent(PROXY_URL) : undefined;
 
 function buildUrl(modelName, key) {
     return `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${key}`;

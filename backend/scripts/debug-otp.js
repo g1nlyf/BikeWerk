@@ -2,8 +2,14 @@ const axios = require('axios');
 const cheerio = require('cheerio');
 const { HttpsProxyAgent } = require('https-proxy-agent');
 
-const proxy = 'http://user258350:otuspk@191.101.73.161:8984';
-const agent = new HttpsProxyAgent(proxy);
+const proxy =
+    process.env.EUBIKE_PROXY_URL ||
+    process.env.HUNTER_PROXY_URL ||
+    process.env.HTTPS_PROXY ||
+    process.env.HTTP_PROXY ||
+    process.env.PROXY_URL ||
+    '';
+const agent = proxy ? new HttpsProxyAgent(proxy) : undefined;
 
 async function debug() {
     try {
@@ -17,7 +23,8 @@ async function debug() {
                 'Cache-Control': 'max-age=0',
                 'Referer': 'https://www.google.com/'
             },
-            timeout: 10000
+            timeout: 10000,
+            proxy: false
         });
         
         console.log('Status:', 200);

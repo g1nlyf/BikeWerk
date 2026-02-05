@@ -401,6 +401,7 @@ class DatabaseManager {
             }
 
             if (this.isNode) {
+                await this.ensureMetricEventsSchema();
                 await this.db.run(`
                     DELETE FROM bike_images
                     WHERE id NOT IN (
@@ -417,6 +418,26 @@ class DatabaseManager {
         } catch (error) {
             console.error('❌ Database initialization failed:', error);
             throw error;
+        }
+    }
+
+    async ensureMetricEventsSchema() {
+        if (!this.db) return;
+        try {
+            const cols = await this.db.all('PRAGMA table_info(metric_events)');
+            if (!cols || cols.length === 0) return;
+            const hasEventType = cols.some(c => c.name === 'event_type');
+            const hasType = cols.some(c => c.name === 'type');
+            if (!hasEventType) {
+                await this.db.run('ALTER TABLE metric_events ADD COLUMN event_type TEXT');
+                console.log('? Added event_type to metric_events');
+            }
+            if (hasType) {
+                await this.db.run('UPDATE metric_events SET event_type = COALESCE(event_type, type) WHERE event_type IS NULL');
+            }
+            await this.db.run('CREATE INDEX IF NOT EXISTS idx_metric_events_type_created ON metric_events(event_type, created_at)');
+        } catch (e) {
+            console.warn(`?? metric_events migration skipped: ${e.message}`);
         }
     }
 

@@ -6,7 +6,25 @@ const path = require('path');
 const PipelineLogger = require('../utils/PipelineLogger');
 const InputSanitizer = require('../utils/InputSanitizer');
 
-const STATIC_KEY = 'AIzaSyBjngHVn2auhLXRMTCY0q9mrqVaiRkfj4g';
+const parseGeminiKeys = () => {
+    const keys = [];
+    const addKey = (key) => {
+        const trimmed = typeof key === 'string' ? key.trim() : '';
+        if (trimmed && !keys.includes(trimmed)) keys.push(trimmed);
+    };
+
+    const pool = process.env.GEMINI_API_KEYS || process.env.GEMINI_KEYS;
+    if (pool) {
+        pool.split(/[,;|\s]+/).forEach(addKey);
+    }
+
+    for (let i = 1; i <= 10; i++) {
+        addKey(process.env[`GEMINI_API_KEY_${i}`]);
+    }
+
+    addKey(process.env.GEMINI_API_KEY);
+    return keys;
+};
 
 class GeminiProcessor {
     constructor(apiUrl) {
@@ -15,22 +33,21 @@ class GeminiProcessor {
 
         // Setup Proxy for Russian server environment
         // Setup Proxy for Russian server environment
-        // const proxyUrl = 'http://user258350:otuspk@191.101.73.161:8984';
+        // const proxyUrl = process.env.GEMINI_PROXY_URL || process.env.PROXY_URL;
         // this.httpsAgent = new HttpsProxyAgent(proxyUrl);
         this.httpsAgent = undefined; // Bypass proxy for now
 
         // API Keys Rotation
-        this.apiKeys = [
-            process.env.GEMINI_API_KEY_1,
-            process.env.GEMINI_API_KEY_2,
-            process.env.GEMINI_API_KEY_3,
-            process.env.GEMINI_API_KEY,
-            'AIzaSyBjngHVn2auhLXRMTCY0q9mrqVaiRkfj4g' // Fallback static key
-        ].filter((key, index, self) => key && self.indexOf(key) === index);
+        this.apiKeys = parseGeminiKeys();
+        this.allowFallback = process.env.GEMINI_ALLOW_FALLBACK === 'true';
+        this.timeout = Number(process.env.GEMINI_TIMEOUT_MS || 60000);
 
         this.currentKeyIndex = 0;
         this.failedAttempts = new Map();
         console.log(`   🤖 [GEMINI] Initialized with ${this.apiKeys.length} API keys`);
+        if (this.apiKeys.length === 0) {
+            console.warn('⚠️ [GEMINI] No API keys configured. Set GEMINI_API_KEYS or GEMINI_API_KEY.');
+        }
     }
 
     /**
@@ -337,7 +354,7 @@ class GeminiProcessor {
 
                 // 3. Call AI (Using existing axios implementation)
                 // Note: callGeminiAPI already does one call. The loop is here.
-                let result = await this.callGeminiAPI(prompt, 60000);
+                let result = await this.callGeminiAPI(prompt, this.timeout);
 
                 if (!result) throw new Error('Empty result from Gemini');
 
@@ -367,9 +384,18 @@ class GeminiProcessor {
             } catch (error) {
                 lastError = error;
                 this.pipelineLogger.log('ai_call', 'error', { error: error.message });
+                const status = error?.response?.status;
 
                 // Check error type
-                if (error.message.includes('503') || error.message.includes('429')) {
+                if (status === 401 || status === 403 || error.message.includes('401') || error.message.includes('403')) {
+                    console.log(`   ⚠️ [GEMINI] Auth error (${status || '403'}). Rotating key...`);
+                    if (this.apiKeys.length > 1) {
+                        this.rotateAPIKey();
+                        console.log(`   🔄 Switched to API key ${this.currentKeyIndex + 1}`);
+                        await this.delay(1000);
+                        continue;
+                    }
+                } else if (error.message.includes('503') || error.message.includes('429')) {
                     console.log(`   ⚠️ [GEMINI] ${error.message} (Overload)`);
 
                     // Exponential backoff
@@ -400,7 +426,10 @@ class GeminiProcessor {
         console.error(`❌ [GEMINI] All attempts failed: ${lastError ? lastError.message : 'Unknown error'}`);
         this.pipelineLogger.log('normalization', 'error', { error: lastError ? lastError.message : 'Unknown error' });
         this.pipelineLogger.summary();
-        return this.buildMinimalFallback(rawData, lastError);
+        if (this.allowFallback) {
+            return this.buildMinimalFallback(rawData, lastError);
+        }
+        throw lastError || new Error('Gemini failed without fallback');
     }
 
     /** 
@@ -480,6 +509,9 @@ ${inputData}
      * Call Gemini API with retries
      */
     async callGeminiAPI(prompt, timeout = 60000) {
+        if (this.apiKeys.length === 0) {
+            throw new Error('GEMINI_API_KEY is not configured');
+        }
         const key = this.apiKeys[this.currentKeyIndex];
 
         // 🆕 DEBUG: Сохраняем промпт в файл

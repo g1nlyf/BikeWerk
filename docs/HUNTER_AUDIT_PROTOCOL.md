@@ -385,7 +385,7 @@ IQR robustly ignores these extremes, giving us the "Real" market price.
 ### 1. Proxy Exhaustion
 If `KleinanzeigenParser` gets 403 Forbidden:
 1.  Log error `PROXY_BURNED`.
-2.  Switch to next proxy in `user258350` rotation.
+2.  Switch to next proxy in the configured rotation (env-driven).
 3.  Backoff for 60 seconds.
 
 ### 2. Captcha Challenge

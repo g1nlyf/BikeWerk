@@ -7,68 +7,99 @@ class ValuationService {
 
   async calculateFMV(brand, model, year, trim_level) {
     // Support legacy object call
-    if (typeof brand === 'object') {
+    let listingPrice = null;
+    let frameSize = null;
+    let frameMaterial = null;
+    if (typeof brand === "object") {
         const bike = brand;
-        return this.calculateFMV(bike.brand, bike.model, bike.year, bike.trim_level);
+        brand = bike.brand;
+        model = bike.model;
+        year = bike.year;
+        trim_level = bike.trim_level;
+        listingPrice = bike.price;
+        frameSize = bike.frame_size || bike.size || null;
+        frameMaterial = bike.frame_material || bike.material || null;
     }
 
     try {
-      console.log(`[VALUATION] Calculating FMV for ${brand} ${model} (${year || '?'})...`);
-      
-      if (!brand) return null;
-      
-      const db = this.dbManager.getDatabase();
-      
-      // Get all prices for IQR filtering
-      // Using year range ±1 if year is provided, otherwise broader or just model
-      let query = `
-        SELECT price_eur 
-        FROM market_history 
-        WHERE brand = ? 
-          AND (model LIKE ? OR title LIKE ?)
-          AND price_eur > 0
-          AND quality_score >= 70
-      `;
-      const params = [brand, `%${model}%`, `%${model}%`];
+      console.log(`[VALUATION] Calculating FMV for ${brand} ${model} (${year || "?"})...`);
 
-      if (year) {
-          query += ` AND year BETWEEN ? AND ?`;
-          params.push(year - 1, year + 1);
+      if (!brand || !model) return null;
+
+      const db = this.dbManager.getDatabase();
+      const patterns = this.buildModelPatterns(model);
+      let params = [brand];
+      let whereModel = "";
+      if (patterns.length > 0) {
+        whereModel = " AND (" + patterns.map(() => "(LOWER(model) LIKE LOWER(?) OR LOWER(title) LIKE LOWER(?))").join(" OR " ) + ")";
+        patterns.forEach(p => params.push(p, p));
       }
+
+      let query = `
+        SELECT price_eur as price, year, title, frame_size, frame_material, trim_level
+        FROM market_history
+        WHERE LOWER(brand) = LOWER(?)
+          AND price_eur > 0
+      ` + whereModel;
 
       if (trim_level) {
-          query += ` AND trim_level = ?`;
-          params.push(trim_level);
+        query += " AND trim_level = ?";
+        params.push(trim_level);
       }
 
-      query += ` ORDER BY price_eur`;
+      query += " ORDER BY price_eur";
 
-      const rows = db.prepare(query).all(...params);
-      
-      if (rows.length < 5) return null; // Not enough data for IQR
-      
-      // IQR filtering
-      const prices = rows.map(r => r.price_eur);
-      const q1_idx = Math.floor(prices.length * 0.25);
-      const q3_idx = Math.floor(prices.length * 0.75);
-      const iqr_prices = prices.slice(q1_idx, q3_idx + 1);
-      
-      if (iqr_prices.length === 0) return null;
+      let rows = db.prepare(query).all(...params);
 
-      const sum = iqr_prices.reduce((a, b) => a + b, 0);
-      const fmv = sum / iqr_prices.length;
-      
-      const confidence = this.calculateConfidence(iqr_prices.length, year);
-      
-      return { 
-        fmv: Math.round(fmv), 
-        finalPrice: Math.round(fmv), // For legacy compatibility
-        confidence, 
-        sample_size: iqr_prices.length 
+      if (rows.length < 5) {
+        // fallback to brand-only if model match is too sparse
+        rows = db.prepare(`
+          SELECT price_eur as price, year, title, frame_size, frame_material, trim_level
+          FROM market_history
+          WHERE LOWER(brand) = LOWER(?) AND price_eur > 0
+          ORDER BY price_eur
+        `).all(brand);
+      }
+
+      if (rows.length < 5) return null;
+
+      // Filter by frame size/material if we have enough data
+      if (frameSize) {
+        const sizeFiltered = rows.filter(r => r.frame_size && r.frame_size.toLowerCase() === String(frameSize).toLowerCase());
+        if (sizeFiltered.length >= 3) rows = sizeFiltered;
+      }
+      if (frameMaterial) {
+        const matFiltered = rows.filter(r => r.frame_material && r.frame_material.toLowerCase().includes(String(frameMaterial).toLowerCase()));
+        if (matFiltered.length >= 3) rows = matFiltered;
+      }
+
+      const withYears = rows.map(r => ({ ...r, year: r.year || this.extractYearFromTitle(r.title) }));
+      const yearFiltered = this.selectBestYearSubset(withYears, year);
+      const adjusted = yearFiltered.map(r => ({ ...r, price_adjusted: this.adjustPriceForYear(r.price, r.year, year) }));
+
+      const prices = adjusted.map(r => r.price_adjusted || r.price).filter(p => Number.isFinite(p));
+      const filteredPrices = this.filterOutliers(prices);
+      if (filteredPrices.length < 3) return null;
+
+      const median = this.calculateMedian(filteredPrices);
+      let fmv = Math.round(median);
+
+      if (listingPrice && Number.isFinite(listingPrice) && listingPrice > 0) {
+        const floor = Math.round(listingPrice * 0.8);
+        if (fmv < floor) fmv = floor;
+      }
+
+      const confidence = this.calculateConfidence(filteredPrices.length);
+
+      return {
+        fmv,
+        finalPrice: fmv,
+        confidence,
+        sample_size: filteredPrices.length,
+        method: "market_history"
       };
-      
     } catch (error) {
-      console.error('[VALUATION] ❌ Error during calculation:', error.message);
+      console.error('[VALUATION] Error during calculation:', error.message);
       return null;
     }
   }
@@ -77,6 +108,92 @@ class ValuationService {
       if (sampleSize >= 20) return 'HIGH';
       if (sampleSize >= 10) return 'MEDIUM';
       return 'LOW';
+  }
+
+  normalizeText(value) {
+    if (!value) return '';
+    return String(value)
+      .toLowerCase()
+      .replace(/[\u2019']/g, '')
+      .replace(/[^a-z0-9\s-]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  sanitizeModel(model) {
+    if (!model) return '';
+    let cleaned = this.normalizeText(model);
+    cleaned = cleaned.replace(/\b(19|20)\d{2}\b/g, ' ');
+    cleaned = cleaned.replace(/\b(cf|al|sl|slx|s-works|expert|comp|pro|race|rc|factory|team|ultimate|select|r|rs|gx|sx|nx)\b/g, ' ');
+    cleaned = cleaned.replace(/\s+/g, ' ').trim();
+    return cleaned;
+  }
+
+  buildModelPatterns(model) {
+    const cleaned = this.sanitizeModel(model);
+    if (!cleaned) return [];
+    const tokens = cleaned.split(' ').filter(Boolean);
+    const patterns = new Set();
+    if (tokens.length >= 2) patterns.add(tokens.slice(0, 2).join(' '));
+    if (tokens.length >= 1) patterns.add(tokens[0]);
+    patterns.add(cleaned);
+    return Array.from(patterns)
+      .filter((p) => p.length >= 2)
+      .map((p) => `%${p}%`);
+  }
+
+  extractYearFromTitle(title) {
+    if (!title) return null;
+    const match = String(title).match(/\b(19|20)\d{2}\b/);
+    if (!match) return null;
+    const year = Number(match[0]);
+    if (!Number.isFinite(year)) return null;
+    const current = new Date().getFullYear();
+    if (year < 1990 || year > current + 1) return null;
+    return year;
+  }
+
+  adjustPriceForYear(price, rowYear, targetYear) {
+    if (!price || !targetYear || !rowYear) return price;
+    const diff = Math.max(-6, Math.min(6, targetYear - rowYear));
+    if (diff === 0) return price;
+    const annualDep = 0.12;
+    const factor = Math.pow(1 - annualDep, -diff);
+    return price * factor;
+  }
+
+  selectBestYearSubset(rows, targetYear) {
+    if (!targetYear) return rows;
+    const exact = rows.filter(r => r.year === targetYear);
+    if (exact.length >= 3) return exact;
+    const near1 = rows.filter(r => r.year && Math.abs(r.year - targetYear) <= 1);
+    if (near1.length >= 5) return near1;
+    const near2 = rows.filter(r => r.year && Math.abs(r.year - targetYear) <= 2);
+    if (near2.length >= 5) return near2;
+    return rows;
+  }
+
+  filterOutliers(prices) {
+    if (!prices || prices.length < 4) return prices || [];
+    const sorted = [...prices].sort((a, b) => a - b);
+    const q1Idx = Math.floor(sorted.length * 0.25);
+    const q3Idx = Math.floor(sorted.length * 0.75);
+    const q1 = sorted[q1Idx];
+    const q3 = sorted[q3Idx];
+    const iqr = q3 - q1;
+    const lower = q1 - 1.5 * iqr;
+    const upper = q3 + 1.5 * iqr;
+    return sorted.filter(p => p >= lower && p <= upper);
+  }
+
+  calculateMedian(numbers) {
+    if (!numbers || numbers.length === 0) return 0;
+    const sorted = [...numbers].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    if (sorted.length % 2 === 0) {
+      return (sorted[mid - 1] + sorted[mid]) / 2;
+    }
+    return sorted[mid];
   }
 
   async calculateFMVWithDepreciation(brand, model, target_year, trim_level) {

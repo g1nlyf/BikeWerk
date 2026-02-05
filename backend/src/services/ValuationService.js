@@ -1,61 +1,93 @@
 const DatabaseManager = require('../js/mysql-config').DatabaseManager;
+const FMVAnalyzer = require('./FMVAnalyzer');
 
 class ValuationService {
     constructor(db) {
         this.db = db || new DatabaseManager();
+        this.analyzer = new FMVAnalyzer(this.db);
     }
 
     async calculateFMV(bike, conditionData = null) {
-        console.log(`[VALUATION] Calculating FMV for ${bike.brand} ${bike.model}...`);
-        
-        // LEVEL 1: Exact match (Model + Year ±1)
-        let fmv = await this.getFMVFromHistory(
-            bike.model,
-            bike.year ? bike.year - 1 : 0,
-            bike.year ? bike.year + 1 : 9999
-        );
-        
-        if (fmv && fmv > 500) {
-            console.log(`[VALUATION] ✅ Level 1 (Exact match): €${fmv}`);
-            return this.applyConditionPenalty(fmv, bike.condition_grade);
+        const target = bike || {};
+        const brand = target.brand;
+        const model = target.model;
+        const year = target.year;
+        if (!brand || !model) {
+            console.log('[VALUATION] Missing brand/model, skipping.');
+            return null;
         }
-        
-        // LEVEL 2: Similar models (Brand + first 2 words of model)
-        if (bike.model) {
-            const modelKeywords = bike.model.split(' ').slice(0, 2).join(' ');
-            fmv = await this.getFMVFromSimilar(bike.brand, modelKeywords);
-            
+
+        console.log(`[VALUATION] Calculating FMV for ${brand} ${model}...`);
+
+        // Primary: FMVAnalyzer (market_history with relaxed matching)
+        try {
+            const options = {
+                frameSize: target.frame_size || target.size,
+                frameMaterial: target.frame_material || target.material,
+                listingPrice: target.price
+            };
+            const fmvData = await this.analyzer.getFairMarketValue(brand, model, year, options);
+            if (fmvData && fmvData.fmv) {
+                const confidenceLabel = this.mapConfidenceLabel(fmvData.confidence, fmvData.sample_size);
+                const result = this.applyConditionPenalty(fmvData.fmv, target.condition_grade, {
+                    confidence: confidenceLabel,
+                    confidence_score: fmvData.confidence,
+                    sampleSize: fmvData.sample_size,
+                    min: fmvData.price_range?.min || 0,
+                    max: fmvData.price_range?.max || 0,
+                    method: fmvData.data_source
+                });
+                return { ...result, method: fmvData.data_source };
+            }
+        } catch (e) {
+            console.log(`[VALUATION] Analyzer fallback due to error: ${e.message}`);
+        }
+
+        // Legacy fallback path (kept for safety)
+        let fmv = await this.getFMVFromHistory(
+            model,
+            year ? year - 1 : 0,
+            year ? year + 1 : 9999
+        );
+
+        if (fmv && fmv > 500) {
+            console.log(`[VALUATION] ? Level 1 (Exact match): ?${fmv}`);
+            return this.applyConditionPenalty(fmv, target.condition_grade);
+        }
+
+        if (model) {
+            const modelKeywords = model.split(' ').slice(0, 2).join(' ');
+            fmv = await this.getFMVFromSimilar(brand, modelKeywords);
+
             if (fmv && fmv > 500) {
-                console.log(`[VALUATION] ⚠️ Level 2 (Similar models): €${fmv} (confidence: 80%)`);
-                return this.applyConditionPenalty(fmv * 0.9, bike.condition_grade);
+                console.log(`[VALUATION] ?? Level 2 (Similar models): ?${fmv} (confidence: 80%)`);
+                return this.applyConditionPenalty(fmv * 0.9, target.condition_grade);
             }
         }
-        
-        // LEVEL 3: Category average (Category + Material + Brand Premium)
+
         const categoryFMV = await this.getCategoryAverage(
-            bike.category,
-            bike.frame_material || bike.material
+            target.category,
+            target.frame_material || target.material
         );
-        
+
         if (categoryFMV && categoryFMV > 500) {
             const brandMultipliers = {
-                'Santa Cruz': 1.35,
-                'YT': 1.30,
-                'Pivot': 1.35,
-                'Canyon': 1.20,
-                'Specialized': 1.25,
-                'Trek': 1.15,
-                'Cube': 0.95,
-                'Ghost': 0.90
+                "Santa Cruz": 1.35,
+                "YT": 1.30,
+                "Pivot": 1.35,
+                "Canyon": 1.20,
+                "Specialized": 1.25,
+                "Trek": 1.15,
+                "Cube": 0.95,
+                "Ghost": 0.90
             };
-            
-            fmv = categoryFMV * (brandMultipliers[bike.brand] || 1.0);
-            console.log(`[VALUATION] ⚠️ Level 3 (Category avg): €${fmv} (confidence: 60%)`);
-            return this.applyConditionPenalty(fmv * 0.85, bike.condition_grade);
+
+            fmv = categoryFMV * (brandMultipliers[brand] || 1.0);
+            console.log(`[VALUATION] ?? Level 3 (Category avg): ?${fmv} (confidence: 60%)`);
+            return this.applyConditionPenalty(fmv * 0.85, target.condition_grade);
         }
-        
-        // LEVEL 4: Failure
-        console.log('[VALUATION] ❌ Unable to calculate FMV. Not enough data.');
+
+        console.log('[VALUATION] ? Unable to calculate FMV. Not enough data.');
         return null;
     }
 
@@ -110,8 +142,16 @@ class ValuationService {
         return (result && result[0] && result[0].fmv) ? Math.round(result[0].fmv) : null;
     }
 
+    mapConfidenceLabel(confidence, sampleSize) {
+        const score = Number.isFinite(confidence) ? confidence : 0;
+        const samples = Number.isFinite(sampleSize) ? sampleSize : 0;
+        if (score >= 0.8 || samples >= 20) return 'HIGH';
+        if (score >= 0.6 || samples >= 8) return 'MEDIUM';
+        return 'LOW';
+    }
+
     // Helper: Apply Penalty
-    applyConditionPenalty(baseFMV, grade) {
+    applyConditionPenalty(baseFMV, grade, meta = {}) {
         const penalties = {
             'A': 0.0,
             'B': 0.15,
@@ -127,44 +167,38 @@ class ValuationService {
         return {
             fmv: Math.round(baseFMV),
             finalPrice: finalFMV,
-            confidence: 'calculated',
-            sampleSize: 0, // Not tracked in simplified logic
-            min: 0,
-            max: 0,
+            confidence: meta.confidence || 'calculated',
+            confidence_score: meta.confidence_score,
+            sampleSize: meta.sampleSize || 0,
+            min: meta.min || 0,
+            max: meta.max || 0,
             adjustments: [`Condition Penalty (-${(penalty * 100).toFixed(0)}%)`]
         };
     }
 
     async calculateFMVWithDepreciation(brand, model, year) {
-        // 1. Try Exact Match (Level 1) using internal helper
-        // We assume 'B' condition for base FMV
-        const exactFMV = await this.getFMVFromHistory(model, year ? year - 1 : 0, year ? year + 1 : 9999);
-        
-        if (exactFMV && exactFMV > 500) {
-            console.log(`[VALUATION] ✅ Level 1 (Exact match): €${exactFMV}`);
-            const result = this.applyConditionPenalty(exactFMV, 'B');
-            return { ...result, confidence: 'high' };
+        if (!brand || !model) return null;
+
+        const base = await this.calculateFMV({ brand, model, year, condition_grade: "B" });
+        if (base && base.fmv) {
+            return { ...base, method: base.method || "analyzer" };
         }
 
-        if (!year || !model) {
-            // Fallback to standard if data missing
-            return await this.calculateFMV({ brand, model, year, condition_grade: 'B' });
+        if (!year) {
+            return base;
         }
 
-        // 2. Depreciation Strategy (Level 1.5)
-        console.log(`[VALUATION] 📉 Attempting Depreciation Model for ${model} (${year})`);
-        
-        // Search wide range
+        console.log(`[VALUATION] ?? Attempting Depreciation Model for ${model} (${year})`);
+
         const rows = await this.db.query(`
-            SELECT year, AVG(price_eur) as avg_price, COUNT(*) as c 
-            FROM market_history 
+            SELECT year, AVG(price_eur) as avg_price, COUNT(*) as c
+            FROM market_history
             WHERE brand = ? AND model LIKE ? AND price_eur > 500
             GROUP BY year
             HAVING c >= 3
         `, [brand, `%${model}%`]);
 
         if (rows && rows.length > 0) {
-            // Find closest year
             let closest = null;
             let minDiff = 999;
 
@@ -177,32 +211,28 @@ class ValuationService {
             }
 
             if (closest && minDiff <= 5) {
-                 // Calculate depreciation
-                 const yearDiff = year - closest.year; 
-                 // If target is newer (diff > 0): +8%
-                 // If target is older (diff < 0): -12%
-                 let adjustedPrice = closest.avg_price;
-                 if (yearDiff > 0) {
-                      adjustedPrice = closest.avg_price * Math.pow(1.08, yearDiff);
-                 } else {
-                      adjustedPrice = closest.avg_price * Math.pow(0.88, Math.abs(yearDiff));
-                 }
-                 
-                 const finalFMV = Math.round(adjustedPrice);
-                 console.log(`[VALUATION] 📉 Depreciation Applied: Base ${closest.year} (€${Math.round(closest.avg_price)}) -> Target ${year} (€${finalFMV})`);
-                 
-                 const result = this.applyConditionPenalty(finalFMV, 'B');
-                 return { 
-                     ...result, 
-                     confidence: 'medium', 
-                     method: 'depreciation',
-                     baseYear: closest.year
-                 };
+                const yearDiff = year - closest.year;
+                let adjustedPrice = closest.avg_price;
+                if (yearDiff > 0) {
+                    adjustedPrice = closest.avg_price * Math.pow(1.08, yearDiff);
+                } else {
+                    adjustedPrice = closest.avg_price * Math.pow(0.88, Math.abs(yearDiff));
+                }
+
+                const finalFMV = Math.round(adjustedPrice);
+                console.log(`[VALUATION] ?? Depreciation Applied: Base ${closest.year} (?${Math.round(closest.avg_price)}) -> Target ${year} (?${finalFMV})`);
+
+                const result = this.applyConditionPenalty(finalFMV, "B");
+                return {
+                    ...result,
+                    confidence: "MEDIUM",
+                    method: "depreciation",
+                    baseYear: closest.year
+                };
             }
         }
 
-        // 3. Fallback to Standard (Level 2/3)
-        return await this.calculateFMV({ brand, model, year, condition_grade: 'B' });
+        return null;
     }
 
     async evaluateSniperRule(price, fmv, shippingOption) {

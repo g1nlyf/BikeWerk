@@ -6,11 +6,10 @@ const axios = require('axios');
 const { HttpsProxyAgent } = require('https-proxy-agent');
 const fetch = require('node-fetch');
 
-// Hardcode keys from .env to be sure
-const GEMINI_API_KEY = 'AIzaSyBjngHVn2auhLXRMTCY0q9mrqVaiRkfj4g';
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY_1 || '';
 
 const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
-const PROXY_URL = 'http://user258350:otuspk@191.101.73.161:8984';
+const PROXY_URL = process.env.GEMINI_PROXY_URL || process.env.PROXY_URL || process.env.HTTPS_PROXY || process.env.HTTP_PROXY || '';
 
 // Images Directory
 const IMAGES_DIR = path.resolve(__dirname, '../frontend/public/journal references');
@@ -42,6 +41,9 @@ async function analyzeImages() {
 }
 
 async function analyzeImageWithGemini(filePath) {
+    if (!GEMINI_API_KEY) {
+        throw new Error('GEMINI_API_KEY is not configured');
+    }
     // 1. Prepare Image
     const imageBuffer = fs.readFileSync(filePath);
     const base64Image = imageBuffer.toString('base64');
@@ -67,7 +69,7 @@ async function analyzeImageWithGemini(filePath) {
     };
 
     // 3. Send Request (via Proxy)
-    const agent = new HttpsProxyAgent(PROXY_URL);
+    const agent = PROXY_URL ? new HttpsProxyAgent(PROXY_URL) : undefined;
     const url = `${GEMINI_URL}?key=${GEMINI_API_KEY}`;
 
     try {

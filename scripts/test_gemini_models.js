@@ -13,10 +13,12 @@ try {
 const axios = axiosLib.default || axiosLib;
 
 // Keys to test
-const keys = [
-    'AIzaSyCS6qbM0otGtFcrLbqi_X44oQUCMkCV8kY', // Backend key
-    'AIzaSyBwFKlgRwTPpx8Ufss9_aOYm9zikt9SGj0', // Bot key 1
-];
+const keysRaw = process.env.GEMINI_API_KEYS || process.env.GEMINI_KEYS || process.env.GEMINI_API_KEY || '';
+const keys = keysRaw.split(/[,;|\s]+/).filter(Boolean);
+if (keys.length === 0) {
+    console.error('No GEMINI_API_KEYS configured (set GEMINI_API_KEYS or GEMINI_API_KEY).');
+    process.exit(1);
+}
 
 async function testModel(apiKey, modelName, version = 'v1beta') {
     const url = `https://generativelanguage.googleapis.com/${version}/models/${modelName}:generateContent?key=${apiKey}`;

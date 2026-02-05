@@ -3,12 +3,17 @@ const axios = require('axios');
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../../telegram-bot/.env') });
 
-const BOT_TOKEN = process.env.BOT_TOKEN || '8457657822:AAF0qWyj5SztKkUXrnAJbk2X8JV87SsC6cY';
-const ADMIN_CHAT_ID = process.env.ADMIN_CHAT_ID;
+const BOT_TOKEN = process.env.BOT_TOKEN || process.env.ADMIN_BOT_TOKEN || '';
+const ADMIN_CHAT_ID = process.env.ADMIN_CHAT_ID || '';
 
 async function checkStaleOrders() {
     console.log('🕵️ CRM Monitor: Checking for stale orders...');
     
+    if (!BOT_TOKEN || !ADMIN_CHAT_ID) {
+        console.warn('⚠️ BOT_TOKEN / ADMIN_CHAT_ID missing. Skipping Telegram alerts.');
+        return;
+    }
+
     const staleOrders = await supabaseService.listActiveOrders();
     console.log(`Found ${staleOrders.length} stale orders.`);
 

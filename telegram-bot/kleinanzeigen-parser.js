@@ -2,7 +2,7 @@ const fetch = require('node-fetch');
 const cheerio = require('cheerio');
 const { HttpsProxyAgent } = require('https-proxy-agent');
 
-const DEFAULT_PROXY_URL = 'http://user258350:otuspk@191.101.73.161:8984';
+const DEFAULT_PROXY_URL = '';
 
 class KleinanzeigenParser {
     constructor() {
@@ -18,6 +18,7 @@ class KleinanzeigenParser {
 
         this.proxyUrl =
             process.env.EUBIKE_PROXY_URL ||
+            process.env.HUNTER_PROXY_URL ||
             process.env.HTTPS_PROXY ||
             process.env.HTTP_PROXY ||
             process.env.PROXY_URL ||

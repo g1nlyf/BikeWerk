@@ -9,8 +9,8 @@ const TelegramBot = require('node-telegram-bot-api');
 const { checkKleinanzeigenStatus, DEFAULT_OPTS } = require('./status-checker');
 const GroqStatus = require('./groq-status');
 
-// Token: provided by user; can be overridden via env STATUS_BOT_TOKEN
-const TOKEN = process.env.STATUS_BOT_TOKEN || '8247782015:AAHjyXvPTEYfDx6sIHERHEU6e-pIPxFQTP4';
+// Token: provided via env STATUS_BOT_TOKEN
+const TOKEN = process.env.STATUS_BOT_TOKEN || '';
 
 const DATA_DIR = path.resolve(__dirname);
 const SUBSCRIBERS_PATH = path.join(DATA_DIR, 'subscribers.json');
@@ -62,6 +62,11 @@ function extractLinks(text) {
   const links = text.match(re) || [];
   // Focus on Kleinanzeigen
   return links.filter((u) => /kleinanzeigen\.de\//i.test(u));
+}
+
+if (!TOKEN) {
+  console.error('❌ STATUS_BOT_TOKEN is not configured.');
+  process.exit(1);
 }
 
 const bot = new TelegramBot(TOKEN, { polling: true });

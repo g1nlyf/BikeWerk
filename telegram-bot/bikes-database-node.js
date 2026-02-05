@@ -92,6 +92,34 @@ class BikesDatabase {
                 console.error('Failed to create user_favorites table', e);
             }
 
+            // Migration: Telegram Users (admin/manager roles)
+            try {
+                await this.runQuery(`
+                    CREATE TABLE IF NOT EXISTS telegram_users (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        telegram_id INTEGER UNIQUE NOT NULL,
+                        username TEXT,
+                        first_name TEXT,
+                        last_name TEXT,
+                        language_code TEXT DEFAULT 'en',
+                        is_bot INTEGER DEFAULT 0,
+                        is_active INTEGER DEFAULT 1,
+                        role TEXT DEFAULT 'user',
+                        user_id INTEGER,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        last_interaction DATETIME DEFAULT CURRENT_TIMESTAMP
+                    )
+                `);
+                try { await this.runQuery('ALTER TABLE telegram_users ADD COLUMN role TEXT DEFAULT \"user\"'); } catch (e) {}
+                try { await this.runQuery('ALTER TABLE telegram_users ADD COLUMN user_id INTEGER'); } catch (e) {}
+            } catch (e) {
+                console.error('Failed to create telegram_users table', e);
+            }
+
+            // Migration: users.telegram_id for bot linking
+            try { await this.runQuery('ALTER TABLE users ADD COLUMN telegram_id INTEGER'); } catch (e) {}
+
             // Migration: Create bot_tasks table
             try {
                 await this.runQuery(`

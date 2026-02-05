@@ -446,6 +446,29 @@ class DatabaseManager {
                 }
             }
 
+            const hasEventType = meInfo.some(column => column.name === 'event_type');
+            const hasLegacyType = meInfo.some(column => column.name === 'type');
+            if (!hasEventType) {
+                try {
+                    await this.db.exec('ALTER TABLE metric_events ADD COLUMN event_type TEXT');
+                    console.log('✅ Added event_type to metric_events');
+                } catch (e) {
+                    console.log('ℹ️ metric_events event_type already exists or cannot be added:', e.message);
+                }
+            }
+            if (hasLegacyType) {
+                try {
+                    await this.db.exec('UPDATE metric_events SET event_type = COALESCE(event_type, type) WHERE event_type IS NULL');
+                } catch (e) {
+                    console.log('ℹ️ metric_events event_type backfill failed:', e.message);
+                }
+            }
+            try {
+                await this.db.exec('CREATE INDEX IF NOT EXISTS idx_metric_events_type_created ON metric_events(event_type, created_at)');
+            } catch (e) {
+                console.log('ℹ️ metric_events index ensure failed:', e.message);
+            }
+
             // Ensure search_events table exists
             try {
                 await this.db.exec('CREATE TABLE IF NOT EXISTS search_events (id INTEGER PRIMARY KEY AUTOINCREMENT, ts DATETIME DEFAULT CURRENT_TIMESTAMP, session_id TEXT, user_id INTEGER, query TEXT, category TEXT, brand TEXT, min_price REAL, max_price REAL, FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL)');

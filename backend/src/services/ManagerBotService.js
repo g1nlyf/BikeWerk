@@ -1,21 +1,32 @@
 const { Telegraf, Markup } = require('telegraf');
 const { HttpsProxyAgent } = require('https-proxy-agent');
+const path = require('path');
+const Database = require('better-sqlite3');
+const bcrypt = require('bcryptjs');
 const supabase = require('./supabase');
 const gemini = require('./geminiProcessor');
 
 class ManagerBotService {
     constructor() {
-        this.token = '8422123572:AAEOO0PoP3QOmkgmpa53USU_F24hJdSNA3g';
-        this.proxyUrl = 'http://user258350:otuspk@191.101.73.161:8984';
-        
-        // Allowed Managers (Whitelist)
-        this.allowedUsers = [183921355, 1076231865]; 
+        this.token = process.env.MANAGER_BOT_TOKEN || process.env.BOT_TOKEN;
+        this.proxyUrl = process.env.MANAGER_BOT_PROXY_URL || process.env.BOT_PROXY_URL || '';
+
+        // Allowed Managers (Whitelist via env)
+        this.allowedUsers = this._parseAllowedIds(process.env.MANAGER_ALLOWED_IDS);
+
+        this.localDbPath = path.resolve(__dirname, '../../database/eubike.db');
+        this.localDb = null;
+        this._initLocalDb();
+
+        if (!this.token) {
+            console.warn('⚠️ MANAGER_BOT_TOKEN is not configured. Manager bot disabled.');
+            return;
+        }
         
         try {
-            const agent = new HttpsProxyAgent(this.proxyUrl);
-            this.bot = new Telegraf(this.token, {
-                telegram: { agent }
-            });
+            const agent = this.proxyUrl ? new HttpsProxyAgent(this.proxyUrl) : undefined;
+            const botOptions = agent ? { telegram: { agent } } : {};
+            this.bot = new Telegraf(this.token, botOptions);
             
             this._initHandlers();
             
@@ -29,6 +40,62 @@ class ManagerBotService {
         } catch (e) {
             console.error('❌ Bot Initialization Error:', e.message);
         }
+    }
+
+    _parseAllowedIds(raw) {
+        if (!raw) return [];
+        return String(raw)
+            .split(',')
+            .map((v) => Number(String(v).trim()))
+            .filter((v) => Number.isFinite(v));
+    }
+
+    _initLocalDb() {
+        try {
+            this.localDb = new Database(this.localDbPath);
+            this.localDb.pragma('foreign_keys = ON');
+            this._ensureLocalSchema();
+        } catch (e) {
+            console.warn(`[ManagerBot] Local DB unavailable: ${e.message}`);
+        }
+    }
+
+    _ensureLocalSchema() {
+        if (!this.localDb) return;
+        const hasColumn = (table, column) => {
+            const info = this.localDb.prepare(`PRAGMA table_info(${table})`).all();
+            return info.some((c) => String(c.name || '').toLowerCase() === column.toLowerCase());
+        };
+        try {
+            if (!hasColumn('users', 'telegram_id')) {
+                this.localDb.prepare('ALTER TABLE users ADD COLUMN telegram_id INTEGER').run();
+            }
+        } catch (_) { }
+        try {
+            this.localDb.prepare(`
+                CREATE TABLE IF NOT EXISTS telegram_users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    telegram_id INTEGER UNIQUE NOT NULL,
+                    username TEXT,
+                    first_name TEXT,
+                    last_name TEXT,
+                    language_code TEXT DEFAULT 'en',
+                    is_bot INTEGER DEFAULT 0,
+                    is_active INTEGER DEFAULT 1,
+                    role TEXT DEFAULT 'user',
+                    user_id INTEGER,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    last_interaction DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            `).run();
+            if (!hasColumn('telegram_users', 'role')) {
+                this.localDb.prepare('ALTER TABLE telegram_users ADD COLUMN role TEXT DEFAULT "user"').run();
+            }
+            if (!hasColumn('telegram_users', 'user_id')) {
+                this.localDb.prepare('ALTER TABLE telegram_users ADD COLUMN user_id INTEGER').run();
+            }
+        } catch (_) { }
     }
 
     startPolling() {
@@ -55,9 +122,14 @@ class ManagerBotService {
         // Middleware: Auth Check & Auto-Registration
         this.bot.use(async (ctx, next) => {
             const userId = ctx.from?.id;
+            const state = this.userStates?.get(userId);
             
             // Allow /start for registration
             if (ctx.message && ctx.message.text === '/start') {
+                return next();
+            }
+            // Allow login flow messages
+            if (state && (state.action === 'login_email' || state.action === 'login_password')) {
                 return next();
             }
 
@@ -70,20 +142,14 @@ class ManagerBotService {
             }
         });
 
-        // /start - Smart Registration
+        // /start - Login Flow
         this.bot.start(async (ctx) => {
             const userId = ctx.from.id;
-            
-            // Check if user exists in manager_subscribers (or users via join)
-            // Simplified: check users table via telegram_id if added there, OR check subscribers table
-            
-            // 1. Try to find existing manager link
+
             const manager = await this._getManagerByTelegramId(userId);
             const isManager = !!manager;
-            
-            // Prefer Name from DB over Telegram Username
             const displayName = manager?.name || ctx.from.username || `User${userId}`;
-            
+
             if (isManager) {
                 ctx.reply(
                     `👋 <b>Привет, ${displayName}!</b>\n` +
@@ -94,11 +160,9 @@ class ManagerBotService {
                 );
                 await this.showRecentOrders(ctx);
             } else {
-                // 2. Registration Flow
-                // We ask for name to register
                 this.userStates = this.userStates || new Map();
-                this.userStates.set(userId, { action: 'register_name' });
-                ctx.reply('🔒 Вы не зарегистрированы. Введите ваше Имя для доступа к CRM:');
+                this.userStates.set(userId, { action: 'login_email' });
+                ctx.reply('🔐 Введите email для входа (тот же, что на сайте):');
             }
         });
 
@@ -107,42 +171,35 @@ class ManagerBotService {
             const userId = ctx.from.id;
             const state = this.userStates?.get(userId);
 
-            // Registration Flow
-            if (state && state.action === 'register_name') {
-                const name = ctx.message.text;
+            // Login Flow
+            if (state && state.action === 'login_email') {
+                const email = String(ctx.message.text || '').trim().toLowerCase();
+                if (!email || !email.includes('@')) {
+                    await ctx.reply('❌ Введите корректный email.');
+                    return;
+                }
+                this.userStates.set(userId, { action: 'login_password', email });
+                await ctx.reply('🔑 Введите пароль:');
+                return;
+            }
+
+            if (state && state.action === 'login_password') {
+                const password = String(ctx.message.text || '');
+                const email = state.email;
                 try {
-                    // 1. Create User
-                    const { data: user, error } = await supabase.supabase
-                        .from('users')
-                        .insert({
-                            name: name,
-                            role: 'manager',
-                            active: true,
-                            telegram_id: userId // Ensure this column exists or we link via subscribers
-                        })
-                        .select()
-                        .single();
-
-                    if (error) throw error;
-
-                    // 2. Link in Subscribers (if table exists, otherwise telegram_id in users is enough)
-                    // Assuming manager_subscribers exists per prompt instructions
-                    // Upsert subscriber
-                    await supabase.supabase
-                        .from('manager_subscribers')
-                        .upsert({
-                            telegram_id: userId,
-                            username: ctx.from.username || name,
-                            user_id: user.id
-                        });
-
-                    ctx.reply(`✅ <b>Регистрация успешна!</b>\nДобро пожаловать, ${name}.`, { parse_mode: 'HTML' });
+                    const user = await this._authenticateManager(email, password);
+                    if (!user) {
+                        await ctx.reply('❌ Неверный логин или пароль. Попробуйте снова.');
+                        this.userStates.set(userId, { action: 'login_email' });
+                        return;
+                    }
+                    await this._grantManagerAccess(user, ctx);
                     this.userStates.delete(userId);
+                    await ctx.reply(`✅ <b>Успешный вход</b>, ${user.name || user.email}`, { parse_mode: 'HTML' });
                     await this.showRecentOrders(ctx);
-
                 } catch (e) {
-                    console.error('Registration Error:', e);
-                    ctx.reply('❌ Ошибка регистрации. Попробуйте позже или обратитесь к админу.');
+                    console.error('Login Error:', e);
+                    await ctx.reply('❌ Ошибка входа. Попробуйте позже.');
                 }
                 return;
             }
@@ -415,39 +472,146 @@ class ManagerBotService {
         }
     }
 
+    _getLocalUserByTelegramId(telegramId) {
+        if (!this.localDb) return null;
+        try {
+            return this.localDb
+                .prepare("SELECT * FROM users WHERE telegram_id = ? LIMIT 1")
+                .get(Number(telegramId));
+        } catch (_) {
+            return null;
+        }
+    }
+
+    _getLocalUserByEmail(email) {
+        if (!this.localDb) return null;
+        try {
+            return this.localDb
+                .prepare("SELECT * FROM users WHERE email = ? LIMIT 1")
+                .get(String(email).toLowerCase());
+        } catch (_) {
+            return null;
+        }
+    }
+
+    _getLocalManagerByTelegramId(telegramId) {
+        const user = this._getLocalUserByTelegramId(telegramId);
+        if (user && ['manager', 'admin'].includes(String(user.role || '').toLowerCase())) return user;
+        if (!this.localDb) return null;
+        try {
+            const row = this.localDb
+                .prepare("SELECT * FROM telegram_users WHERE telegram_id = ? AND role IN ('manager','admin') LIMIT 1")
+                .get(Number(telegramId));
+            if (row && row.user_id) {
+                const linked = this.localDb
+                    .prepare("SELECT * FROM users WHERE id = ? LIMIT 1")
+                    .get(row.user_id);
+                return linked || row;
+            }
+            return row || null;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    _upsertTelegramUser(ctxFrom, role, userId = null) {
+        if (!this.localDb) return;
+        const from = ctxFrom || {};
+        const telegramId = Number(from.id);
+        const payload = {
+            telegram_id: telegramId,
+            username: from.username || null,
+            first_name: from.first_name || null,
+            last_name: from.last_name || null,
+            language_code: from.language_code || null,
+            is_bot: from.is_bot ? 1 : 0,
+            is_active: 1,
+            role: role || 'user',
+            user_id: userId
+        };
+        try {
+            this.localDb.prepare(`
+                INSERT INTO telegram_users (
+                    telegram_id, username, first_name, last_name, language_code,
+                    is_bot, is_active, role, user_id, updated_at, last_interaction
+                ) VALUES (
+                    @telegram_id, @username, @first_name, @last_name, @language_code,
+                    @is_bot, @is_active, @role, @user_id, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                )
+                ON CONFLICT(telegram_id) DO UPDATE SET
+                    username = excluded.username,
+                    first_name = excluded.first_name,
+                    last_name = excluded.last_name,
+                    language_code = excluded.language_code,
+                    is_bot = excluded.is_bot,
+                    is_active = excluded.is_active,
+                    role = excluded.role,
+                    user_id = excluded.user_id,
+                    updated_at = CURRENT_TIMESTAMP,
+                    last_interaction = CURRENT_TIMESTAMP
+            `).run(payload);
+        } catch (e) {
+            console.warn(`[ManagerBot] Failed to upsert telegram user: ${e.message}`);
+        }
+    }
+
+    async _authenticateManager(email, password) {
+        const user = this._getLocalUserByEmail(email);
+        if (!user || !user.password) return null;
+        const ok = await bcrypt.compare(String(password || ''), user.password);
+        if (!ok) return null;
+        return user;
+    }
+
+    async _grantManagerAccess(user, ctx) {
+        const telegramId = Number(ctx?.from?.id);
+        if (this.localDb) {
+            try {
+                this.localDb
+                    .prepare("UPDATE users SET role = CASE WHEN role = 'admin' THEN role ELSE 'manager' END, telegram_id = ? WHERE id = ?")
+                    .run(telegramId, user.id);
+            } catch (e) {
+                console.warn(`[ManagerBot] Failed to update user role: ${e.message}`);
+            }
+        }
+        this._upsertTelegramUser(ctx?.from, 'manager', user.id);
+    }
+
     async _getManagerByTelegramId(telegramId) {
-        // Try manager_subscribers join first (if relation exists), else direct users query
-        // Since we added telegram_id to users, try that first for speed
+        const local = this._getLocalManagerByTelegramId(telegramId);
+        if (local) return local;
+
+        if (!supabase.enabled || !supabase.supabase) return null;
         const { data: user } = await supabase.supabase
             .from('users')
             .select('*')
             .eq('telegram_id', telegramId)
             .eq('active', true)
             .single();
-            
         if (user) return user;
 
-        // Fallback to subscribers table link
         const { data: sub } = await supabase.supabase
             .from('manager_subscribers')
             .select('user_id')
             .eq('telegram_id', telegramId)
             .single();
-            
         if (sub && sub.user_id) {
-             const { data: linkedUser } = await supabase.supabase
+            const { data: linkedUser } = await supabase.supabase
                 .from('users')
                 .select('*')
                 .eq('id', sub.user_id)
                 .single();
-             return linkedUser;
+            return linkedUser;
         }
-        
+
         return null;
     }
 
     async _isManager(telegramId) {
         if (this.allowedUsers.includes(Number(telegramId))) return true;
+        const local = this._getLocalManagerByTelegramId(telegramId);
+        if (local) return true;
+        if (!supabase.enabled || !supabase.supabase) return false;
         const { data } = await supabase.supabase
             .from('users')
             .select('role')
@@ -458,13 +622,34 @@ class ManagerBotService {
     }
 
     async _getManagers() {
-        const { data } = await supabase.supabase
-            .from('users')
-            .select('telegram_id')
-            .in('role', ['manager', 'admin']);
-        
-        const dbManagers = data?.map(u => Number(u.telegram_id)).filter(id => id) || [];
-        return [...new Set([...this.allowedUsers, ...dbManagers])];
+        const localIds = [];
+        if (this.localDb) {
+            try {
+                const rows = this.localDb
+                    .prepare("SELECT telegram_id FROM telegram_users WHERE role IN ('manager','admin') AND telegram_id IS NOT NULL")
+                    .all();
+                rows.forEach(r => {
+                    if (r.telegram_id) localIds.push(Number(r.telegram_id));
+                });
+                const userRows = this.localDb
+                    .prepare("SELECT telegram_id FROM users WHERE role IN ('manager','admin') AND telegram_id IS NOT NULL")
+                    .all();
+                userRows.forEach(r => {
+                    if (r.telegram_id) localIds.push(Number(r.telegram_id));
+                });
+            } catch (_) { }
+        }
+
+        let dbManagers = [];
+        if (supabase.enabled && supabase.supabase) {
+            const { data } = await supabase.supabase
+                .from('users')
+                .select('telegram_id')
+                .in('role', ['manager', 'admin']);
+            dbManagers = data?.map(u => Number(u.telegram_id)).filter(id => id) || [];
+        }
+
+        return [...new Set([...this.allowedUsers, ...localIds, ...dbManagers])];
     }
 
     async _generateOrderView(orderCode, ctx = null) {

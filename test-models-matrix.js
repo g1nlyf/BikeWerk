@@ -5,15 +5,14 @@ const dotenv = require('dotenv');
 // Load env vars
 dotenv.config({ path: path.resolve(__dirname, 'telegram-bot/.env') });
 
-const keysRaw = '';
-const singleKey = 'AIzaSyBwFKlgRwTPpx8Ufss9_aOYm9zikt9SGj0';
-const API_KEYS = [singleKey];
+const keysRaw = process.env.GEMINI_API_KEYS || process.env.GEMINI_KEYS || process.env.GEMINI_API_KEY || '';
+const API_KEYS = keysRaw.split(/[,;|\s]+/).filter(Boolean);
 
 // Unique keys
 const uniqueKeys = [...new Set(API_KEYS)];
 
 if (uniqueKeys.length === 0) {
-    console.error('No keys found!');
+    console.error('No GEMINI_API_KEYS configured (set GEMINI_API_KEYS or GEMINI_API_KEY).');
     process.exit(1);
 }
 

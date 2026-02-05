@@ -26,13 +26,19 @@ const BikesDatabase = require('../telegram-bot/bikes-database-node');
 const DB_PATH = path.resolve(__dirname, '../backend/database/eubike.db');
 // POLL_INTERVAL_MS removed in favor of dynamic timing
 const BATCH_SIZE = 20;
-const PROXY_URL = 'http://user258350:otuspk@191.101.73.161:8984';
+const PROXY_URL =
+    process.env.EUBIKE_PROXY_URL ||
+    process.env.HUNTER_PROXY_URL ||
+    process.env.HTTPS_PROXY ||
+    process.env.HTTP_PROXY ||
+    process.env.PROXY_URL ||
+    '';
 
 // Initialize components
 const db = new sqlite3.Database(DB_PATH);
 const bikesDB = new BikesDatabase();
 const parser = new KleinanzeigenParser();
-const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '';
+const geminiKey = process.env.GEMINI_API_KEY || (process.env.GEMINI_API_KEYS || '').split(/[,;|\s]+/).filter(Boolean)[0] || process.env.GOOGLE_API_KEY || '';
 const geminiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 const gp = new GeminiProcessor(geminiKey, geminiUrl);
 
@@ -134,7 +140,7 @@ function getCurrentPollInterval() {
 }
 
 async function checkProxyAvailability() {
-    if (!axios || !HttpsProxyAgent) return true; // Cannot check without libs
+    if (!axios || !HttpsProxyAgent || !PROXY_URL) return true; // Cannot check without libs or proxy
 
     console.log(`🔌 Checking Proxy Artery: ${PROXY_URL}`);
     const agent = new HttpsProxyAgent(PROXY_URL);

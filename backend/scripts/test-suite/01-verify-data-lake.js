@@ -59,7 +59,7 @@ const DatabaseManager = require('../../database/db-manager');
   console.log('📦 Sample records:\n');
   
   const samples = db.prepare(`
-    SELECT brand, model, year, frame_size, frame_material, price, source
+    SELECT brand, model, year, frame_size, frame_material, price_eur as price, source
     FROM market_history
     WHERE year IS NOT NULL AND frame_size IS NOT NULL
     ORDER BY created_at DESC

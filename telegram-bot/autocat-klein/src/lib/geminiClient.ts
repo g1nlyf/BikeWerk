@@ -11,9 +11,9 @@ try {
     console.warn('Failed to load .env in GeminiClient:', e);
 }
 
-// Proxy Configuration
-const PROXY_URL = 'http://user258350:otuspk@191.101.73.161:8984';
-const agent = new HttpsProxyAgent(PROXY_URL);
+// Proxy Configuration (optional)
+const PROXY_URL = process.env.GEMINI_PROXY_URL || process.env.PROXY_URL || process.env.HTTPS_PROXY || process.env.HTTP_PROXY || '';
+const agent = PROXY_URL ? new HttpsProxyAgent(PROXY_URL) : undefined;
 
 interface KeyState {
     key: string;
@@ -29,7 +29,7 @@ interface KeyState {
 }
 
 export class GeminiClient {
-    private timeout = 20000;
+    private timeout = Number(process.env.GEMINI_TIMEOUT_MS || 60000);
     private cooldownMs = 1000;
     private _lastCallAt = 0;
     private lastUsedProjectIndex = 0;
@@ -43,8 +43,21 @@ export class GeminiClient {
     private keyStates: KeyState[] = [];
 
     private _parseEnvKeys(): string[] {
-        // STRICT OVERRIDE: Only allow the authorized key
-        return ['AIzaSyBjngHVn2auhLXRMTCY0q9mrqVaiRkfj4g'];
+        const keys: string[] = [];
+        const addKey = (key?: string) => {
+            const trimmed = (key || '').trim();
+            if (trimmed && !keys.includes(trimmed)) keys.push(trimmed);
+        };
+
+        const pool = process.env.GEMINI_API_KEYS || process.env.GEMINI_KEYS;
+        if (pool) {
+            pool.split(/[,;|\s]+/).forEach((k) => addKey(k));
+        }
+        for (let i = 1; i <= 10; i++) {
+            addKey(process.env[`GEMINI_API_KEY_${i}`]);
+        }
+        addKey(process.env.GEMINI_API_KEY);
+        return keys;
     }
 
     private _markKeyMinuteExhausted(keyState: KeyState) {
@@ -91,7 +104,7 @@ export class GeminiClient {
 
     async generateContent(prompt: string | any): Promise<string> {
         const startTime = Date.now();
-        const totalTimeoutMs = Number(process.env.GEMINI_CLIENT_TOTAL_TIMEOUT_MS || 20000);
+        const totalTimeoutMs = Number(process.env.GEMINI_CLIENT_TOTAL_TIMEOUT_MS || process.env.GEMINI_TIMEOUT_MS || 60000);
         let contents = [];
         let customConfig = {};
 
