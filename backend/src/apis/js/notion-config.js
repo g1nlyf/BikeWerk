@@ -1,10 +1,10 @@
 // Конфигурация для работы с Notion API
 const NOTION_CONFIG = {
-    // Токен интеграции Notion
-    API_TOKEN: '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',
+    // Токен интеграции Notion (из переменной окружения)
+    API_TOKEN: process.env.NOTION_API_TOKEN || '',
     
     // ID базы данных заявок (нужно будет получить из Notion)
-    DATABASE_ID: '271972f4eb4a8004939bc6e98c699437',
+    DATABASE_ID: process.env.NOTION_DATABASE_ID || '271972f4eb4a8004939bc6e98c699437',
     
     // URL для API запросов
     API_BASE_URL: 'https://api.notion.com/v1',
