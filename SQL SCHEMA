@@ -1,0 +1,427 @@
+1.create table public.audit_log (
+
+  id uuid not null default gen_random_uuid (),
+
+  actor_id text null,
+
+  action text null,
+
+  entity text null,
+
+  entity_id text null,
+
+  payload jsonb null,
+
+  created_at timestamp with time zone null default now(),
+
+  constraint audit_log_pkey primary key (id)
+
+) TABLESPACE pg_default;
+
+2. create table public.customers (
+
+  old_uuid_id uuid not null default gen_random_uuid (),
+
+  full_name text not null,
+
+  phone text null,
+
+  email text null,
+
+  preferred_channel public.preferred_channel_enum null default 'telegram'::preferred_channel_enum,
+
+  country text null,
+
+  created_at timestamp with time zone not null default now(),
+
+  id text not null default generate_readable_id ('CUST'::text),
+
+  contact_value text null,
+
+  constraint customers_pkey primary key (id)
+
+) TABLESPACE pg_default;
+
+
+
+create index IF not exists idx_customers_created on public.customers using btree (created_at) TABLESPACE pg_default;
+
+3. create table public.documents (
+
+  id uuid not null default gen_random_uuid (),
+
+  order_id uuid null,
+
+  type public.document_type_enum not null,
+
+  file_url text not null,
+
+  uploaded_at timestamp with time zone not null default now(),
+
+  constraint documents_pkey primary key (id)
+
+) TABLESPACE pg_default;
+
+
+
+create index IF not exists idx_documents_order on public.documents using btree (order_id) TABLESPACE pg_default;
+
+4. create table public.inspections (
+
+  id uuid not null default gen_random_uuid (),
+
+  order_id text null,
+
+  stage text not null,
+
+  photos text[] null,
+
+  defects_found jsonb null,
+
+  ai_verdict text null,
+
+  manager_notes text null,
+
+  created_at timestamp with time zone not null default now(),
+
+  constraint inspections_pkey primary key (id),
+
+  constraint inspections_order_id_fkey foreign KEY (order_id) references orders (id)
+
+) TABLESPACE pg_default;
+
+
+
+create index IF not exists idx_inspections_order_id on public.inspections using btree (order_id) TABLESPACE pg_default;
+
+
+
+5. create table public.leads (
+
+  old_uuid_id uuid not null default gen_random_uuid (),
+
+  source text not null,
+
+  bike_url text null,
+
+  bike_snapshot jsonb null,
+
+  customer_comment text null,
+
+  estimated_budget_eur integer null,
+
+  status public.lead_status_enum not null default 'new'::lead_status_enum,
+
+  created_at timestamp with time zone not null default now(),
+
+  customer_id text null,
+
+  id text not null default generate_readable_id ('LEAD'::text),
+
+  constraint leads_pkey primary key (id),
+
+  constraint leads_customer_id_fkey foreign KEY (customer_id) references customers (id)
+
+) TABLESPACE pg_default;
+
+
+
+create index IF not exists idx_leads_status_created on public.leads using btree (status, created_at) TABLESPACE pg_default;
+
+
+
+6. create table public.manager_subscribers (
+
+  id uuid not null default extensions.uuid_generate_v4 (),
+
+  telegram_id bigint not null,
+
+  username text null,
+
+  created_at timestamp with time zone not null default timezone ('utc'::text, now()),
+
+  constraint manager_subscribers_pkey primary key (id),
+
+  constraint manager_subscribers_telegram_id_key unique (telegram_id)
+
+) TABLESPACE pg_default;
+
+
+
+7. create table public.negotiations (
+
+  id uuid not null default gen_random_uuid (),
+
+  order_id text null,
+
+  seller_platform text null,
+
+  start_price numeric(12, 2) null,
+
+  final_price numeric(12, 2) null,
+
+  success boolean null,
+
+  chat_transcript text null,
+
+  created_at timestamp with time zone not null default now(),
+
+  constraint negotiations_pkey primary key (id),
+
+  constraint negotiations_order_id_fkey foreign KEY (order_id) references orders (id)
+
+) TABLESPACE pg_default;
+
+
+
+create index IF not exists idx_negotiations_order_id on public.negotiations using btree (order_id) TABLESPACE pg_default;
+
+
+
+8. create table public.order_status_events (
+
+  old_uuid_id uuid not null default gen_random_uuid (),
+
+  old_status text null,
+
+  new_status text null,
+
+  changed_by uuid null,
+
+  created_at timestamp with time zone not null default now(),
+
+  order_id text null,
+
+  id text not null default generate_readable_id ('EVT'::text),
+
+  constraint order_status_events_pkey primary key (id),
+
+  constraint order_status_events_changed_by_fkey foreign KEY (changed_by) references users (id) on delete set null,
+
+  constraint order_status_events_order_id_fkey foreign KEY (order_id) references orders (id)
+
+) TABLESPACE pg_default;
+
+
+
+9. create table public.orders (
+
+  old_uuid_id uuid not null default gen_random_uuid (),
+
+  order_code text not null,
+
+  bike_url text null,
+
+  bike_snapshot jsonb null,
+
+  final_price_eur numeric(12, 2) null,
+
+  commission_eur numeric(12, 2) null,
+
+  status public.order_status_enum not null default 'awaiting_payment'::order_status_enum,
+
+  assigned_manager uuid null,
+
+  created_at timestamp with time zone not null default now(),
+
+  customer_id text null,
+
+  lead_id text null,
+
+  id text not null default generate_readable_id ('ORD'::text),
+
+  bike_id text null,
+
+  bike_name text null,
+
+  listing_price_eur numeric(12, 2) null,
+
+  booking_amount_eur numeric(12, 2) null,
+
+  negotiated_price_eur numeric(12, 2) null,
+
+  initial_quality text null,
+
+  final_quality text null,
+
+  is_refundable boolean null default false,
+
+  magic_link_token text null,
+
+  total_price_rub numeric(12, 2) null,
+
+  booking_amount_rub numeric(12, 2) null,
+
+  delivery_method text null,
+
+  exchange_rate numeric null,
+
+  manager_notes text null,
+
+  constraint orders_pkey primary key (id),
+
+  constraint orders_order_code_key unique (order_code),
+
+  constraint orders_assigned_manager_fkey foreign KEY (assigned_manager) references users (id) on delete set null,
+
+  constraint orders_customer_id_fkey foreign KEY (customer_id) references customers (id),
+
+  constraint orders_lead_id_fkey foreign KEY (lead_id) references leads (id),
+
+  constraint chk_final_price_nonneg check (
+
+    (
+
+      (final_price_eur >= (0)::numeric)
+
+      or (final_price_eur is null)
+
+    )
+
+  )
+
+) TABLESPACE pg_default;
+
+
+
+create index IF not exists idx_orders_status_created on public.orders using btree (status, created_at) TABLESPACE pg_default;
+
+
+
+create index IF not exists idx_orders_order_code on public.orders using btree (order_code) TABLESPACE pg_default;
+
+
+
+create index IF not exists idx_orders_total_price_rub on public.orders using btree (total_price_rub) TABLESPACE pg_default;
+
+
+
+10. create table public.payments (
+
+  id uuid not null default gen_random_uuid (),
+
+  order_id uuid null,
+
+  direction public.payment_direction_enum not null,
+
+  role public.payment_role_enum not null,
+
+  method public.payment_method_enum not null,
+
+  amount numeric(12, 2) not null,
+
+  currency public.currency_enum not null,
+
+  status public.payment_status_enum not null default 'planned'::payment_status_enum,
+
+  external_reference text null,
+
+  related_payment_id uuid null,
+
+  created_at timestamp with time zone not null default now(),
+
+  constraint payments_pkey primary key (id),
+
+  constraint payments_related_payment_id_fkey foreign KEY (related_payment_id) references payments (id) on delete set null,
+
+  constraint chk_amount_positive check ((amount >= (0)::numeric))
+
+) TABLESPACE pg_default;
+
+
+
+create index IF not exists idx_payments_order on public.payments using btree (order_id) TABLESPACE pg_default;
+
+
+
+create index IF not exists idx_payments_status on public.payments using btree (status) TABLESPACE pg_default;
+
+
+
+11. create table public.shipments (
+
+  old_uuid_id uuid not null default gen_random_uuid (),
+
+  provider public.shipment_provider_enum not null default 'rusbid'::shipment_provider_enum,
+
+  tracking_number text null,
+
+  warehouse_received boolean null default false,
+
+  warehouse_photos_received boolean null default false,
+
+  client_received boolean null default false,
+
+  estimated_delivery_date date null,
+
+  ruspost_status jsonb null,
+
+  ruspost_last_update timestamp with time zone null,
+
+  created_at timestamp with time zone not null default now(),
+
+  order_id text null,
+
+  id text not null default generate_readable_id ('SHIP'::text),
+
+  constraint shipments_pkey primary key (id),
+
+  constraint shipments_order_id_fkey foreign KEY (order_id) references orders (id)
+
+) TABLESPACE pg_default;
+
+
+
+create index IF not exists idx_shipments_tracking on public.shipments using btree (tracking_number) TABLESPACE pg_default;
+
+
+
+12. create table public.tasks (
+
+  id uuid not null default gen_random_uuid (),
+
+  order_id uuid null,
+
+  title text not null,
+
+  description text null,
+
+  due_at timestamp with time zone null,
+
+  completed boolean null default false,
+
+  assigned_to uuid null,
+
+  created_at timestamp with time zone not null default now(),
+
+  constraint tasks_pkey primary key (id),
+
+  constraint tasks_assigned_to_fkey foreign KEY (assigned_to) references users (id) on delete set null
+
+) TABLESPACE pg_default;
+
+
+
+create index IF not exists idx_tasks_order on public.tasks using btree (order_id) TABLESPACE pg_default;
+
+
+
+13. create table public.users (
+
+  id uuid not null default gen_random_uuid (),
+
+  name text not null,
+
+  role public.user_role_enum not null default 'manager'::user_role_enum,
+
+  active boolean not null default true,
+
+  created_at timestamp with time zone not null default now(),
+
+  constraint users_pkey primary key (id)
+
+) TABLESPACE pg_default;
+
+
+
+create index IF not exists idx_users_active on public.users using btree (active) TABLESPACE pg_default;

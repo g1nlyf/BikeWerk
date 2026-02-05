@@ -1,0 +1,21 @@
+{
+  "title": "YT IZZO Pro 2020",
+  "brand": "YT",
+  "model": "IZZO Pro",
+  "year": 2020,
+  "price": "1726",
+  "currency": "EUR",
+  "url": "https://buycycle.com/de-de/shop/min-price/1500/max-price/8000/search/YT%20Izzo",
+  "source": "buycycle",
+  "description": "Новые детали: кассета, цепь, передняя звезда (30t), тормозные колодки, грипсы, задняя шина. Вилка и амортизатор обслужены. Есть царапины (см. фото). Велосипед в отличном техническом состоянии.",
+  "images": [
+    "https://example.com/image1.jpg",
+    "https://example.com/image2.jpg"
+  ],
+  "components": {
+    "frame": "Carbon",
+    "fork": "Fox 34 Performance Elite",
+    "shock": "Fox Float DPS Performance Elite",
+    "groupset": "SRAM GX Eagle"
+  }
+}

@@ -1,0 +1,3 @@
+@echo off
+echo Starting deployment...
+node backend/scripts/auto_deploy.js

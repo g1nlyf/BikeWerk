@@ -1,0 +1,617 @@
+{
+  "version": "2.3.0",
+  "updated": "2026-02-01",
+  "categories": {
+    "MTB DH": {
+      "display_name": "MTB Downhill",
+      "category": "MTB",
+      "discipline": "DH",
+      "targetInventory": 30,
+      "brands": [
+        {
+          "name": "YT",
+          "tier": 1,
+          "minPrice": 1500,
+          "models": ["Tues"]
+        },
+        {
+          "name": "Santa Cruz",
+          "tier": 1,
+          "minPrice": 1500,
+          "models": ["V10"]
+        },
+        {
+          "name": "Specialized",
+          "tier": 1,
+          "minPrice": 1200,
+          "models": ["Demo"]
+        },
+        {
+          "name": "Canyon",
+          "tier": 1,
+          "minPrice": 1200,
+          "models": ["Sender"]
+        },
+        {
+          "name": "Trek",
+          "tier": 1,
+          "minPrice": 1200,
+          "models": ["Session"]
+        },
+        {
+          "name": "Commencal",
+          "tier": 2,
+          "minPrice": 1000,
+          "models": ["Supreme"]
+        },
+        {
+          "name": "Scott",
+          "tier": 2,
+          "minPrice": 800,
+          "models": ["Gambler"]
+        },
+        {
+          "name": "Cube",
+          "tier": 2,
+          "minPrice": 600,
+          "models": ["Two15"]
+        },
+        {
+          "name": "Giant",
+          "tier": 3,
+          "minPrice": 500,
+          "models": ["Glory"]
+        },
+        {
+          "name": "Propain",
+          "tier": 2,
+          "minPrice": 1000,
+          "models": ["Rage"]
+        }
+      ]
+    },
+    
+    "MTB Enduro": {
+      "display_name": "MTB Enduro",
+      "category": "MTB",
+      "discipline": "Enduro",
+      "targetInventory": 50,
+      "brands": [
+        {
+          "name": "YT",
+          "tier": 1,
+          "minPrice": 1500,
+          "models": ["Capra", "Jeffsy"]
+        },
+        {
+          "name": "Santa Cruz",
+          "tier": 1,
+          "minPrice": 1500,
+          "models": ["Megatower", "Nomad", "Bronson"]
+        },
+        {
+          "name": "Specialized",
+          "tier": 1,
+          "minPrice": 1200,
+          "models": ["Enduro", "Stumpjumper"]
+        },
+        {
+          "name": "Canyon",
+          "tier": 1,
+          "minPrice": 1200,
+          "models": ["Strive", "Torque", "Spectral"]
+        },
+        {
+          "name": "Trek",
+          "tier": 1,
+          "minPrice": 1200,
+          "models": ["Slash", "Remedy"]
+        },
+        {
+          "name": "Transition",
+          "tier": 1,
+          "minPrice": 1800,
+          "models": ["Sentinel", "Patrol"]
+        },
+        {
+          "name": "Evil",
+          "tier": 1,
+          "minPrice": 2000,
+          "models": ["Wreckoning", "Following"]
+        },
+        {
+          "name": "Yeti",
+          "tier": 1,
+          "minPrice": 2000,
+          "models": ["SB150", "SB160"]
+        },
+        {
+          "name": "Commencal",
+          "tier": 2,
+          "minPrice": 1000,
+          "models": ["Meta AM", "Meta SX", "Clash"]
+        },
+        {
+          "name": "Scott",
+          "tier": 2,
+          "minPrice": 800,
+          "models": ["Ransom", "Genius"]
+        },
+        {
+          "name": "Cube",
+          "tier": 2,
+          "minPrice": 600,
+          "models": ["Stereo 170"]
+        },
+        {
+          "name": "Orbea",
+          "tier": 3,
+          "minPrice": 700,
+          "models": ["Rallon"]
+        },
+        {
+          "name": "Propain",
+          "tier": 2,
+          "minPrice": 1000,
+          "models": ["Tyee", "Hugene"]
+        },
+        {
+          "name": "Radon",
+          "tier": 2,
+          "minPrice": 700,
+          "models": ["Swoop"]
+        }
+      ]
+    },
+    
+    "MTB Trail": {
+      "display_name": "MTB Trail",
+      "category": "MTB",
+      "discipline": "Trail",
+      "targetInventory": 60,
+      "brands": [
+        {
+          "name": "YT",
+          "tier": 1,
+          "minPrice": 1500,
+          "models": ["Izzo"]
+        },
+        {
+          "name": "Santa Cruz",
+          "tier": 1,
+          "minPrice": 1500,
+          "models": ["Hightower", "5010", "Tallboy"]
+        },
+        {
+          "name": "Specialized",
+          "tier": 1,
+          "minPrice": 1200,
+          "models": ["Stumpjumper"]
+        },
+        {
+          "name": "Canyon",
+          "tier": 1,
+          "minPrice": 1200,
+          "models": ["Neuron", "Spectral"]
+        },
+        {
+          "name": "Trek",
+          "tier": 1,
+          "minPrice": 1200,
+          "models": ["Fuel EX"]
+        },
+        {
+          "name": "Pivot",
+          "tier": 1,
+          "minPrice": 2000,
+          "models": ["Switchblade", "Mach"]
+        },
+        {
+          "name": "Commencal",
+          "tier": 2,
+          "minPrice": 1000,
+          "models": ["Meta TR"]
+        },
+        {
+          "name": "Scott",
+          "tier": 2,
+          "minPrice": 800,
+          "models": ["Genius"]
+        },
+        {
+          "name": "Cube",
+          "tier": 2,
+          "minPrice": 600,
+          "models": ["Stereo 140", "Stereo 150"]
+        },
+        {
+          "name": "Giant",
+          "tier": 3,
+          "minPrice": 500,
+          "models": ["Trance"]
+        },
+        {
+          "name": "Orbea",
+          "tier": 3,
+          "minPrice": 700,
+          "models": ["Occam"]
+        },
+        {
+          "name": "Radon",
+          "tier": 2,
+          "minPrice": 700,
+          "models": ["Slide"]
+        }
+      ]
+    },
+    
+    "MTB XC": {
+      "display_name": "MTB Cross-Country",
+      "category": "MTB",
+      "discipline": "XC",
+      "targetInventory": 40,
+      "brands": [
+        {
+          "name": "Specialized",
+          "tier": 1,
+          "minPrice": 1200,
+          "models": ["Epic"]
+        },
+        {
+          "name": "Trek",
+          "tier": 1,
+          "minPrice": 1200,
+          "models": ["Supercaliber", "Top Fuel"]
+        },
+        {
+          "name": "Canyon",
+          "tier": 1,
+          "minPrice": 1200,
+          "models": ["Lux", "Exceed"]
+        },
+        {
+          "name": "Santa Cruz",
+          "tier": 1,
+          "minPrice": 1500,
+          "models": ["Blur", "Highball"]
+        },
+        {
+          "name": "Scott",
+          "tier": 2,
+          "minPrice": 800,
+          "models": ["Spark", "Scale"]
+        },
+        {
+          "name": "Cube",
+          "tier": 2,
+          "minPrice": 600,
+          "models": ["AMS", "Elite"]
+        },
+        {
+          "name": "Giant",
+          "tier": 3,
+          "minPrice": 500,
+          "models": ["Anthem"]
+        },
+        {
+          "name": "Orbea",
+          "tier": 3,
+          "minPrice": 700,
+          "models": ["Oiz", "Alma"]
+        },
+        {
+          "name": "Cannondale",
+          "tier": 3,
+          "minPrice": 700,
+          "models": ["Scalpel"]
+        }
+      ]
+    },
+    
+    "Road Aero": {
+      "display_name": "Road Aero",
+      "category": "Road",
+      "discipline": "Aero",
+      "targetInventory": 30,
+      "brands": [
+        {
+          "name": "Specialized",
+          "tier": 1,
+          "minPrice": 1200,
+          "models": ["Venge", "Tarmac SL7"]
+        },
+        {
+          "name": "Trek",
+          "tier": 1,
+          "minPrice": 1200,
+          "models": ["Madone"]
+        },
+        {
+          "name": "Canyon",
+          "tier": 1,
+          "minPrice": 1200,
+          "models": ["Aeroad"]
+        },
+        {
+          "name": "Scott",
+          "tier": 2,
+          "minPrice": 800,
+          "models": ["Foil"]
+        },
+        {
+          "name": "Giant",
+          "tier": 3,
+          "minPrice": 500,
+          "models": ["Propel"]
+        },
+        {
+          "name": "Cervelo",
+          "tier": 1,
+          "minPrice": 1500,
+          "models": ["S5"]
+        },
+        {
+          "name": "BMC",
+          "tier": 1,
+          "minPrice": 1500,
+          "models": ["Timemachine Road"]
+        }
+      ]
+    },
+    
+    "Road Climbing": {
+      "display_name": "Road Climbing",
+      "category": "Road",
+      "discipline": "Climbing",
+      "targetInventory": 35,
+      "brands": [
+        {
+          "name": "Specialized",
+          "tier": 1,
+          "minPrice": 1200,
+          "models": ["Tarmac", "Aethos"]
+        },
+        {
+          "name": "Trek",
+          "tier": 1,
+          "minPrice": 1200,
+          "models": ["Emonda"]
+        },
+        {
+          "name": "Canyon",
+          "tier": 1,
+          "minPrice": 1200,
+          "models": ["Ultimate"]
+        },
+        {
+          "name": "Scott",
+          "tier": 2,
+          "minPrice": 800,
+          "models": ["Addict RC"]
+        },
+        {
+          "name": "Giant",
+          "tier": 3,
+          "minPrice": 500,
+          "models": ["TCR"]
+        },
+        {
+          "name": "Cannondale",
+          "tier": 3,
+          "minPrice": 700,
+          "models": ["SuperSix"]
+        },
+        {
+          "name": "BMC",
+          "tier": 1,
+          "minPrice": 1500,
+          "models": ["Teammachine"]
+        },
+        {
+          "name": "Pinarello",
+          "tier": 1,
+          "minPrice": 2000,
+          "models": ["Dogma"]
+        }
+      ]
+    },
+    
+    "Road Endurance": {
+      "display_name": "Road Endurance",
+      "category": "Road",
+      "discipline": "Endurance",
+      "targetInventory": 40,
+      "brands": [
+        {
+          "name": "Specialized",
+          "tier": 1,
+          "minPrice": 1200,
+          "models": ["Roubaix"]
+        },
+        {
+          "name": "Trek",
+          "tier": 1,
+          "minPrice": 1200,
+          "models": ["Domane"]
+        },
+        {
+          "name": "Canyon",
+          "tier": 1,
+          "minPrice": 1200,
+          "models": ["Endurace"]
+        },
+        {
+          "name": "Scott",
+          "tier": 2,
+          "minPrice": 800,
+          "models": ["Addict"]
+        },
+        {
+          "name": "Giant",
+          "tier": 3,
+          "minPrice": 500,
+          "models": ["Defy"]
+        },
+        {
+          "name": "Cannondale",
+          "tier": 3,
+          "minPrice": 700,
+          "models": ["Synapse"]
+        },
+        {
+          "name": "BMC",
+          "tier": 1,
+          "minPrice": 1500,
+          "models": ["Roadmachine"]
+        }
+      ]
+    },
+    
+    "Gravel Race": {
+      "display_name": "Gravel Race",
+      "category": "Gravel",
+      "discipline": "Race",
+      "targetInventory": 25,
+      "brands": [
+        {
+          "name": "Specialized",
+          "tier": 1,
+          "minPrice": 1200,
+          "models": ["Crux"]
+        },
+        {
+          "name": "Canyon",
+          "tier": 1,
+          "minPrice": 1200,
+          "models": ["Grail"]
+        },
+        {
+          "name": "Trek",
+          "tier": 1,
+          "minPrice": 1200,
+          "models": ["Checkpoint"]
+        },
+        {
+          "name": "Cervelo",
+          "tier": 1,
+          "minPrice": 1500,
+          "models": ["Aspero"]
+        },
+        {
+          "name": "3T",
+          "tier": 1,
+          "minPrice": 1800,
+          "models": ["Exploro"]
+        }
+      ]
+    },
+    
+    "Gravel All-road": {
+      "display_name": "Gravel All-Road",
+      "category": "Gravel",
+      "discipline": "All-road",
+      "targetInventory": 30,
+      "brands": [
+        {
+          "name": "Specialized",
+          "tier": 1,
+          "minPrice": 1200,
+          "models": ["Diverge"]
+        },
+        {
+          "name": "Canyon",
+          "tier": 1,
+          "minPrice": 1200,
+          "models": ["Grizl"]
+        },
+        {
+          "name": "Trek",
+          "tier": 1,
+          "minPrice": 1200,
+          "models": ["Checkpoint"]
+        },
+        {
+          "name": "Giant",
+          "tier": 3,
+          "minPrice": 500,
+          "models": ["Revolt"]
+        },
+        {
+          "name": "Cube",
+          "tier": 2,
+          "minPrice": 600,
+          "models": ["Nuroad"]
+        },
+        {
+          "name": "Cannondale",
+          "tier": 3,
+          "minPrice": 700,
+          "models": ["Topstone"]
+        }
+      ]
+    },
+    
+    "eMTB": {
+      "display_name": "E-Mountain Bike",
+      "category": "eMTB",
+      "discipline": null,
+      "targetInventory": 45,
+      "brands": [
+        {
+          "name": "Specialized",
+          "tier": 1,
+          "minPrice": 1200,
+          "models": ["Levo", "Kenevo"]
+        },
+        {
+          "name": "Trek",
+          "tier": 1,
+          "minPrice": 1200,
+          "models": ["Rail", "Powerfly"]
+        },
+        {
+          "name": "Canyon",
+          "tier": 1,
+          "minPrice": 1200,
+          "models": ["Spectral:ON", "Torque:ON"]
+        },
+        {
+          "name": "YT",
+          "tier": 1,
+          "minPrice": 1500,
+          "models": ["Decoy"]
+        },
+        {
+          "name": "Cube",
+          "tier": 2,
+          "minPrice": 600,
+          "models": ["Stereo Hybrid"]
+        },
+        {
+          "name": "Scott",
+          "tier": 2,
+          "minPrice": 800,
+          "models": ["Patron", "Strike"]
+        },
+        {
+          "name": "Giant",
+          "tier": 3,
+          "minPrice": 500,
+          "models": ["Reign E+", "Trance X E+"]
+        },
+        {
+          "name": "Orbea",
+          "tier": 3,
+          "minPrice": 700,
+          "models": ["Wild", "Rise"]
+        },
+        {
+          "name": "Commencal",
+          "tier": 2,
+          "minPrice": 1000,
+          "models": ["Meta Power"]
+        }
+      ]
+    }
+  }
+}

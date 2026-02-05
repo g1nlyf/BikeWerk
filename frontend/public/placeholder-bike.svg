@@ -1,0 +1,10 @@
+<svg width="160" height="160" viewBox="0 0 160 160" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect x="1" y="1" width="158" height="158" rx="12" fill="#F4F4F5" stroke="#E5E7EB" stroke-width="2"/>
+  <circle cx="48" cy="112" r="16" stroke="#D1D5DB" stroke-width="3" fill="white"/>
+  <circle cx="112" cy="112" r="16" stroke="#D1D5DB" stroke-width="3" fill="white"/>
+  <path d="M48 112L64 88L92 88L112 112" stroke="#9CA3AF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M70 64C70 67.314 67.314 70 64 70C60.686 70 58 67.314 58 64C58 60.686 60.686 58 64 58C67.314 58 70 60.686 70 64Z" fill="#9CA3AF"/>
+  <path d="M88 60L100 72" stroke="#9CA3AF" stroke-width="3" stroke-linecap="round"/>
+  <path d="M54 66L66 88" stroke="#9CA3AF" stroke-width="3" stroke-linecap="round"/>
+  <text x="80" y="140" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="12" fill="#9CA3AF">Нет фото</text>
+</svg>

@@ -1,0 +1,268 @@
+const Database = require('better-sqlite3');
+const path = require('path');
+
+/**
+ * DATABASE SERVICE V2 - ИСПРАВЛЕННЫЙ
+ * Точный маппинг на 191 столбец БД
+ */
+class DatabaseServiceV2 {
+  
+  constructor(dbPath) {
+    this.dbPath = dbPath || path.join(__dirname, '../database/eubike.db');
+    this.db = new Database(this.dbPath);
+    
+    console.log(`✅ Database Service v2.0 initialized`);
+    console.log(`   Database: ${this.dbPath}`);
+  }
+  
+  /**
+   * Сохранить велосипед из Unified Format
+   */
+  insertBike(unifiedData) {
+    const u = unifiedData;
+    
+    console.log(`\n💾 Saving bike to database...`);
+    console.log(`   Name: ${u.basic_info.name}`);
+    console.log(`   Brand: ${u.basic_info.brand}`);
+    console.log(`   Price: €${u.pricing.price}`);
+    
+    try {
+      // ТОЧНЫЙ СПИСОК СТОЛБЦОВ ИЗ ТВОЕЙ БД
+      const stmt = this.db.prepare(`
+        INSERT INTO bikes (
+          name, brand, model, year, category, sub_category, 
+          breadcrumb, description, language,
+          
+          price, original_price, discount, currency, is_negotiable,
+          buyer_protection_price, fmv, fmv_confidence, market_comparison,
+          days_on_market,
+          
+          condition_status, condition_score, condition_grade, 
+          visual_rating, functional_rating, receipt_available,
+          crash_history, frame_damage, issues,
+          
+          seller_name, seller_type, seller_rating, seller_rating_visual,
+          seller_last_active, seller_trust_score, seller_verified,
+          platform_reviews_count, platform_reviews_source,
+          
+          location, country, shipping_cost, is_pickup_available,
+          international,
+          
+          main_image, gallery, photo_quality,
+          
+          ranking_score, value_score, demand_score, urgency_score,
+          is_hot_offer, is_super_deal, tier,
+          
+          frame_size, wheel_size, frame_material, color, weight,
+          suspension_type, travel_front, travel_rear,
+          groupset, shifting_type, drivetrain, brakes, brakes_type,
+          groupset_speeds, cassette, tires_front, tires_rear,
+          handlebars_width, stem_length, seatpost_travel,
+          pedals_included, fork, shock,
+          
+          source_platform, source_ad_id, source_url, parser_version,
+          is_active, created_at, updated_at, last_checked_at,
+          
+          unified_data, specs_json, features_json, inspection_json,
+          seller_json, logistics_json, media_json, ranking_json,
+          ai_analysis_json, market_data_json, component_upgrades_json,
+          
+          quality_score, completeness, views
+        ) VALUES (
+          ?, ?, ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?,
+          ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?
+        )
+      `);
+      
+      const result = stmt.run(
+        // Basic Info (9)
+        u.basic_info.name,
+        u.basic_info.brand,
+        u.basic_info.model,
+        u.basic_info.year,
+        u.basic_info.category,
+        u.basic_info.sub_category,
+        u.basic_info.breadcrumb,
+        u.basic_info.description,
+        u.basic_info.language,
+        
+        // Pricing (8)
+        u.pricing.price,
+        u.pricing.original_price,
+        u.pricing.discount,
+        u.pricing.currency,
+        u.pricing.is_negotiable ? 1 : 0,
+        u.pricing.buyer_protection?.price || null,
+        u.pricing.fmv,
+        u.pricing.fmv_confidence,
+        u.pricing.market_comparison,
+        u.pricing.days_on_market,
+        
+        // Condition (7)
+        u.condition.status,
+        u.condition.score,
+        u.condition.grade,
+        u.condition.visual_rating,
+        u.condition.functional_rating,
+        u.condition.receipt_available ? 1 : 0,
+        u.condition.crash_history ? 1 : 0,
+        u.condition.frame_damage ? 1 : 0,
+        u.condition.issues.join('; ') || null,
+        
+        // Seller (7)
+        u.seller.name,
+        u.seller.type,
+        u.seller.rating,
+        u.seller.rating_visual,
+        u.seller.last_active,
+        u.seller.trust_score,
+        u.seller.verified ? 1 : 0,
+        u.meta.platform_trust?.reviews_count || null,
+        u.meta.platform_trust?.source || null,
+        
+        // Logistics (5)
+        u.logistics.location,
+        u.logistics.country,
+        u.logistics.shipping_cost,
+        u.logistics.pickup_available ? 1 : 0,
+        u.logistics.international ? 1 : 0,
+        
+        // Media (3)
+        u.media.main_image,
+        JSON.stringify(u.media.gallery),
+        u.media.photo_quality,
+        
+        // Ranking (7)
+        u.ranking.score,
+        u.ranking.value_score,
+        u.ranking.demand_score,
+        u.ranking.urgency_score,
+        u.ranking.is_hot_offer ? 1 : 0,
+        u.ranking.is_super_deal ? 1 : 0,
+        u.ranking.tier,
+        
+        // Specs (23 expanded)
+        u.specs.frame_size,
+        u.specs.wheel_size,
+        u.specs.frame_material,
+        u.specs.color,
+        u.specs.weight,
+        u.specs.suspension_type,
+        u.specs.travel_front,
+        u.specs.travel_rear,
+        u.specs.groupset,
+        u.specs.shifting_type,
+        u.specs.drivetrain,
+        u.specs.brakes,
+        u.specs.brakes_type,
+        u.specs.groupset_speeds,
+        u.specs.cassette,
+        u.specs.tires_front,
+        u.specs.tires_rear,
+        u.specs.handlebars_width,
+        u.specs.stem_length,
+        u.specs.seatpost_travel,
+        u.specs.pedals_included ? 1 : 0,
+        u.specs.fork || null,
+        u.specs.shock || null,
+        
+        // Metadata (8)
+        u.meta.source_platform,
+        u.meta.source_ad_id,
+        u.meta.source_url,
+        u.meta.parser_version,
+        u.meta.is_active ? 1 : 0,
+        u.meta.created_at,
+        u.meta.updated_at,
+        u.meta.last_checked_at,
+        
+        // JSON Fields (11)
+        JSON.stringify(u),
+        JSON.stringify(u.specs),
+        JSON.stringify(u.features),
+        JSON.stringify(u.inspection),
+        JSON.stringify(u.seller),
+        JSON.stringify(u.logistics),
+        JSON.stringify(u.media),
+        JSON.stringify(u.ranking),
+        JSON.stringify(u.ai_analysis),
+        JSON.stringify(u.market_data),
+        JSON.stringify(u.specs.component_upgrades || []),
+        
+        // Quality (4)
+        u.quality_score,
+        u.completeness,
+        u.ranking.views || 0
+      );
+      
+      const bikeId = result.lastInsertRowid;
+      
+      console.log(`   ✅ Bike saved successfully!`);
+      console.log(`   📊 Database ID: ${bikeId}`);
+      console.log(`   🏆 Quality Score: ${u.quality_score}`);
+      console.log(`   📈 Completeness: ${u.completeness.toFixed(1)}%`);
+      
+      return bikeId;
+      
+    } catch (error) {
+      console.error(`   ❌ Database insert failed: ${error.message}`);
+      console.error(`   Full error:`, error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Проверить существует ли велосипед
+   */
+  bikeExists(sourceAdId, sourcePlatform) {
+    const stmt = this.db.prepare(`
+      SELECT id FROM bikes 
+      WHERE source_ad_id = ? AND source_platform = ?
+      LIMIT 1
+    `);
+    
+    const result = stmt.get(sourceAdId, sourcePlatform);
+    return !!result;
+  }
+  
+  /**
+   * Получить велосипед по ID
+   */
+  getBikeById(id) {
+    const stmt = this.db.prepare('SELECT * FROM bikes WHERE id = ?');
+    return stmt.get(id);
+  }
+  
+  /**
+   * Удалить тестовый велосипед (для очистки)
+   */
+  deleteTestBike(sourceAdId, sourcePlatform) {
+    const stmt = this.db.prepare(`
+      DELETE FROM bikes 
+      WHERE source_ad_id = ? AND source_platform = ?
+    `);
+    
+    const result = stmt.run(sourceAdId, sourcePlatform);
+    return result.changes > 0;
+  }
+  
+  /**
+   * Закрыть соединение
+   */
+  close() {
+    this.db.close();
+    console.log('   Database connection closed');
+  }
+}
+
+module.exports = DatabaseServiceV2;

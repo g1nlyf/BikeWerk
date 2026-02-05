@@ -1,0 +1,346 @@
+{
+  "timestamp": "2026-01-31T15:26:38.686Z",
+  "project_root": "c:\\Users\\hacke\\CascadeProjects\\Finals1\\eubike",
+  "components": {
+    "hunter_service": {
+      "path": "backend/src/services/autoHunter.js",
+      "full_path": "c:\\Users\\hacke\\CascadeProjects\\Finals1\\eubike\\backend\\src\\services\\autoHunter.js",
+      "exists": true,
+      "size": 19332,
+      "modified": "2026-01-25T10:27:58.598Z"
+    },
+    "auto_hunter": {
+      "path": "backend/cron/hourly-hunter.js",
+      "full_path": "c:\\Users\\hacke\\CascadeProjects\\Finals1\\eubike\\backend\\cron\\hourly-hunter.js",
+      "exists": true,
+      "size": 6228,
+      "modified": "2026-01-27T19:18:12.539Z"
+    },
+    "autonomous_orchestrator": {
+      "path": "telegram-bot/AutonomousOrchestrator.js",
+      "full_path": "c:\\Users\\hacke\\CascadeProjects\\Finals1\\eubike\\telegram-bot\\AutonomousOrchestrator.js",
+      "exists": true,
+      "size": 27917,
+      "modified": "2026-01-25T10:28:12.538Z",
+      "dependencies": [
+        {
+          "type": "require",
+          "module": "node-cron"
+        },
+        {
+          "type": "require",
+          "module": "./kleinanzeigen-parser"
+        },
+        {
+          "type": "require",
+          "module": "./BuycycleParser"
+        },
+        {
+          "type": "require",
+          "module": "./gemini-processor"
+        },
+        {
+          "type": "require",
+          "module": "./bikes-database-node"
+        },
+        {
+          "type": "require",
+          "module": "./ScoringService"
+        },
+        {
+          "type": "require",
+          "module": "./DiversityManager"
+        },
+        {
+          "type": "require",
+          "module": "./UniversalLogger"
+        },
+        {
+          "type": "require",
+          "module": "./SupplyGapAnalyzer"
+        },
+        {
+          "type": "require",
+          "module": "./ProfitCalculator"
+        },
+        {
+          "type": "require",
+          "module": "./LifecycleManager"
+        },
+        {
+          "type": "require",
+          "module": "./AdminBotService"
+        },
+        {
+          "type": "require",
+          "module": "./unified-hunter"
+        },
+        {
+          "type": "require",
+          "module": "./autocat-klein/dist/autocat-klein/src/lib/geminiClient.js"
+        },
+        {
+          "type": "require",
+          "module": "./BrandConstants"
+        }
+      ]
+    },
+    "unified_hunter": {
+      "path": "telegram-bot/unified-hunter.js",
+      "full_path": "c:\\Users\\hacke\\CascadeProjects\\Finals1\\eubike\\telegram-bot\\unified-hunter.js",
+      "exists": true,
+      "size": 73819,
+      "modified": "2026-01-31T05:20:03.232Z",
+      "dependencies": [
+        {
+          "type": "require",
+          "module": "path"
+        },
+        {
+          "type": "require",
+          "module": "./kleinanzeigen-parser"
+        },
+        {
+          "type": "require",
+          "module": "./bikes-database-node"
+        },
+        {
+          "type": "require",
+          "module": "./gemini-processor"
+        },
+        {
+          "type": "require",
+          "module": "../backend/services/valuation-service"
+        },
+        {
+          "type": "require",
+          "module": "./DiversityManager"
+        },
+        {
+          "type": "require",
+          "module": "./ConditionAnalyzer"
+        },
+        {
+          "type": "require",
+          "module": "../backend/src/services/TechDecoder"
+        },
+        {
+          "type": "require",
+          "module": "../backend/src/services/PhotoManager"
+        },
+        {
+          "type": "require",
+          "module": "./status-checker"
+        },
+        {
+          "type": "require",
+          "module": "./autocat-klein/src/lib/geminiClient.ts"
+        },
+        {
+          "type": "require",
+          "module": "cheerio"
+        },
+        {
+          "type": "require",
+          "module": "./ArbiterService"
+        },
+        {
+          "type": "require",
+          "module": "./RateLimiter"
+        },
+        {
+          "type": "require",
+          "module": "./KillSwitchFilter"
+        },
+        {
+          "type": "require",
+          "module": "./BrandConstants"
+        },
+        {
+          "type": "require",
+          "module": "./smart-url-builder"
+        },
+        {
+          "type": "require",
+          "module": "../backend/services/smart-target-strategy"
+        },
+        {
+          "type": "require",
+          "module": "fs"
+        },
+        {
+          "type": "require",
+          "module": "axios"
+        },
+        {
+          "type": "require",
+          "module": "axios"
+        },
+        {
+          "type": "require",
+          "module": "fs"
+        },
+        {
+          "type": "require",
+          "module": "axios"
+        },
+        {
+          "type": "require",
+          "module": "https-proxy-agent"
+        },
+        {
+          "type": "require",
+          "module": "cheerio"
+        }
+      ]
+    },
+    "brands_config": {
+      "path": "backend/config/brands-config.json",
+      "full_path": "c:\\Users\\hacke\\CascadeProjects\\Finals1\\eubike\\backend\\config\\brands-config.json",
+      "exists": true,
+      "size": 3043,
+      "modified": "2026-01-24T15:26:19.977Z"
+    },
+    "gap_analyzer": {
+      "path": "backend/src/services/catalog-gap-analyzer.js",
+      "full_path": "c:\\Users\\hacke\\CascadeProjects\\Finals1\\eubike\\backend\\src\\services\\catalog-gap-analyzer.js",
+      "exists": true,
+      "size": 9473,
+      "modified": "2026-01-27T22:53:49.975Z"
+    },
+    "buycycle_collector": {
+      "path": "backend/scrapers/buycycle-collector.js",
+      "full_path": "c:\\Users\\hacke\\CascadeProjects\\Finals1\\eubike\\backend\\scrapers\\buycycle-collector.js",
+      "exists": true,
+      "size": 31753,
+      "modified": "2026-01-31T09:24:05.547Z",
+      "dependencies": [
+        {
+          "type": "require",
+          "module": "puppeteer-extra"
+        },
+        {
+          "type": "require",
+          "module": "puppeteer-extra-plugin-stealth"
+        },
+        {
+          "type": "require",
+          "module": "../src/js/mysql-config"
+        },
+        {
+          "type": "require",
+          "module": "../src/services/UnifiedNormalizer"
+        },
+        {
+          "type": "require",
+          "module": "path"
+        }
+      ]
+    },
+    "unified_normalizer": {
+      "path": "backend/src/services/UnifiedNormalizer.js",
+      "full_path": "c:\\Users\\hacke\\CascadeProjects\\Finals1\\eubike\\backend\\src\\services\\UnifiedNormalizer.js",
+      "exists": true,
+      "size": 11637,
+      "modified": "2026-01-31T05:19:57.467Z",
+      "dependencies": [
+        {
+          "type": "require",
+          "module": "path"
+        },
+        {
+          "type": "require",
+          "module": "fs"
+        },
+        {
+          "type": "require",
+          "module": "better-sqlite3"
+        },
+        {
+          "type": "require",
+          "module": "./BuycyclePreprocessor"
+        },
+        {
+          "type": "require",
+          "module": "./KleinanzeigenPreprocessor"
+        },
+        {
+          "type": "require",
+          "module": "./ManualPreprocessor"
+        },
+        {
+          "type": "require",
+          "module": "./geminiProcessor"
+        }
+      ]
+    },
+    "buycycle_preprocessor": {
+      "path": "backend/src/services/BuycyclePreprocessor.js",
+      "full_path": "c:\\Users\\hacke\\CascadeProjects\\Finals1\\eubike\\backend\\src\\services\\BuycyclePreprocessor.js",
+      "exists": true,
+      "size": 18243,
+      "modified": "2026-01-31T09:33:47.497Z"
+    },
+    "gemini_processor": {
+      "path": "backend/src/services/geminiProcessor.js",
+      "full_path": "c:\\Users\\hacke\\CascadeProjects\\Finals1\\eubike\\backend\\src\\services\\geminiProcessor.js",
+      "exists": true,
+      "size": 17376,
+      "modified": "2026-01-31T09:57:18.755Z",
+      "dependencies": [
+        {
+          "type": "require",
+          "module": "axios"
+        },
+        {
+          "type": "require",
+          "module": "https-proxy-agent"
+        },
+        {
+          "type": "require",
+          "module": "../../database/db-manager"
+        },
+        {
+          "type": "require",
+          "module": "fs"
+        },
+        {
+          "type": "require",
+          "module": "path"
+        }
+      ]
+    },
+    "database_service": {
+      "path": "backend/src/services/DatabaseService.js",
+      "full_path": "c:\\Users\\hacke\\CascadeProjects\\Finals1\\eubike\\backend\\src\\services\\DatabaseService.js",
+      "exists": true,
+      "size": 12426,
+      "modified": "2026-01-31T05:47:04.779Z"
+    },
+    "photo_manager": {
+      "path": "backend/src/services/PhotoManager.js",
+      "full_path": "c:\\Users\\hacke\\CascadeProjects\\Finals1\\eubike\\backend\\src\\services\\PhotoManager.js",
+      "exists": true,
+      "size": 9146,
+      "modified": "2026-01-31T05:46:49.446Z"
+    }
+  },
+  "missing_files": [
+    {
+      "name": "categories_config",
+      "path": "backend/config/categories.json"
+    }
+  ],
+  "analysis": {
+    "brands": {
+      "total": 3,
+      "tier1": 0,
+      "tier2": 0,
+      "sample": [
+        "tier1",
+        "tier2",
+        "tier3"
+      ]
+    }
+  }
+}

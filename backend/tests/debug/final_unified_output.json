@@ -1,0 +1,153 @@
+{
+  "meta": {
+    "source_platform": "buycycle",
+    "source_url": "https://buycycle.com/de-de/product/status-160-2022-87161",
+    "source_ad_id": "87161",
+    "created_at": "2023-10-27T10:00:00Z",
+    "is_active": true
+  },
+  "basic_info": {
+    "name": "Specialized Status 160 2022",
+    "brand": "Specialized",
+    "model": "Status 160",
+    "year": 2022,
+    "category": "mtb",
+    "description": "В отличном состоянии, техосмотр сделан 2 недели назад, возраст 7 месяцев. Были произведены следующие улучшения:- Подседельный штырь Limotec Dropper Post- Вынос Reverse- Топкэп Reverse- Грипсы ODI- Задний переключатель SRAM GX для более точного переключения (абсолютно новый)- Кассета SunRace, также абсолютно новая- Тормозные колодки спереди и сзади, также абсолютно новые- Прочное заднее колесо SunRinglé, почти не использовалось- Передняя покрышка Schwalbe: высококлассная Schwalbe Magic ..."
+  },
+  "pricing": {
+    "price": 1650,
+    "original_price": null,
+    "discount": 0,
+    "is_negotiable": false,
+    "currency": "EUR",
+    "fmv": null,
+    "profit_margin": null
+  },
+  "specs": {
+    "frame_size": "S",
+    "wheel_size": "29",
+    "frame_material": "Aluminum",
+    "color": "Синий",
+    "weight": null,
+    "suspension_type": "Full Suspension",
+    "groupset": "SRAM GX",
+    "brakes": "SRAM Code R",
+    "fork": "FOX FLOAT 36 Rhythm, GRIP damper, two position Sweep adjustment, 15x110mm QR axle, 44mm offset, 160mm of travel",
+    "shock": "Fox Float X Performance"
+  },
+  "condition": {
+    "status": "used",
+    "score": null,
+    "grade": null,
+    "penalty": null,
+    "reason": null,
+    "visual_rating": null,
+    "issues": [],
+    "mechanic_notes": "Велосипед в отличном состоянии. Проведена инспекция 2 недели назад. Произведены значительные апгрейды: Limotec Dropper Post, вынос Reverse, топкэп Reverse, грипсы ODI, новый задний переключатель SRAM GX, новая кассета SunRace, новые тормозные колодки, прочное заднее колесо SunRinglé, новая передняя покрышка Schwalbe."
+  },
+  "inspection": {
+    "documents": {
+      "serial_number": null,
+      "has_receipt": true,
+      "has_documents": true
+    },
+    "history": {
+      "last_service": "2 недели назад",
+      "replaced_parts": [
+        "Подседельный штырь Limotec Dropper Post",
+        "Вынос Reverse",
+        "Топкэп Reverse",
+        "Грипсы ODI",
+        "Задний переключатель SRAM GX",
+        "Кассета SunRace",
+        "Тормозные колодки (спереди)",
+        "Тормозные колодки (сзади)",
+        "Заднее колесо SunRinglé",
+        "Передняя покрышка Schwalbe"
+      ],
+      "owner_count": null,
+      "usage_history": "7 месяцев использования",
+      "usage_conditions": null
+    },
+    "technical": {
+      "frame_damage": null,
+      "component_condition": "Многие компоненты были заменены или являются новыми: задний переключатель SRAM GX, кассета SunRace, тормозные колодки, заднее колесо SunRinglé, передняя покрышка Schwalbe.",
+      "consumables": "Тормозные колодки, кассета, задний переключатель и передняя покрышка недавно заменены и находятся в новом/почти новом состоянии.",
+      "components_consistency": "Задний переключатель SRAM GX является апгрейдом по сравнению с оригинальным SRAM NX Eagle."
+    },
+    "photos": {
+      "serial_number": false,
+      "fork_stanchions": false,
+      "frame_defects": false,
+      "drivetrain": false,
+      "brake_levers": false,
+      "general_view": false,
+      "shock": false
+    }
+  },
+  "seller": {
+    "name": null,
+    "location": null,
+    "type": "private",
+    "rating": null,
+    "badges": []
+  },
+  "logistics": {
+    "delivery_option": "unknown",
+    "shipping_cost": null,
+    "is_pickup_available": false
+  },
+  "media": {
+    "main_image": "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2280565/e66bcc4f-e554-4e95-8f54-5aec7bd1f1ca.webp?width=770",
+    "gallery": [
+      "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2280565/e66bcc4f-e554-4e95-8f54-5aec7bd1f1ca.webp?width=770"
+    ]
+  },
+  "ranking": {
+    "rank": 0.5,
+    "ranking_score": 0.5,
+    "hotness_score": 0,
+    "priority": "normal",
+    "is_hot_offer": false
+  },
+  "audit": {
+    "needs_audit": false,
+    "audit_status": "pending",
+    "audit_notes": null
+  },
+  "features": {
+    "raw_specs": {
+      "Вилка": "FOX FLOAT 36 Rhythm, GRIP damper, two position Sweep adjustment, 15x110mm QR axle, 44mm offset, 160mm of travel",
+      "Материал вилки": "aluminum",
+      "Амортизатор": "Fox Float X Performance",
+      "Оригинальный задний переключатель": "SRAM NX Eagle",
+      "Шатуны": "SRAM NX Eagle",
+      "Тормоза": "SRAM Code R",
+      "Оригинальные покрышки": "Specialized",
+      "Состояние": "Очень хорошее",
+      "Год": "2022",
+      "Размер рамы": "S",
+      "Подходит для роста": "158 - 173cm",
+      "Тип подвески": "Полная подвеска",
+      "Размер колес": "29",
+      "Цвет": "Синий",
+      "Наличие чека": "Да",
+      "Тип переключения": "Механическое",
+      "Тип тормозов": "Дисковые",
+      "Материал рамы": "Алюминий"
+    },
+    "badges": [],
+    "upgrades": [
+      "Подседельный штырь Limotec Dropper Post",
+      "Вынос Reverse",
+      "Топкэп Reverse",
+      "Грипсы ODI",
+      "Задний переключатель SRAM GX",
+      "Кассета SunRace",
+      "Тормозные колодки (спереди и сзади)",
+      "Заднее колесо SunRinglé",
+      "Передняя покрышка Schwalbe"
+    ]
+  },
+  "quality_score": 50
+}

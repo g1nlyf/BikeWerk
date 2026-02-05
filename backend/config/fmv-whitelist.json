@@ -1,0 +1,55 @@
+{
+  "brands": [
+    {
+      "brand": "YT",
+      "models": [
+        { "model": "Capra", "category": "Enduro" },
+        { "model": "Jeffsy", "category": "Trail" },
+        { "model": "Tues", "category": "DH" },
+        { "model": "Decoy", "category": "eMTB" },
+        { "model": "Izzo", "category": "Trail" }
+      ]
+    },
+    {
+      "brand": "Specialized",
+      "models": [
+        { "model": "Stumpjumper", "category": "Trail" },
+        { "model": "Enduro", "category": "Enduro" },
+        { "model": "Status", "category": "DH" },
+        { "model": "Demo", "category": "DH" }
+      ]
+    },
+    {
+      "brand": "Canyon",
+      "models": [
+        { "model": "Spectral", "category": "Trail" },
+        { "model": "Neuron", "category": "Trail" },
+        { "model": "Torque", "category": "Enduro" },
+        { "model": "Strive", "category": "Enduro" }
+      ]
+    },
+    {
+      "brand": "Trek",
+      "models": [
+        { "model": "Fuel EX", "category": "Trail" },
+        { "model": "Slash", "category": "Enduro" },
+        { "model": "Remedy", "category": "Trail" }
+      ]
+    },
+    {
+      "brand": "Santa Cruz",
+      "models": [
+        { "model": "Bronson", "category": "Trail" },
+        { "model": "Hightower", "category": "Trail" },
+        { "model": "Nomad", "category": "Enduro" },
+        { "model": "Megatower", "category": "Enduro" }
+      ]
+    }
+  ],
+  "years": [2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025],
+  "recordsPerSource": {
+    "buycycle": 20,
+    "bikeflip": 20,
+    "kleinanzeigen": 20
+  }
+}

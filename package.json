@@ -1,0 +1,32 @@
+{
+  "dependencies": {
+    "@supabase/supabase-js": "^2.90.1",
+    "archiver": "^7.0.1",
+    "axios": "^1.13.2",
+    "better-sqlite3": "^12.6.2",
+    "chalk": "^5.6.2",
+    "cheerio": "^1.2.0",
+    "dotenv": "^17.2.3",
+    "glob": "^13.0.0",
+    "https-proxy-agent": "^7.0.6",
+    "node-cron": "^3.0.3",
+    "node-fetch": "^3.3.2",
+    "node-ssh": "^13.2.1",
+    "node-telegram-bot-api": "^0.67.0",
+    "ora": "^9.0.0",
+    "puppeteer": "^24.36.1",
+    "sharp": "^0.34.5",
+    "simple-git": "^3.30.0",
+    "sqlite3": "^5.1.7",
+    "ssh2": "^1.17.0",
+    "telegraf": "^4.16.3",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  },
+  "scripts": {
+    "hunt-strategic": "node hunt-strategic.js"
+  }
+}

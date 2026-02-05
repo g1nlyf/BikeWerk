@@ -1,0 +1,94 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+backend/.env
+frontend/.env
+telegram-bot/.env
+client-telegram-bot/.env
+manager-bot/.env
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+eubike.db
+*.db.bak
+*.db-wal
+*.db-shm
+Databases/
+
+# Temporary ignore large media
+frontend/public/*.png
+frontend/public/*.jpg
+frontend/public/*.jpeg
+frontend/public/ext photos/
+frontend/public/images/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+.cache/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.cursor/
+
+# Temporary files
+*.tmp
+temp/
+tmp/
+*.temp
+
+# Archives and large files
+*.rar
+*.zip
+*.tar.gz
+*.7z
+deploy.tar.gz
+deploy.zip
+EUBike Finals.rar
+
+# Sensitive files
+deploy_password.txt
+ssl/
+*.pem
+*.key
+*.cert
+
+# Test results and debug files
+test-results/
+*.html
+buycycle_*.html
+temp_response.json
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# PM2
+.pm2/
+ecosystem.config.js
+
+# Misc
+.trae/
+Extra/

@@ -1,0 +1,3105 @@
+[
+  {
+    "id": 1,
+    "name": "Commencal Supreme V4 27.5",
+    "category": "Городской",
+    "brand": "Commencal",
+    "model": "Supreme V4 27.5",
+    "size": "M",
+    "price": 2200,
+    "originalPrice": null,
+    "discount": 0,
+    "image": "src/images/bikes/id1/0.webp",
+    "images": [
+      "src/images/bikes/id1/0.webp",
+      "src/images/bikes/id1/1.webp",
+      "src/images/bikes/id1/2.webp",
+      "src/images/bikes/id1/3.webp",
+      "src/images/bikes/id1/4.webp"
+    ],
+    "specs": [
+      {
+        "label": "Бренд",
+        "value": "Commencal"
+      },
+      {
+        "label": "Модель",
+        "value": "Supreme V4 27.5"
+      },
+      {
+        "label": "Год выпуска",
+        "value": "Не указан"
+      },
+      {
+        "label": "Размер рамы",
+        "value": "Не указан"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "27.5\""
+      },
+      {
+        "label": "Состояние",
+        "value": "Удовлетворительное"
+      },
+      {
+        "label": "Местоположение",
+        "value": "Не указано"
+      },
+      {
+        "label": "Тип рамы",
+        "value": "Комфортная"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "28\""
+      },
+      {
+        "label": "Материал рамы",
+        "value": "Сталь"
+      },
+      {
+        "label": "Тормоза",
+        "value": "V-brake"
+      },
+      {
+        "label": "Корзина",
+        "value": "Есть"
+      }
+    ],
+    "isNew": false,
+    "isFavorite": false,
+    "rating": "4.9",
+    "reviews": 47,
+    "reviewCount": 17,
+    "description": "Подержанный велосипед Commencal Supreme V4 27.5. Отличный вариант для городских поездок. Состояние б/у, требует осмотра и, возможно, небольшого ремонта.",
+    "features": [],
+    "deliveryInfo": "Только самовывоз",
+    "warranty": "2 года на раму, 6 месяцев на компоненты",
+    "source": "kleinanzeigen",
+    "originalUrl": "https://www.kleinanzeigen.de/s-anzeige/commencal-supreme-v4-27-5/3215562838-217-8476",
+    "condition": "Удовлетворительное",
+    "year": null,
+    "wheelDiameter": "27.5\"",
+    "location": null,
+    "isNegotiable": false,
+    "addedAt": "2025-10-19T08:41:48.520Z",
+    "discipline": "Downhill"
+  },
+  {
+    "id": 2,
+    "name": "Mondraker Summum",
+    "category": "Горный",
+    "brand": "Mondraker",
+    "model": "Summum",
+    "size": "L",
+    "price": 2550,
+    "originalPrice": null,
+    "discount": 0,
+    "image": "src/images/bikes/id2/0.webp",
+    "images": [
+      "src/images/bikes/id2/0.webp",
+      "src/images/bikes/id2/1.webp",
+      "src/images/bikes/id2/2.webp",
+      "src/images/bikes/id2/3.webp",
+      "src/images/bikes/id2/4.webp"
+    ],
+    "specs": [
+      {
+        "label": "Бренд",
+        "value": "Mondraker"
+      },
+      {
+        "label": "Модель",
+        "value": "Summum"
+      },
+      {
+        "label": "Год выпуска",
+        "value": "Не указан"
+      },
+      {
+        "label": "Размер рамы",
+        "value": "L"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "27.5\"/29\" (mullet)"
+      },
+      {
+        "label": "Состояние",
+        "value": "Б/у"
+      },
+      {
+        "label": "Местоположение",
+        "value": "Не указано"
+      },
+      {
+        "label": "Тип подвески",
+        "value": "Передняя"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "29\""
+      },
+      {
+        "label": "Материал рамы",
+        "value": "Алюминий"
+      },
+      {
+        "label": "Тормоза",
+        "value": "Дисковые гидравлические"
+      },
+      {
+        "label": "Ход подвески",
+        "value": "120 мм"
+      }
+    ],
+    "isNew": false,
+    "isFavorite": false,
+    "rating": "4.7",
+    "reviews": 39,
+    "reviewCount": 37,
+    "description": "Профессиональный даунхилл велосипед Mondraker Summum размера L. Велосипед собран на заказ (custom Aufbau) с использованием компонентов высокого уровня. Конфигурация mullet (разные диаметры колес спереди и сзади) обеспечивает отличную управляемость и проходимость.",
+    "features": [
+      "Mullet build",
+      "Downhillbike"
+    ],
+    "deliveryInfo": "Только самовывоз",
+    "warranty": "2 года на раму, 1 год на компоненты",
+    "source": "kleinanzeigen",
+    "originalUrl": "https://www.kleinanzeigen.de/s-anzeige/downhillbike-mondraker-summum-gr-l-mullet-custom-aufbau/3010728911-217-8648",
+    "condition": "Б/у",
+    "year": null,
+    "wheelDiameter": "27.5\"/29\" (mullet)",
+    "location": null,
+    "isNegotiable": false,
+    "addedAt": "2025-10-19T08:44:17.988Z",
+    "discipline": "Другое"
+  },
+  {
+    "id": 3,
+    "name": "YT Tues Uncaged",
+    "category": "Горный",
+    "brand": "YT",
+    "model": "Tues Uncaged",
+    "size": "L",
+    "price": 3850,
+    "originalPrice": null,
+    "discount": 0,
+    "image": "src/images/bikes/id3/0.webp",
+    "images": [
+      "src/images/bikes/id3/0.webp",
+      "src/images/bikes/id3/1.webp",
+      "src/images/bikes/id3/2.webp",
+      "src/images/bikes/id3/3.webp",
+      "src/images/bikes/id3/4.webp"
+    ],
+    "specs": [
+      {
+        "label": "Бренд",
+        "value": "YT"
+      },
+      {
+        "label": "Модель",
+        "value": "Tues Uncaged"
+      },
+      {
+        "label": "Год выпуска",
+        "value": "Не указан"
+      },
+      {
+        "label": "Размер рамы",
+        "value": "L"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "27.5\""
+      },
+      {
+        "label": "Состояние",
+        "value": "Б/у"
+      },
+      {
+        "label": "Местоположение",
+        "value": "Не указано"
+      },
+      {
+        "label": "Тип подвески",
+        "value": "Передняя"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "29\""
+      },
+      {
+        "label": "Материал рамы",
+        "value": "Алюминий"
+      },
+      {
+        "label": "Тормоза",
+        "value": "Дисковые гидравлические"
+      },
+      {
+        "label": "Ход подвески",
+        "value": "120 мм"
+      }
+    ],
+    "isNew": false,
+    "isFavorite": false,
+    "rating": "5.0",
+    "reviews": 39,
+    "reviewCount": 15,
+    "description": "Подержанный велосипед YT Tues Uncaged 11 с колесами 27.5 дюймов и рамой размера L. Велосипед оснащен карбоновой рамой, новыми запчастями и амортизацией Öhlins. Подходит для даунхилла.",
+    "features": [
+      "Карбоновая рама",
+      "Амортизация Öhlins",
+      "Новые запчасти",
+      "Для даунхилла"
+    ],
+    "deliveryInfo": "Только самовывоз",
+    "warranty": "2 года на раму, 1 год на компоненты",
+    "source": "kleinanzeigen",
+    "originalUrl": "https://www.kleinanzeigen.de/s-anzeige/yt-tues-uncaged-11-27-5-l-carbon-lr-neuteile-dh-oehlins/2988408431-217-8667",
+    "condition": "Б/у",
+    "year": null,
+    "wheelDiameter": "27.5\"",
+    "location": null,
+    "isNegotiable": false,
+    "addedAt": "2025-10-19T08:44:34.714Z",
+    "discipline": "Другое"
+  },
+  {
+    "id": 4,
+    "name": "Commencal Meta TR V4",
+    "category": "Горный",
+    "brand": "Commencal",
+    "model": "Meta TR V4",
+    "size": "M",
+    "price": 1150,
+    "originalPrice": null,
+    "discount": 0,
+    "image": "src/images/bikes/id4/0.webp",
+    "images": [
+      "src/images/bikes/id4/0.webp",
+      "src/images/bikes/id4/1.webp",
+      "src/images/bikes/id4/2.webp",
+      "src/images/bikes/id4/3.webp"
+    ],
+    "specs": [
+      {
+        "label": "Бренд",
+        "value": "Commencal"
+      },
+      {
+        "label": "Модель",
+        "value": "Meta TR V4"
+      },
+      {
+        "label": "Год выпуска",
+        "value": "2016"
+      },
+      {
+        "label": "Размер рамы",
+        "value": "M"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "Не указан"
+      },
+      {
+        "label": "Состояние",
+        "value": "Б/у"
+      },
+      {
+        "label": "Местоположение",
+        "value": "Не указано"
+      },
+      {
+        "label": "Тип подвески",
+        "value": "Передняя"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "29\""
+      },
+      {
+        "label": "Материал рамы",
+        "value": "Алюминий"
+      },
+      {
+        "label": "Тормоза",
+        "value": "Дисковые гидравлические"
+      },
+      {
+        "label": "Ход подвески",
+        "value": "120 мм"
+      }
+    ],
+    "isNew": false,
+    "isFavorite": false,
+    "rating": "4.2",
+    "reviews": 52,
+    "reviewCount": 47,
+    "description": "Продам эндуро велосипед Commencal Meta TR V4 2016 года, собранный на заказ. Велосипед в хорошем состоянии, готов к катанию. Отличный выбор для любителей горного катания и эндуро.",
+    "features": [],
+    "deliveryInfo": "Только самовывоз",
+    "warranty": "2 года на раму, 1 год на компоненты",
+    "source": "kleinanzeigen",
+    "originalUrl": "https://www.kleinanzeigen.de/s-anzeige/enduro-mtb-selbstzusammengebaut-commencal-meta-tr-v4-2016-m/3218234325-217-991",
+    "condition": "Б/у",
+    "year": 2016,
+    "wheelDiameter": null,
+    "location": null,
+    "isNegotiable": false,
+    "addedAt": "2025-10-19T08:44:57.032Z",
+    "discipline": "Другое"
+  },
+  {
+    "id": 5,
+    "name": "Santa Cruz V10.7 CC XL 29“",
+    "category": "Городской",
+    "brand": "Santa Cruz",
+    "model": "V10.7 CC XL 29“",
+    "size": "XL",
+    "price": 4499,
+    "originalPrice": null,
+    "discount": 0,
+    "image": "src/images/bikes/id5/0.webp",
+    "images": [
+      "src/images/bikes/id5/0.webp",
+      "src/images/bikes/id5/1.webp",
+      "src/images/bikes/id5/2.webp",
+      "src/images/bikes/id5/3.webp",
+      "src/images/bikes/id5/4.webp"
+    ],
+    "specs": [
+      {
+        "label": "Бренд",
+        "value": "Santa Cruz"
+      },
+      {
+        "label": "Модель",
+        "value": "V10.7 CC XL 29“"
+      },
+      {
+        "label": "Год выпуска",
+        "value": "Не указан"
+      },
+      {
+        "label": "Размер рамы",
+        "value": "XL"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "29\""
+      },
+      {
+        "label": "Состояние",
+        "value": "Б/у"
+      },
+      {
+        "label": "Местоположение",
+        "value": "Не указано"
+      },
+      {
+        "label": "Тип рамы",
+        "value": "Комфортная"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "28\""
+      },
+      {
+        "label": "Материал рамы",
+        "value": "Сталь"
+      },
+      {
+        "label": "Тормоза",
+        "value": "V-brake"
+      },
+      {
+        "label": "Корзина",
+        "value": "Есть"
+      }
+    ],
+    "isNew": false,
+    "isFavorite": false,
+    "rating": "3.4",
+    "reviews": 47,
+    "reviewCount": 18,
+    "description": "Подержанный велосипед Santa Cruz V10.7 CC XL 29\". Отличный вариант для городских поездок. Размер рамы XL, колеса 29 дюймов.",
+    "features": [],
+    "deliveryInfo": "Только самовывоз",
+    "warranty": "2 года на раму, 6 месяцев на компоненты",
+    "source": "kleinanzeigen",
+    "originalUrl": "https://www.kleinanzeigen.de/s-anzeige/santa-cruz-v10-7-cc-xl-29-/3167232152-217-6278?utm_source=copyToPasteboard&utm_campaign=socialbuttons&utm_medium=social&utm_content=app_ios",
+    "condition": "Б/у",
+    "year": null,
+    "wheelDiameter": "29\"",
+    "location": null,
+    "isNegotiable": false,
+    "addedAt": "2025-10-19T10:27:02.473Z",
+    "discipline": "Downhill"
+  },
+  {
+    "id": 6,
+    "name": "Mondraker Superfoxy Custom Build",
+    "category": "Горный",
+    "brand": "Mondraker",
+    "model": "Superfoxy Custom Build",
+    "size": "M",
+    "price": 1600,
+    "originalPrice": 1882,
+    "discount": 15,
+    "image": "src/images/bikes/id6/0.webp",
+    "images": [
+      "src/images/bikes/id6/0.webp",
+      "src/images/bikes/id6/1.webp",
+      "src/images/bikes/id6/2.webp",
+      "src/images/bikes/id6/3.webp",
+      "src/images/bikes/id6/4.webp"
+    ],
+    "specs": [
+      {
+        "label": "Бренд",
+        "value": "Mondraker"
+      },
+      {
+        "label": "Модель",
+        "value": "Superfoxy Custom Build"
+      },
+      {
+        "label": "Год выпуска",
+        "value": "Не указан"
+      },
+      {
+        "label": "Размер рамы",
+        "value": "M"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "27.5\""
+      },
+      {
+        "label": "Состояние",
+        "value": "Хорошее"
+      },
+      {
+        "label": "Местоположение",
+        "value": "Не указано"
+      },
+      {
+        "label": "Тип подвески",
+        "value": "Передняя"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "29\""
+      },
+      {
+        "label": "Материал рамы",
+        "value": "Алюминий"
+      },
+      {
+        "label": "Тормоза",
+        "value": "Дисковые гидравлические"
+      },
+      {
+        "label": "Ход подвески",
+        "value": "120 мм"
+      }
+    ],
+    "isNew": false,
+    "isFavorite": false,
+    "rating": "3.8",
+    "reviews": 20,
+    "reviewCount": 19,
+    "description": "Продам кастомный горный велосипед Mondraker Superfoxy. Размер рамы M. Велосипед в хорошем состоянии, готов к катанию.",
+    "features": [
+      "Кастомная сборка",
+      "Двухподвес"
+    ],
+    "deliveryInfo": "Только самовывоз",
+    "warranty": "2 года на раму, 1 год на компоненты",
+    "source": "kleinanzeigen",
+    "originalUrl": "https://www.kleinanzeigen.de/s-anzeige/mondraker-superfoxy-custom-build-groesse-m-/3179807929-217-8648",
+    "condition": "Хорошее",
+    "year": null,
+    "wheelDiameter": "27.5\"",
+    "location": null,
+    "isNegotiable": true,
+    "addedAt": "2025-10-19T10:43:45.398Z",
+    "discipline": "Другое"
+  },
+  {
+    "id": 7,
+    "name": "Commencal Meta AM V4.2",
+    "category": "Горный",
+    "brand": "Commencal",
+    "model": "Meta AM V4.2",
+    "size": "M",
+    "price": 1500,
+    "originalPrice": null,
+    "discount": 0,
+    "image": "src/images/bikes/id7/0.webp",
+    "images": [
+      "src/images/bikes/id7/0.webp",
+      "src/images/bikes/id7/1.webp",
+      "src/images/bikes/id7/2.webp",
+      "src/images/bikes/id7/3.webp"
+    ],
+    "specs": [
+      {
+        "label": "Бренд",
+        "value": "Commencal"
+      },
+      {
+        "label": "Модель",
+        "value": "Meta AM V4.2"
+      },
+      {
+        "label": "Год выпуска",
+        "value": "Не указан"
+      },
+      {
+        "label": "Размер рамы",
+        "value": "M"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "27.5\""
+      },
+      {
+        "label": "Состояние",
+        "value": "Хорошее"
+      },
+      {
+        "label": "Местоположение",
+        "value": "Не указано"
+      },
+      {
+        "label": "Тип подвески",
+        "value": "Передняя"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "29\""
+      },
+      {
+        "label": "Материал рамы",
+        "value": "Алюминий"
+      },
+      {
+        "label": "Тормоза",
+        "value": "Дисковые гидравлические"
+      },
+      {
+        "label": "Ход подвески",
+        "value": "120 мм"
+      }
+    ],
+    "isNew": false,
+    "isFavorite": false,
+    "rating": "5.0",
+    "reviews": 44,
+    "reviewCount": 25,
+    "description": "Подержанный горный велосипед Commencal Meta AM V4.2. Отличный выбор для катания в стиле эндуро. Требует осмотра и, возможно, небольшого обслуживания.",
+    "features": [
+      "Двухподвес",
+      "Эндуро",
+      "Алюминиевая рама"
+    ],
+    "deliveryInfo": "Только самовывоз",
+    "warranty": "2 года на раму, 1 год на компоненты",
+    "source": "kleinanzeigen",
+    "originalUrl": "https://www.kleinanzeigen.de/s-anzeige/commencal-meta-am-v4-2/3213920058-217-7433?utm_source=telegram&utm_campaign=socialbuttons&utm_medium=social&utm_content=app_ios",
+    "condition": "Хорошее",
+    "year": null,
+    "wheelDiameter": "27.5\"",
+    "location": null,
+    "isNegotiable": true,
+    "addedAt": "2025-10-19T12:12:31.152Z",
+    "discipline": "Другое"
+  },
+  {
+    "id": 11,
+    "name": "Norco Sight A1 2021",
+    "category": "Горный",
+    "brand": "Norco",
+    "model": "Sight A1 2021",
+    "size": "L",
+    "price": 1900,
+    "originalPrice": null,
+    "discount": 0,
+    "image": "src/images/bikes/id11/0.webp",
+    "images": [
+      "src/images/bikes/id11/0.webp",
+      "src/images/bikes/id11/1.webp",
+      "src/images/bikes/id11/2.webp",
+      "src/images/bikes/id11/3.webp",
+      "src/images/bikes/id11/4.webp"
+    ],
+    "specs": [
+      {
+        "label": "Бренд",
+        "value": "Norco"
+      },
+      {
+        "label": "Модель",
+        "value": "Sight A1 2021"
+      },
+      {
+        "label": "Год выпуска",
+        "value": "2021"
+      },
+      {
+        "label": "Размер рамы",
+        "value": "L"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "Не указан"
+      },
+      {
+        "label": "Состояние",
+        "value": "gut"
+      },
+      {
+        "label": "Местоположение",
+        "value": "Aachen - Aachen-Mitte"
+      },
+      {
+        "label": "Тип подвески",
+        "value": "Передняя"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "29\""
+      },
+      {
+        "label": "Материал рамы",
+        "value": "Алюминий"
+      },
+      {
+        "label": "Тормоза",
+        "value": "Дисковые гидравлические"
+      },
+      {
+        "label": "Ход подвески",
+        "value": "120 мм"
+      }
+    ],
+    "isNew": false,
+    "isFavorite": false,
+    "rating": "3.5",
+    "reviews": 26,
+    "reviewCount": 23,
+    "description": "Verkaufe mein Norco Sight A1 (Modell 2021) in Rahmengröße L. Das Bike ist die perfekte „All-Mountain-Waffe“ – bergauf effizient, bergab mit satten 160/150 mm Federweg extrem potent. Alle Teile sind voll funktionsfähig, das Rad ist direkt einsatzbereit.",
+    "features": [
+      "Амортизационная вилка",
+      "Дисковые тормоза",
+      "Широкие покрышки",
+      "Прочная рама"
+    ],
+    "deliveryInfo": "Только самовывоз",
+    "warranty": "2 года на раму, 1 год на компоненты",
+    "source": "kleinanzeigen",
+    "originalUrl": "https://www.kleinanzeigen.de/s-anzeige/norco-sight-a1-2021-l-29-lyrik-ultimate-gx-eagle/3098258443-217-1925",
+    "condition": "gut",
+    "year": 2021,
+    "wheelDiameter": null,
+    "location": "Aachen - Aachen-Mitte",
+    "isNegotiable": true,
+    "addedAt": "2025-10-19T14:51:48.187Z",
+    "discipline": "Другое"
+  },
+  {
+    "id": 12,
+    "name": "Norco Sight A1 2021",
+    "category": "Горный",
+    "brand": "Norco",
+    "model": "Sight A1 2021",
+    "size": "L",
+    "price": 1900,
+    "originalPrice": null,
+    "discount": 0,
+    "image": "src/images/bikes/id12/0.webp",
+    "images": [
+      "src/images/bikes/id12/0.webp",
+      "src/images/bikes/id12/1.webp",
+      "src/images/bikes/id12/2.webp",
+      "src/images/bikes/id12/3.webp",
+      "src/images/bikes/id12/4.webp"
+    ],
+    "specs": [
+      {
+        "label": "Бренд",
+        "value": "Norco"
+      },
+      {
+        "label": "Модель",
+        "value": "Sight A1 2021"
+      },
+      {
+        "label": "Год выпуска",
+        "value": "2021"
+      },
+      {
+        "label": "Размер рамы",
+        "value": "L"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "Не указан"
+      },
+      {
+        "label": "Состояние",
+        "value": "gut"
+      },
+      {
+        "label": "Местоположение",
+        "value": "Aachen - Aachen-Mitte"
+      },
+      {
+        "label": "Тип подвески",
+        "value": "Передняя"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "29\""
+      },
+      {
+        "label": "Материал рамы",
+        "value": "Алюминий"
+      },
+      {
+        "label": "Тормоза",
+        "value": "Дисковые гидравлические"
+      },
+      {
+        "label": "Ход подвески",
+        "value": "120 мм"
+      }
+    ],
+    "isNew": false,
+    "isFavorite": false,
+    "rating": "3.9",
+    "reviews": 35,
+    "reviewCount": 25,
+    "description": "verkaufe hier mein kaum gefahrenes Mondraker...",
+    "features": [
+      "Амортизационная вилка",
+      "Дисковые тормоза",
+      "Широкие покрышки",
+      "Прочная рама"
+    ],
+    "deliveryInfo": "Только самовывоз",
+    "warranty": "2 года на раму, 1 год на компоненты",
+    "source": "kleinanzeigen",
+    "originalUrl": "https://www.kleinanzeigen.de/s-anzeige/norco-sight-a1-2021-l-29-lyrik-ultimate-gx-eagle/3098258443-217-1925",
+    "condition": "gut",
+    "year": 2021,
+    "wheelDiameter": null,
+    "location": "Aachen - Aachen-Mitte",
+    "isNegotiable": true,
+    "addedAt": "2025-10-19T15:01:55.812Z",
+    "discipline": "Другое"
+  },
+  {
+    "id": 13,
+    "name": "Norco Range C7.1",
+    "category": "Горный",
+    "brand": "Norco",
+    "model": "Range C7.1",
+    "size": "L",
+    "price": 1800,
+    "originalPrice": null,
+    "discount": 0,
+    "image": "src/images/bikes/id13/0.webp",
+    "images": [
+      "src/images/bikes/id13/0.webp",
+      "src/images/bikes/id13/1.webp",
+      "src/images/bikes/id13/2.webp",
+      "src/images/bikes/id13/3.webp",
+      "src/images/bikes/id13/4.webp"
+    ],
+    "specs": [
+      {
+        "label": "Бренд",
+        "value": "Norco"
+      },
+      {
+        "label": "Модель",
+        "value": "Range C7.1"
+      },
+      {
+        "label": "Год выпуска",
+        "value": "Не указан"
+      },
+      {
+        "label": "Размер рамы",
+        "value": "L"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "Не указан"
+      },
+      {
+        "label": "Состояние",
+        "value": "Sehr Gut"
+      },
+      {
+        "label": "Местоположение",
+        "value": "Nordrhein-Westfalen - Wülfrath"
+      },
+      {
+        "label": "Тип подвески",
+        "value": "Передняя"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "29\""
+      },
+      {
+        "label": "Материал рамы",
+        "value": "Алюминий"
+      },
+      {
+        "label": "Тормоза",
+        "value": "Дисковые гидравлические"
+      },
+      {
+        "label": "Ход подвески",
+        "value": "120 мм"
+      }
+    ],
+    "isNew": false,
+    "isFavorite": false,
+    "rating": "4.2",
+    "reviews": 39,
+    "reviewCount": 46,
+    "description": "Hallo, ich habe diese Custom- Norco Range C7.1 zu verkaufen. Insgesamt ist das Bike leider viel zu wenig bewegt worden, deshalb wird es nun verkauft. Es hat geschätzt ca. 500km gelaufen, wahrscheinlich aber eher weniger. Ich habe jedes einzelne Teil damals einzeln gekauft und dann von einem guten Freund zusammenbauen lassen. Es ist perfekt aufeinander abgestimmt und fährt sich sehr gut. Das Bike hat 27,5 Zoll Laufräder, Gabel mit 160mm Federweg und einen Dämpfer mit 150mm. Im folgenden eine List...",
+    "features": [
+      "Амортизационная вилка",
+      "Дисковые тормоза",
+      "Широкие покрышки",
+      "Прочная рама"
+    ],
+    "deliveryInfo": "Только самовывоз",
+    "warranty": "2 года на раму, 1 год на компоненты",
+    "source": "kleinanzeigen",
+    "originalUrl": "https://www.kleinanzeigen.de/s-anzeige/norco-range-c7-1-fully-mountainbike-enduro-trail-costum/3104877234-217-1554",
+    "condition": "Sehr Gut",
+    "year": null,
+    "wheelDiameter": null,
+    "location": "Nordrhein-Westfalen - Wülfrath",
+    "isNegotiable": true,
+    "addedAt": "2025-10-19T15:12:28.148Z",
+    "discipline": "Enduro"
+  },
+  {
+    "id": 14,
+    "name": "Evil Offering",
+    "category": "Горный",
+    "brand": "Evil",
+    "model": "Offering",
+    "size": "M",
+    "price": 1300,
+    "originalPrice": null,
+    "discount": 0,
+    "image": "src/images/bikes/id14/0.webp",
+    "images": [
+      "src/images/bikes/id14/0.webp",
+      "src/images/bikes/id14/1.webp",
+      "src/images/bikes/id14/2.webp",
+      "src/images/bikes/id14/3.webp",
+      "src/images/bikes/id14/4.webp"
+    ],
+    "specs": [
+      {
+        "label": "Бренд",
+        "value": "Evil"
+      },
+      {
+        "label": "Модель",
+        "value": "Offering"
+      },
+      {
+        "label": "Год выпуска",
+        "value": "Не указан"
+      },
+      {
+        "label": "Размер рамы",
+        "value": "M"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "29\""
+      },
+      {
+        "label": "Состояние",
+        "value": "gut"
+      },
+      {
+        "label": "Местоположение",
+        "value": "Bayern - Germering"
+      },
+      {
+        "label": "Тип подвески",
+        "value": "Передняя"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "29\""
+      },
+      {
+        "label": "Материал рамы",
+        "value": "Алюминий"
+      },
+      {
+        "label": "Тормоза",
+        "value": "Дисковые гидравлические"
+      },
+      {
+        "label": "Ход подвески",
+        "value": "120 мм"
+      }
+    ],
+    "isNew": false,
+    "isFavorite": false,
+    "rating": "4.6",
+    "reviews": 54,
+    "reviewCount": 33,
+    "description": "Biete mein gebrauchtes Evil Offering mit folgenden Parts an: - Rahmengröße Medium - Rock Shox Super Deluxe Dämpfer und Pike RCT3 Gabel - Shimano 12 fach SLX Schaltung mit XT Trigger - Shimano Deore 4-Kolben Bremse (203/180 mm Scheibe) - Bike-yoke Revive Dropper Post 160mm - Reverse Seismic Carbon Lenker - Stans No Tubes Felgen mit Shimano XT Naben 29\" - Race Face Pedale - Zustand: gebraucht, mit deutlich sichtbaren Lackabplatzern (vgl. letztes Bild). Der Lack ist leider nicht der Beste, die Funk...",
+    "features": [
+      "Амортизационная вилка",
+      "Дисковые тормоза",
+      "Широкие покрышки",
+      "Прочная рама"
+    ],
+    "deliveryInfo": "Только самовывоз",
+    "warranty": "2 года на раму, 1 год на компоненты",
+    "source": "kleinanzeigen",
+    "originalUrl": "https://www.kleinanzeigen.de/s-anzeige/evil-offering-carbon-mtb-trail-enduro-all-mountain-stans-xt-29-/3132878777-217-6326",
+    "condition": "gut",
+    "year": null,
+    "wheelDiameter": "29\"",
+    "location": "Bayern - Germering",
+    "isNegotiable": true,
+    "addedAt": "2025-10-19T16:00:33.884Z",
+    "discipline": "Enduro"
+  },
+  {
+    "id": 15,
+    "name": "Specialized Stumpjumper Comp Carbon M (S3)",
+    "category": "Горный",
+    "brand": "Specialized",
+    "model": "Stumpjumper Comp Carbon M (S3)",
+    "size": "M",
+    "price": 1349,
+    "originalPrice": null,
+    "discount": 0,
+    "image": "src/images/bikes/id15/0.webp",
+    "images": [
+      "src/images/bikes/id15/0.webp",
+      "src/images/bikes/id15/1.webp",
+      "src/images/bikes/id15/2.webp",
+      "src/images/bikes/id15/3.webp",
+      "src/images/bikes/id15/4.webp"
+    ],
+    "specs": [
+      {
+        "label": "Бренд",
+        "value": "Specialized"
+      },
+      {
+        "label": "Модель",
+        "value": "Stumpjumper Comp Carbon M (S3)"
+      },
+      {
+        "label": "Год выпуска",
+        "value": "Не указан"
+      },
+      {
+        "label": "Размер рамы",
+        "value": "M"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "29\""
+      },
+      {
+        "label": "Состояние",
+        "value": "gut"
+      },
+      {
+        "label": "Местоположение",
+        "value": "Nordrhein-Westfalen - Heinsberg"
+      },
+      {
+        "label": "Тип подвески",
+        "value": "Передняя"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "29\""
+      },
+      {
+        "label": "Материал рамы",
+        "value": "Алюминий"
+      },
+      {
+        "label": "Тормоза",
+        "value": "Дисковые гидравлические"
+      },
+      {
+        "label": "Ход подвески",
+        "value": "120 мм"
+      }
+    ],
+    "isNew": false,
+    "isFavorite": false,
+    "rating": "4.4",
+    "reviews": 5,
+    "reviewCount": 9,
+    "description": "Verkaufe wegen Hobby Aufgabe mein Stumpjumper aus Carbon in Rahmengröße M. Steht nur rum und verstaubt deswegen ist es dafür zu schade. Der Rahmen wurde von Tag 1 auf mit Schutzfolie beklebt. Was geändert wurde: -Crankbrothers Stamp6 Pedalen -Maxxis Assegai 29 max terra 29x2.5 Exo+ -Sattelstütze -Spank Spoon Lenker 38mm Rise -Odi Griffe 160mm Hydraulische Sattelstütze von X-Fusion sowie Originalen Lenker gibt es dazu. Das Fahrrad hat im Rahmen Stauraum außerdem noch ein Multitool am Getränkehalt...",
+    "features": [
+      "Амортизационная вилка",
+      "Дисковые тормоза",
+      "Широкие покрышки",
+      "Прочная рама"
+    ],
+    "deliveryInfo": "Только самовывоз",
+    "warranty": "2 года на раму, 1 год на компоненты",
+    "source": "kleinanzeigen",
+    "originalUrl": "https://www.kleinanzeigen.de/s-anzeige/specialized-stumpjumper-comp-carbon-m-s3-canyon-santa-cruz-/3136826026-217-16235",
+    "condition": "gut",
+    "year": null,
+    "wheelDiameter": "29\"",
+    "location": "Nordrhein-Westfalen - Heinsberg",
+    "isNegotiable": false,
+    "addedAt": "2025-10-19T16:00:44.535Z",
+    "discipline": "Enduro"
+  },
+  {
+    "id": 16,
+    "name": "Specialized Enduro Comp",
+    "category": "Горный",
+    "brand": "Specialized",
+    "model": "Enduro Comp",
+    "size": "M",
+    "price": 1700,
+    "originalPrice": null,
+    "discount": 0,
+    "image": "src/images/bikes/id16/0.webp",
+    "images": [
+      "src/images/bikes/id16/0.webp",
+      "src/images/bikes/id16/1.webp",
+      "src/images/bikes/id16/2.webp"
+    ],
+    "specs": [
+      {
+        "label": "Бренд",
+        "value": "Specialized"
+      },
+      {
+        "label": "Модель",
+        "value": "Enduro Comp"
+      },
+      {
+        "label": "Год выпуска",
+        "value": "2018"
+      },
+      {
+        "label": "Размер рамы",
+        "value": "M"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "Не указан"
+      },
+      {
+        "label": "Состояние",
+        "value": "Sehr Gut"
+      },
+      {
+        "label": "Местоположение",
+        "value": "Hessen - Lauterbach (Hessen)"
+      },
+      {
+        "label": "Тип подвески",
+        "value": "Передняя"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "29\""
+      },
+      {
+        "label": "Материал рамы",
+        "value": "Алюминий"
+      },
+      {
+        "label": "Тормоза",
+        "value": "Дисковые гидравлические"
+      },
+      {
+        "label": "Ход подвески",
+        "value": "120 мм"
+      }
+    ],
+    "isNew": false,
+    "isFavorite": false,
+    "rating": "4.8",
+    "reviews": 11,
+    "reviewCount": 28,
+    "description": "Servus, Verkaufe hier mein Specialized Enduro Comp 650b aus 2018. Dass Bike befindet sich optisch sowie technisch in einem sehr guten Zustand.",
+    "features": [
+      "Амортизационная вилка",
+      "Дисковые тормоза",
+      "Широкие покрышки",
+      "Прочная рама"
+    ],
+    "deliveryInfo": "Доставка доступна",
+    "warranty": "2 года на раму, 1 год на компоненты",
+    "source": "kleinanzeigen",
+    "originalUrl": "https://www.kleinanzeigen.de/s-anzeige/specialized-enduro-comp-kein-cube-trek-commencal-yt-rose-/2799373845-217-4650",
+    "condition": "Sehr Gut",
+    "year": 2018,
+    "wheelDiameter": null,
+    "location": "Hessen - Lauterbach (Hessen)",
+    "isNegotiable": true,
+    "addedAt": "2025-10-19T16:01:09.115Z",
+    "discipline": "Enduro"
+  },
+  {
+    "id": 17,
+    "name": "Specialized Enduro Comp",
+    "category": "Горный",
+    "brand": "Specialized",
+    "model": "Enduro Comp",
+    "size": "M",
+    "price": 1700,
+    "originalPrice": null,
+    "discount": 0,
+    "image": "src/images/bikes/id17/0.webp",
+    "images": [
+      "src/images/bikes/id17/0.webp",
+      "src/images/bikes/id17/1.webp",
+      "src/images/bikes/id17/2.webp"
+    ],
+    "specs": [
+      {
+        "label": "Бренд",
+        "value": "Specialized"
+      },
+      {
+        "label": "Модель",
+        "value": "Enduro Comp"
+      },
+      {
+        "label": "Год выпуска",
+        "value": "2018"
+      },
+      {
+        "label": "Размер рамы",
+        "value": "M"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "Не указан"
+      },
+      {
+        "label": "Состояние",
+        "value": "Sehr Gut"
+      },
+      {
+        "label": "Местоположение",
+        "value": "Hessen - Lauterbach (Hessen)"
+      },
+      {
+        "label": "Тип подвески",
+        "value": "Передняя"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "29\""
+      },
+      {
+        "label": "Материал рамы",
+        "value": "Алюминий"
+      },
+      {
+        "label": "Тормоза",
+        "value": "Дисковые гидравлические"
+      },
+      {
+        "label": "Ход подвески",
+        "value": "120 мм"
+      }
+    ],
+    "isNew": false,
+    "isFavorite": false,
+    "rating": "4.3",
+    "reviews": 51,
+    "reviewCount": 20,
+    "description": "Servus, Verkaufe hier mein Specialized Enduro Comp 650b aus 2018. Dass Bike befindet sich optisch sowie technisch in einem sehr guten Zustand.",
+    "features": [
+      "Амортизационная вилка",
+      "Дисковые тормоза",
+      "Широкие покрышки",
+      "Прочная рама"
+    ],
+    "deliveryInfo": "Доставка доступна",
+    "warranty": "2 года на раму, 1 год на компоненты",
+    "source": "kleinanzeigen",
+    "originalUrl": "https://www.kleinanzeigen.de/s-anzeige/specialized-enduro-comp-kein-cube-trek-commencal-yt-rose-/2799373845-217-4650",
+    "condition": "Sehr Gut",
+    "year": 2018,
+    "wheelDiameter": null,
+    "location": "Hessen - Lauterbach (Hessen)",
+    "isNegotiable": true,
+    "addedAt": "2025-10-19T16:01:47.911Z",
+    "discipline": "Enduro"
+  },
+  {
+    "id": 18,
+    "name": "Pivot Firebird",
+    "category": "Горный",
+    "brand": "Pivot",
+    "model": "Firebird",
+    "size": "M",
+    "price": 1500,
+    "originalPrice": null,
+    "discount": 0,
+    "image": "src/images/bikes/id18/0.webp",
+    "images": [
+      "src/images/bikes/id18/0.webp",
+      "src/images/bikes/id18/1.webp",
+      "src/images/bikes/id18/2.webp",
+      "src/images/bikes/id18/3.webp",
+      "src/images/bikes/id18/4.webp"
+    ],
+    "specs": [
+      {
+        "label": "Бренд",
+        "value": "Pivot"
+      },
+      {
+        "label": "Модель",
+        "value": "Firebird"
+      },
+      {
+        "label": "Год выпуска",
+        "value": "Не указан"
+      },
+      {
+        "label": "Размер рамы",
+        "value": "M"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "Не указан"
+      },
+      {
+        "label": "Состояние",
+        "value": "gut"
+      },
+      {
+        "label": "Местоположение",
+        "value": "Mülheim (Ruhr)"
+      },
+      {
+        "label": "Тип подвески",
+        "value": "Передняя"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "29\""
+      },
+      {
+        "label": "Материал рамы",
+        "value": "Алюминий"
+      },
+      {
+        "label": "Тормоза",
+        "value": "Дисковые гидравлические"
+      },
+      {
+        "label": "Ход подвески",
+        "value": "120 мм"
+      }
+    ],
+    "isNew": false,
+    "isFavorite": false,
+    "rating": "4.1",
+    "reviews": 48,
+    "reviewCount": 11,
+    "description": "Zum Verkauf steht hier mein Pivot Firebird Carbon in Rahmengröße M, weil ich aufgrund meines Studiums einfach nicht mehr zum Fahren komme. Das Rad hat die typischen Gebrauchsspuren aber auch eine Macke am Dämpfer, Dämpfer ist aber soweit noch Funktionstüchtig. Die Bremsen sind so gut wie neu. Der Rahmen hat keine Risse. Bei Fragen gerne melden den Rest bitte soweit wie möglich den Bildern entnehmen.",
+    "features": [
+      "Амортизационная вилка",
+      "Дисковые тормоза",
+      "Широкие покрышки",
+      "Прочная рама"
+    ],
+    "deliveryInfo": "Только самовывоз",
+    "warranty": "2 года на раму, 1 год на компоненты",
+    "source": "kleinanzeigen",
+    "originalUrl": "https://www.kleinanzeigen.de/s-anzeige/pivot-firebird-27-5-m-enduro-/2848298477-217-2067",
+    "condition": "gut",
+    "year": null,
+    "wheelDiameter": null,
+    "location": "Mülheim (Ruhr)",
+    "isNegotiable": true,
+    "addedAt": "2025-10-19T16:02:57.557Z",
+    "discipline": "Другое"
+  },
+  {
+    "id": 19,
+    "name": "Norco Range C7.2",
+    "category": "Горный",
+    "brand": "Norco",
+    "model": "Range C7.2",
+    "size": "M",
+    "price": 1240,
+    "originalPrice": null,
+    "discount": 0,
+    "image": "src/images/bikes/id19/0.webp",
+    "images": [
+      "src/images/bikes/id19/0.webp",
+      "src/images/bikes/id19/1.webp",
+      "src/images/bikes/id19/2.webp",
+      "src/images/bikes/id19/3.webp",
+      "src/images/bikes/id19/4.webp"
+    ],
+    "specs": [
+      {
+        "label": "Бренд",
+        "value": "Norco"
+      },
+      {
+        "label": "Модель",
+        "value": "Range C7.2"
+      },
+      {
+        "label": "Год выпуска",
+        "value": "Не указан"
+      },
+      {
+        "label": "Размер рамы",
+        "value": "M"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "Не указан"
+      },
+      {
+        "label": "Состояние",
+        "value": "Sehr Gut"
+      },
+      {
+        "label": "Местоположение",
+        "value": "Bayern - Sonthofen"
+      },
+      {
+        "label": "Тип подвески",
+        "value": "Передняя"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "29\""
+      },
+      {
+        "label": "Материал рамы",
+        "value": "Алюминий"
+      },
+      {
+        "label": "Тормоза",
+        "value": "Дисковые гидравлические"
+      },
+      {
+        "label": "Ход подвески",
+        "value": "120 мм"
+      }
+    ],
+    "isNew": false,
+    "isFavorite": false,
+    "rating": "3.0",
+    "reviews": 29,
+    "reviewCount": 29,
+    "description": "Im Auftrag meiner besseren Hälfte wird von mir sein Enduro verkauft. Er hat es selber aufgebaut, aber so gut wie nicht gefahren. Es ist daher in einem hervorragenden Zustand. Ein richtig geniales Enduro / Mountainbike für Bikepark, Downhill , Freeride und Trails, leicht genug zum hochtreten!",
+    "features": [
+      "Амортизационная вилка",
+      "Дисковые тормоза",
+      "Широкие покрышки",
+      "Прочная рама"
+    ],
+    "deliveryInfo": "Только самовывоз",
+    "warranty": "2 года на раму, 1 год на компоненты",
+    "source": "kleinanzeigen",
+    "originalUrl": "https://www.kleinanzeigen.de/s-anzeige/enduro-mtb-norco-range-c7-2-custombike-carbonrahmen/3115698576-217-5537",
+    "condition": "Sehr Gut",
+    "year": null,
+    "wheelDiameter": null,
+    "location": "Bayern - Sonthofen",
+    "isNegotiable": true,
+    "addedAt": "2025-10-19T16:03:11.250Z",
+    "discipline": "Enduro"
+  },
+  {
+    "id": 20,
+    "name": "Canyon Sender CFR Mullet",
+    "category": "Горный",
+    "brand": "Canyon",
+    "model": "Sender CFR Mullet",
+    "size": "M",
+    "price": 4500,
+    "originalPrice": null,
+    "discount": 0,
+    "image": "src/images/bikes/id20/0.webp",
+    "images": [
+      "src/images/bikes/id20/0.webp",
+      "src/images/bikes/id20/1.webp",
+      "src/images/bikes/id20/2.webp",
+      "src/images/bikes/id20/3.webp",
+      "src/images/bikes/id20/4.webp"
+    ],
+    "specs": [
+      {
+        "label": "Бренд",
+        "value": "Canyon"
+      },
+      {
+        "label": "Модель",
+        "value": "Sender CFR Mullet"
+      },
+      {
+        "label": "Год выпуска",
+        "value": "2024"
+      },
+      {
+        "label": "Размер рамы",
+        "value": "M"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "Не указан"
+      },
+      {
+        "label": "Состояние",
+        "value": "Sehr Gut"
+      },
+      {
+        "label": "Местоположение",
+        "value": "Brüggen, Nordrhein-Westfalen"
+      },
+      {
+        "label": "Тип подвески",
+        "value": "Передняя"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "29\""
+      },
+      {
+        "label": "Материал рамы",
+        "value": "Алюминий"
+      },
+      {
+        "label": "Тормоза",
+        "value": "Дисковые гидравлические"
+      },
+      {
+        "label": "Ход подвески",
+        "value": "120 мм"
+      }
+    ],
+    "isNew": false,
+    "isFavorite": false,
+    "rating": "3.9",
+    "reviews": 23,
+    "reviewCount": 38,
+    "description": "Надежный горный велосипед Canyon Sender CFR Mullet для активного отдыха и экстремальных приключений. Отличная проходимость по любой местности.",
+    "features": [
+      "Амортизационная вилка",
+      "Дисковые тормоза",
+      "Широкие покрышки",
+      "Прочная рама"
+    ],
+    "deliveryInfo": "Только самовывоз",
+    "warranty": "2 года на раму, 1 год на компоненты",
+    "source": "kleinanzeigen",
+    "originalUrl": "https://www.kleinanzeigen.de/s-anzeige/canyon-sender-cfr-mullet-bike-medium-2024/3220299103-217-1204",
+    "condition": "Sehr Gut",
+    "year": 2024,
+    "wheelDiameter": null,
+    "location": "Brüggen, Nordrhein-Westfalen",
+    "isNegotiable": false,
+    "addedAt": "2025-10-19T16:03:57.092Z",
+    "discipline": "Downhill"
+  },
+  {
+    "id": 21,
+    "name": "Canyon Sender",
+    "category": "Горный",
+    "brand": "Canyon",
+    "model": "Sender",
+    "size": "L",
+    "price": 3090,
+    "originalPrice": null,
+    "discount": 0,
+    "image": "src/images/bikes/id21/0.webp",
+    "images": [
+      "src/images/bikes/id21/0.webp",
+      "src/images/bikes/id21/1.webp",
+      "src/images/bikes/id21/2.webp",
+      "src/images/bikes/id21/3.webp",
+      "src/images/bikes/id21/4.webp"
+    ],
+    "specs": [
+      {
+        "label": "Бренд",
+        "value": "Canyon"
+      },
+      {
+        "label": "Модель",
+        "value": "Sender"
+      },
+      {
+        "label": "Год выпуска",
+        "value": "Не указан"
+      },
+      {
+        "label": "Размер рамы",
+        "value": "L"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "Не указан"
+      },
+      {
+        "label": "Состояние",
+        "value": "Sehr Gut"
+      },
+      {
+        "label": "Местоположение",
+        "value": "Sachsen - Chemnitz"
+      },
+      {
+        "label": "Тип подвески",
+        "value": "Передняя"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "29\""
+      },
+      {
+        "label": "Материал рамы",
+        "value": "Алюминий"
+      },
+      {
+        "label": "Тормоза",
+        "value": "Дисковые гидравлические"
+      },
+      {
+        "label": "Ход подвески",
+        "value": "120 мм"
+      }
+    ],
+    "isNew": false,
+    "isFavorite": false,
+    "rating": "4.6",
+    "reviews": 29,
+    "reviewCount": 46,
+    "description": "Schweren Herzens trenne ich mich von meinem geliebten Canyon Sender. Das Bike hat mir viele unvergessliche Momente beschert und wurde immer mit größter Sorgfalt behandelt. Es befindet sich in einem sehr guten Zustand und ist bereit für neue Abenteuer!",
+    "features": [
+      "Амортизационная вилка",
+      "Дисковые тормоза",
+      "Широкие покрышки",
+      "Прочная рама"
+    ],
+    "deliveryInfo": "Только самовывоз",
+    "warranty": "2 года на раму, 1 год на компоненты",
+    "source": "kleinanzeigen",
+    "originalUrl": "https://www.kleinanzeigen.de/s-anzeige/canyon-sender-mit-fox-40/3212633961-217-3878",
+    "condition": "Sehr Gut",
+    "year": null,
+    "wheelDiameter": null,
+    "location": "Sachsen - Chemnitz",
+    "isNegotiable": true,
+    "addedAt": "2025-10-19T16:04:43.604Z",
+    "discipline": "Downhill"
+  },
+  {
+    "id": 22,
+    "name": "Commencal Supreme Team Edition",
+    "category": "Горный",
+    "brand": "Commencal",
+    "model": "Supreme Team Edition",
+    "size": "L",
+    "price": 2483,
+    "originalPrice": null,
+    "discount": 0,
+    "image": "src/images/bikes/id22/0.webp",
+    "images": [
+      "src/images/bikes/id22/0.webp",
+      "src/images/bikes/id22/1.webp",
+      "src/images/bikes/id22/2.webp",
+      "src/images/bikes/id22/3.webp",
+      "src/images/bikes/id22/4.webp"
+    ],
+    "specs": [
+      {
+        "label": "Бренд",
+        "value": "Commencal"
+      },
+      {
+        "label": "Модель",
+        "value": "Supreme Team Edition"
+      },
+      {
+        "label": "Год выпуска",
+        "value": "2020"
+      },
+      {
+        "label": "Размер рамы",
+        "value": "L"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "Не указан"
+      },
+      {
+        "label": "Состояние",
+        "value": "gut"
+      },
+      {
+        "label": "Местоположение",
+        "value": "Schwäbisch Hall, Baden-Württemberg"
+      },
+      {
+        "label": "Тип подвески",
+        "value": "Передняя"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "29\""
+      },
+      {
+        "label": "Материал рамы",
+        "value": "Алюминий"
+      },
+      {
+        "label": "Тормоза",
+        "value": "Дисковые гидравлические"
+      },
+      {
+        "label": "Ход подвески",
+        "value": "120 мм"
+      }
+    ],
+    "isNew": false,
+    "isFavorite": false,
+    "rating": "3.9",
+    "reviews": 17,
+    "reviewCount": 49,
+    "description": "Hallo ich gebe hiermit mein Commencal Supreme team Edition ab. Das Rad wurde immer artgerecht bewegt. Das Rad hat ein normale Gebrauchspuren die bei dem Sport leider nicht ausbleigen. Es hat aber KEINE DELLEN oder RISSE. Außerdem gebe zu dem Rad noch den originalen Rockshox Superdeluxe Ult + ODI Numberplate . Die Hinterbaulager wurden anfang 25 neu gemacht und laufen perfekt.",
+    "features": [
+      "Амортизационная вилка",
+      "Дисковые тормоза",
+      "Широкие покрышки",
+      "Прочная рама"
+    ],
+    "deliveryInfo": "Только самовывоз",
+    "warranty": "2 года на раму, 1 год на компоненты",
+    "source": "kleinanzeigen",
+    "originalUrl": "https://www.kleinanzeigen.de/s-anzeige/commencal-supreme-team-2020-gr-xl/3175113387-217-15243",
+    "condition": "gut",
+    "year": 2020,
+    "wheelDiameter": null,
+    "location": "Schwäbisch Hall, Baden-Württemberg",
+    "isNegotiable": true,
+    "addedAt": "2025-10-19T16:05:02.965Z",
+    "discipline": "Downhill"
+  },
+  {
+    "id": 23,
+    "name": "Cube Two15",
+    "category": "Горный",
+    "brand": "Cube",
+    "model": "Two15",
+    "size": "L",
+    "price": 2050,
+    "originalPrice": null,
+    "discount": 0,
+    "image": "src/images/bikes/id23/0.webp",
+    "images": [
+      "src/images/bikes/id23/0.webp",
+      "src/images/bikes/id23/1.webp",
+      "src/images/bikes/id23/2.webp",
+      "src/images/bikes/id23/3.webp",
+      "src/images/bikes/id23/4.webp"
+    ],
+    "specs": [
+      {
+        "label": "Бренд",
+        "value": "Cube"
+      },
+      {
+        "label": "Модель",
+        "value": "Two15"
+      },
+      {
+        "label": "Год выпуска",
+        "value": "Не указан"
+      },
+      {
+        "label": "Размер рамы",
+        "value": "L"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "Не указан"
+      },
+      {
+        "label": "Состояние",
+        "value": "Хорошее"
+      },
+      {
+        "label": "Местоположение",
+        "value": "Heidelberg"
+      },
+      {
+        "label": "Тип подвески",
+        "value": "Передняя"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "29\""
+      },
+      {
+        "label": "Материал рамы",
+        "value": "Алюминий"
+      },
+      {
+        "label": "Тормоза",
+        "value": "Дисковые гидравлические"
+      },
+      {
+        "label": "Ход подвески",
+        "value": "120 мм"
+      }
+    ],
+    "isNew": false,
+    "isFavorite": false,
+    "rating": "3.7",
+    "reviews": 31,
+    "reviewCount": 19,
+    "description": "Ich verkaufe mein DH aus Zeitgründen. Das Bike wurde sehr selten gefahren und hat die meiste Zeit im Keller verbracht. Ich habe damals das Fahrwerk ausgetauscht. Macht total Laune mit dem Bike die Trails zu fahren.",
+    "features": [
+      "Амортизационная вилка",
+      "Дисковые тормоза",
+      "Широкие покрышки",
+      "Прочная рама"
+    ],
+    "deliveryInfo": "Только самовывоз",
+    "warranty": "2 года на раму, 1 год на компоненты",
+    "source": "kleinanzeigen",
+    "originalUrl": "https://www.kleinanzeigen.de/s-anzeige/cube-two15-custom-build-marzocchi-bomber-58-rahmengroesse-l/3175929605-217-9178",
+    "condition": "Хорошее",
+    "year": null,
+    "wheelDiameter": null,
+    "location": "Heidelberg",
+    "isNegotiable": true,
+    "addedAt": "2025-10-19T16:05:18.609Z",
+    "discipline": "Другое"
+  },
+  {
+    "id": 999,
+    "name": "TEST BIKE - Удалить через /delete 999",
+    "brand": "Test Brand",
+    "model": "Delete Test Model",
+    "price": 100,
+    "originalPrice": 100,
+    "discountPercentage": 0,
+    "category": "Горный",
+    "size": "L",
+    "year": 2024,
+    "condition": "Отличное",
+    "description": "Тестовый велосипед для проверки команды /delete",
+    "images": [],
+    "technicalSummary": "Тестовый велосипед",
+    "conditionRating": 10,
+    "url": "https://test.com/delete-test",
+    "discipline": "Другое"
+  },
+  {
+    "id": 1000,
+    "name": "Commencal FRS furious",
+    "category": "Горный",
+    "brand": "Commencal",
+    "model": "FRS furious",
+    "size": "S",
+    "price": 2450,
+    "originalPrice": null,
+    "discount": 0,
+    "image": "src/images/bikes/id1000/0.webp",
+    "images": [
+      "src/images/bikes/id1000/0.webp",
+      "src/images/bikes/id1000/1.webp",
+      "src/images/bikes/id1000/2.webp",
+      "src/images/bikes/id1000/3.webp",
+      "src/images/bikes/id1000/4.webp"
+    ],
+    "specs": [
+      {
+        "label": "Бренд",
+        "value": "Commencal"
+      },
+      {
+        "label": "Модель",
+        "value": "FRS furious"
+      },
+      {
+        "label": "Год выпуска",
+        "value": "2021"
+      },
+      {
+        "label": "Размер рамы",
+        "value": "S"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "Не указан"
+      },
+      {
+        "label": "Состояние",
+        "value": "Sehr Gut"
+      },
+      {
+        "label": "Местоположение",
+        "value": "Bayern - Ammerndorf"
+      },
+      {
+        "label": "Тип подвески",
+        "value": "Передняя"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "29\""
+      },
+      {
+        "label": "Материал рамы",
+        "value": "Алюминий"
+      },
+      {
+        "label": "Тормоза",
+        "value": "Дисковые гидравлические"
+      },
+      {
+        "label": "Ход подвески",
+        "value": "120 мм"
+      }
+    ],
+    "isNew": false,
+    "isFavorite": false,
+    "rating": "3.2",
+    "reviews": 50,
+    "reviewCount": 50,
+    "description": "Selling small amout of time used commencal FRS in size small. Frame broke and it was repair with laser welding technic and than improved strength with carbon fiber around it :)",
+    "features": [
+      "Амортизационная вилка",
+      "Дисковые тормоза",
+      "Широкие покрышки",
+      "Прочная рама"
+    ],
+    "deliveryInfo": "Доставка доступна",
+    "warranty": "2 года на раму, 1 год на компоненты",
+    "source": "kleinanzeigen",
+    "originalUrl": "https://www.kleinanzeigen.de/s-anzeige/commencal-frs-furious-2021-size-s/3209226929-217-5662?utm_source=copyToPasteboard&utm_campaign=socialbuttons&utm_medium=social&utm_content=app_ios",
+    "condition": "Sehr Gut",
+    "year": 2021,
+    "wheelDiameter": null,
+    "location": "Bayern - Ammerndorf",
+    "isNegotiable": false,
+    "addedAt": "2025-10-19T19:09:42.437Z"
+  },
+  {
+    "id": 1001,
+    "name": "Commencal Clash",
+    "category": "Горный",
+    "brand": "Commencal",
+    "model": "Clash",
+    "size": "L",
+    "price": 2400,
+    "originalPrice": null,
+    "discount": 0,
+    "image": "src/images/bikes/id1001/0.webp",
+    "images": [
+      "src/images/bikes/id1001/0.webp",
+      "src/images/bikes/id1001/1.webp",
+      "src/images/bikes/id1001/2.webp",
+      "src/images/bikes/id1001/3.webp",
+      "src/images/bikes/id1001/4.webp"
+    ],
+    "specs": [
+      {
+        "label": "Бренд",
+        "value": "Commencal"
+      },
+      {
+        "label": "Модель",
+        "value": "Clash"
+      },
+      {
+        "label": "Год выпуска",
+        "value": "Не указан"
+      },
+      {
+        "label": "Размер рамы",
+        "value": "L"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "Не указан"
+      },
+      {
+        "label": "Состояние",
+        "value": "gut"
+      },
+      {
+        "label": "Местоположение",
+        "value": "Kr. Dachau - Dachau"
+      },
+      {
+        "label": "Тип подвески",
+        "value": "Передняя"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "29\""
+      },
+      {
+        "label": "Материал рамы",
+        "value": "Алюминий"
+      },
+      {
+        "label": "Тормоза",
+        "value": "Дисковые гидравлические"
+      },
+      {
+        "label": "Ход подвески",
+        "value": "120 мм"
+      }
+    ],
+    "isNew": false,
+    "isFavorite": false,
+    "rating": "3.9",
+    "reviews": 12,
+    "reviewCount": 17,
+    "description": "Ich verkaufe hier mein kaum genutztes Clash Commencal (Rahmengröße L). Das Fahrrad wurde nur einmal im Bikepark und sonst jediglich auf Trails im Wald bewegt. Zum herumstehen ist es einfach zu schade deswegen würd ich es gern abgeben. Probefahrten sind gerne gesehen. Fahrrad ist natürlich nicht so schmutzig wie auf den Bildern :). Bei Fragen oder Interesse einfach melden. Verkauf unter Ausschluss jeglicher Garantie oder Gewährleistung.",
+    "features": [
+      "Амортизационная вилка",
+      "Дисковые тормоза",
+      "Широкие покрышки",
+      "Прочная рама"
+    ],
+    "deliveryInfo": "Доставка доступна",
+    "warranty": "2 года на раму, 1 год на компоненты",
+    "source": "kleinanzeigen",
+    "originalUrl": "https://www.kleinanzeigen.de/s-anzeige/commencal-clash/3221581962-217-5977?utm_source=telegram&utm_campaign=socialbuttons&utm_medium=social&utm_content=app_ios",
+    "condition": "gut",
+    "year": null,
+    "wheelDiameter": null,
+    "location": "Kr. Dachau - Dachau",
+    "isNegotiable": true,
+    "addedAt": "2025-10-20T17:35:06.156Z"
+  },
+  {
+    "id": 1002,
+    "name": "Mondraker Summum",
+    "category": "Горный",
+    "brand": "Mondraker",
+    "model": "Summum",
+    "size": "L",
+    "price": 1600,
+    "originalPrice": null,
+    "discount": 0,
+    "image": "src/images/bikes/id1002/0.webp",
+    "images": [
+      "src/images/bikes/id1002/0.webp",
+      "src/images/bikes/id1002/1.webp",
+      "src/images/bikes/id1002/2.webp",
+      "src/images/bikes/id1002/3.webp",
+      "src/images/bikes/id1002/4.webp"
+    ],
+    "specs": [
+      {
+        "label": "Бренд",
+        "value": "Mondraker"
+      },
+      {
+        "label": "Модель",
+        "value": "Summum"
+      },
+      {
+        "label": "Год выпуска",
+        "value": "Не указан"
+      },
+      {
+        "label": "Размер рамы",
+        "value": "L"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "Не указан"
+      },
+      {
+        "label": "Состояние",
+        "value": "sehr gut"
+      },
+      {
+        "label": "Местоположение",
+        "value": "Bayern - Straubing"
+      },
+      {
+        "label": "Тип подвески",
+        "value": "Передняя"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "29\""
+      },
+      {
+        "label": "Материал рамы",
+        "value": "Алюминий"
+      },
+      {
+        "label": "Тормоза",
+        "value": "Дисковые гидравлические"
+      },
+      {
+        "label": "Ход подвески",
+        "value": "120 мм"
+      }
+    ],
+    "isNew": false,
+    "isFavorite": false,
+    "rating": "4.4",
+    "reviews": 17,
+    "reviewCount": 33,
+    "description": "Hallo, verkaufe mein Mondraker Summum. Zustand sehr gut, siehe Bilder. Rahmengröße L. 27,5 Laufräder. Bei Fragen einfach melden, Details aus den Bildern entnehmen. Der Verkauf erfolgt unter jeglichem Ausschluss der Sachmangel Haftung. Privatverkauf. Nachricht senden",
+    "features": [
+      "Амортизационная вилка",
+      "Дисковые тормоза",
+      "Широкие покрышки",
+      "Прочная рама"
+    ],
+    "deliveryInfo": "Только самовывоз",
+    "warranty": "2 года на раму, 1 год на компоненты",
+    "source": "kleinanzeigen",
+    "originalUrl": "https://www.kleinanzeigen.de/s-anzeige/mondraker-summum/3157957310-217-7337?utm_source=telegram&utm_campaign=socialbuttons&utm_medium=social&utm_content=app_ios",
+    "condition": "sehr gut",
+    "year": null,
+    "wheelDiameter": null,
+    "location": "Bayern - Straubing",
+    "isNegotiable": false,
+    "addedAt": "2025-10-20T17:35:32.198Z"
+  },
+  {
+    "id": 1003,
+    "name": "Scott Patron 930",
+    "category": "Горный",
+    "brand": "Scott",
+    "model": "Patron 930",
+    "size": "M",
+    "price": 1800,
+    "originalPrice": null,
+    "discount": 0,
+    "image": "src/images/bikes/id1003/0.webp",
+    "images": [
+      "src/images/bikes/id1003/0.webp",
+      "src/images/bikes/id1003/1.webp",
+      "src/images/bikes/id1003/2.webp",
+      "src/images/bikes/id1003/3.webp",
+      "src/images/bikes/id1003/4.webp"
+    ],
+    "specs": [
+      {
+        "label": "Бренд",
+        "value": "Scott"
+      },
+      {
+        "label": "Модель",
+        "value": "Patron 930"
+      },
+      {
+        "label": "Год выпуска",
+        "value": "2023"
+      },
+      {
+        "label": "Размер рамы",
+        "value": "M"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "Не указан"
+      },
+      {
+        "label": "Состояние",
+        "value": "Sehr Gut"
+      },
+      {
+        "label": "Местоположение",
+        "value": "Thüringen - Bad Berka"
+      },
+      {
+        "label": "Тип подвески",
+        "value": "Передняя"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "29\""
+      },
+      {
+        "label": "Материал рамы",
+        "value": "Алюминий"
+      },
+      {
+        "label": "Тормоза",
+        "value": "Дисковые гидравлические"
+      },
+      {
+        "label": "Ход подвески",
+        "value": "120 мм"
+      }
+    ],
+    "isNew": false,
+    "isFavorite": false,
+    "rating": "3.0",
+    "reviews": 36,
+    "reviewCount": 28,
+    "description": "Hallo an alle Radsport Begeisterten Ich biete hier mein Scott Patron 930 aus dem Jahr 2023 an, da ich mir ein Neues Bike geholt habe. Dass Rad hat wenig Laufleistung und wenig KM (720km) Ich selber habe an dem Rad nur ein bisschen was an der Optik gemacht wie auf den Bildern zusehen. Es sind aber auch noch Orginal Lenker und Pedalen vorhanden. Bei Interesse einfach anschreiben, Rad kann gern besichtigt und Probegefahren Werden.",
+    "features": [
+      "Амортизационная вилка",
+      "Дисковые тормоза",
+      "Широкие покрышки",
+      "Прочная рама"
+    ],
+    "deliveryInfo": "Доставка доступна",
+    "warranty": "2 года на раму, 1 год на компоненты",
+    "source": "kleinanzeigen",
+    "originalUrl": "https://www.kleinanzeigen.de/s-anzeige/scott-patron-930-e-mtb-fully/3221870529-217-12341?utm_source=telegram&utm_campaign=socialbuttons&utm_medium=social&utm_content=app_ios",
+    "condition": "Sehr Gut",
+    "year": 2023,
+    "wheelDiameter": null,
+    "location": "Thüringen - Bad Berka",
+    "isNegotiable": true,
+    "addedAt": "2025-10-20T17:36:24.972Z"
+  },
+  {
+    "id": 1004,
+    "name": "Propain Spindrift Al 5",
+    "category": "Горный",
+    "brand": "Propain",
+    "model": "Spindrift Al 5",
+    "size": "L",
+    "price": 2400,
+    "originalPrice": null,
+    "discount": 0,
+    "image": "src/images/bikes/id1004/0.webp",
+    "images": [
+      "src/images/bikes/id1004/0.webp"
+    ],
+    "specs": [
+      {
+        "label": "Бренд",
+        "value": "Propain"
+      },
+      {
+        "label": "Модель",
+        "value": "Spindrift Al 5"
+      },
+      {
+        "label": "Год выпуска",
+        "value": "Не указан"
+      },
+      {
+        "label": "Размер рамы",
+        "value": "L"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "29\""
+      },
+      {
+        "label": "Состояние",
+        "value": "Defekt"
+      },
+      {
+        "label": "Местоположение",
+        "value": "Baden-Württemberg - Forst"
+      },
+      {
+        "label": "Тип подвески",
+        "value": "Передняя"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "29\""
+      },
+      {
+        "label": "Материал рамы",
+        "value": "Алюминий"
+      },
+      {
+        "label": "Тормоза",
+        "value": "Дисковые гидравлические"
+      },
+      {
+        "label": "Ход подвески",
+        "value": "120 мм"
+      }
+    ],
+    "isNew": false,
+    "isFavorite": false,
+    "rating": "3.8",
+    "reviews": 22,
+    "reviewCount": 53,
+    "description": "Hat eine RockShox ZEB R RockShox Vivid Coil Select R Vorbau Sixpack Vertic 50 Sattelstüze Aluminium 350 mm Sattel von Reverse vorher war der Sixpack Kamikazed drauf denn kann man aber dazu kaufen Bremsen SRAM DB8 :Laufrad NEWMEN Performance 30 Base Reifen Schwalbe Magic Mary/Albert Gravity Pro Radial Reifen- Set up tubless Es gibt paar Mängel man bräuchte neue Pedalen da die durchgebrochen sind und ein neues Laufrad da des paar Schläge hat und neue Bremsbeläge und neue hinterbremse und mal ein l...",
+    "features": [
+      "Амортизационная вилка",
+      "Дисковые тормоза",
+      "Широкие покрышки",
+      "Прочная рама"
+    ],
+    "deliveryInfo": "Доставка доступна",
+    "warranty": "2 года на раму, 1 год на компоненты",
+    "source": "kleinanzeigen",
+    "originalUrl": "https://www.kleinanzeigen.de/s-anzeige/propain-spindrift-al-5-29-zoll-gr-l/3221681523-217-8794?utm_source=telegram&utm_campaign=socialbuttons&utm_medium=social&utm_content=app_ios",
+    "condition": "Defekt",
+    "year": null,
+    "wheelDiameter": "29\"",
+    "location": "Baden-Württemberg - Forst",
+    "isNegotiable": true,
+    "addedAt": "2025-10-20T17:37:17.964Z"
+  },
+  {
+    "id": 1005,
+    "name": "YT TUES AL",
+    "category": "Горный",
+    "brand": "YT",
+    "model": "TUES AL",
+    "size": "M",
+    "price": 1600,
+    "originalPrice": null,
+    "discount": 0,
+    "image": "src/images/bikes/id1005/0.webp",
+    "images": [
+      "src/images/bikes/id1005/0.webp",
+      "src/images/bikes/id1005/1.webp",
+      "src/images/bikes/id1005/2.webp",
+      "src/images/bikes/id1005/3.webp",
+      "src/images/bikes/id1005/4.webp"
+    ],
+    "specs": [
+      {
+        "label": "Бренд",
+        "value": "YT"
+      },
+      {
+        "label": "Модель",
+        "value": "TUES AL"
+      },
+      {
+        "label": "Год выпуска",
+        "value": "2018"
+      },
+      {
+        "label": "Размер рамы",
+        "value": "M"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "Не указан"
+      },
+      {
+        "label": "Состояние",
+        "value": "Sehr Gut"
+      },
+      {
+        "label": "Местоположение",
+        "value": "Bayern - Landshut"
+      },
+      {
+        "label": "Тип подвески",
+        "value": "Передняя"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "29\""
+      },
+      {
+        "label": "Материал рамы",
+        "value": "Алюминий"
+      },
+      {
+        "label": "Тормоза",
+        "value": "Дисковые гидравлические"
+      },
+      {
+        "label": "Ход подвески",
+        "value": "120 мм"
+      }
+    ],
+    "isNew": false,
+    "isFavorite": false,
+    "rating": "4.2",
+    "reviews": 21,
+    "reviewCount": 26,
+    "description": "Verkaufe mein YT weil ich ein slopeduro möchte es ist im Guten Zustand außer das tretlager müsste gewechselt werden ist aber noch fahrbar die Gabel hab ich nachgerüstet weil die alte coil Gabel mir zu hart war und man kann die nicht so gut einstellen die neue ist in einen super Zustand das Fahrrad ist sehr stabil und es macht Spaß damit zu fahren aber für das wo ich wohne ist es nicht so gut weil das bike ein downhill ist und es ist fast nur für denn bike park das Fahrrad hatt keine Risse oder D...",
+    "features": [
+      "Амортизационная вилка",
+      "Дисковые тормоза",
+      "Широкие покрышки",
+      "Прочная рама"
+    ],
+    "deliveryInfo": "Доставка доступна",
+    "warranty": "2 года на раму, 1 год на компоненты",
+    "source": "kleinanzeigen",
+    "originalUrl": "https://www.kleinanzeigen.de/s-anzeige/yt-tues-al-2018-rot-schwarz/3221674210-217-6403?utm_source=telegram&utm_campaign=socialbuttons&utm_medium=social&utm_content=app_ios",
+    "condition": "Sehr Gut",
+    "year": 2018,
+    "wheelDiameter": null,
+    "location": "Bayern - Landshut",
+    "isNegotiable": true,
+    "addedAt": "2025-10-20T17:37:51.811Z"
+  },
+  {
+    "id": 1006,
+    "name": "Norco Aurum C7",
+    "category": "Горный",
+    "brand": "Norco",
+    "model": "Aurum C7",
+    "size": "M",
+    "price": 1450,
+    "originalPrice": null,
+    "discount": 0,
+    "image": "src/images/bikes/id1006/0.webp",
+    "images": [
+      "src/images/bikes/id1006/0.webp",
+      "src/images/bikes/id1006/1.webp",
+      "src/images/bikes/id1006/2.webp",
+      "src/images/bikes/id1006/3.webp",
+      "src/images/bikes/id1006/4.webp"
+    ],
+    "specs": [
+      {
+        "label": "Бренд",
+        "value": "Norco"
+      },
+      {
+        "label": "Модель",
+        "value": "Aurum C7"
+      },
+      {
+        "label": "Год выпуска",
+        "value": "Не указан"
+      },
+      {
+        "label": "Размер рамы",
+        "value": "M"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "Не указан"
+      },
+      {
+        "label": "Состояние",
+        "value": "gut"
+      },
+      {
+        "label": "Местоположение",
+        "value": "34281 Hessen - Gudensberg"
+      },
+      {
+        "label": "Тип подвески",
+        "value": "Передняя"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "29\""
+      },
+      {
+        "label": "Материал рамы",
+        "value": "Алюминий"
+      },
+      {
+        "label": "Тормоза",
+        "value": "Дисковые гидравлические"
+      },
+      {
+        "label": "Ход подвески",
+        "value": "120 мм"
+      }
+    ],
+    "isNew": false,
+    "isFavorite": false,
+    "rating": "4.3",
+    "reviews": 27,
+    "reviewCount": 15,
+    "description": "Ich biete hier mein eine Saison gefahrenes und gut gepflegt Norco Aurum C 7. Habe es mir seinerzeit selber komplett aufgebaut und dem entsprenden auch nur die besten Parts verbaut. Es funktioniert einwandfrei. Die Bremsbeläge sind schon etwas älter und müsste gewechselt werden. Die neuen sind schon mit dabei(und können falls nötig auch von mir eingebaut werden). Ansonsten ist es in einem einwandfreien Zustand.",
+    "features": [
+      "Амортизационная вилка",
+      "Дисковые тормоза",
+      "Широкие покрышки",
+      "Прочная рама"
+    ],
+    "deliveryInfo": "Только самовывоз",
+    "warranty": "2 года на раму, 1 год на компоненты",
+    "source": "kleinanzeigen",
+    "originalUrl": "https://www.kleinanzeigen.de/s-anzeige/norco-aurum-c7-carbon/3181415271-217-4423?utm_source=telegram&utm_campaign=socialbuttons&utm_medium=social&utm_content=app_ios",
+    "condition": "gut",
+    "year": null,
+    "wheelDiameter": null,
+    "location": "34281 Hessen - Gudensberg",
+    "isNegotiable": false,
+    "addedAt": "2025-10-20T17:38:20.894Z"
+  },
+  {
+    "id": 1007,
+    "name": "YT tues downhill",
+    "category": "Горный",
+    "brand": "YT",
+    "model": "tues downhill",
+    "size": "M",
+    "price": 1349,
+    "originalPrice": null,
+    "discount": 0,
+    "image": "src/images/bikes/id1007/0.webp",
+    "images": [
+      "src/images/bikes/id1007/0.webp",
+      "src/images/bikes/id1007/1.webp",
+      "src/images/bikes/id1007/2.webp",
+      "src/images/bikes/id1007/3.webp",
+      "src/images/bikes/id1007/4.webp"
+    ],
+    "specs": [
+      {
+        "label": "Бренд",
+        "value": "YT"
+      },
+      {
+        "label": "Модель",
+        "value": "tues downhill"
+      },
+      {
+        "label": "Год выпуска",
+        "value": "2018"
+      },
+      {
+        "label": "Размер рамы",
+        "value": "M"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "Не указан"
+      },
+      {
+        "label": "Состояние",
+        "value": "gut"
+      },
+      {
+        "label": "Местоположение",
+        "value": "Nordrhein-Westfalen - Jülich"
+      },
+      {
+        "label": "Тип подвески",
+        "value": "Передняя"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "29\""
+      },
+      {
+        "label": "Материал рамы",
+        "value": "Алюминий"
+      },
+      {
+        "label": "Тормоза",
+        "value": "Дисковые гидравлические"
+      },
+      {
+        "label": "Ход подвески",
+        "value": "120 мм"
+      }
+    ],
+    "isNew": false,
+    "isFavorite": false,
+    "rating": "3.9",
+    "reviews": 9,
+    "reviewCount": 34,
+    "description": "Hallo, Verkaufe mein YT tues downhill aus 2018 Teile: -Rockshox boxxer federgabel -Rockshox dämpfer -Kore Hinterradfelge/Narbe -Alexrims Vorderradfelge Costum gemacht: -Komplett neu lackierter Rahmen (inkl. Federgabel) -Neuer Lenker Schwarz -Neue Griffe Pink/Lila Das Fahrrad hat keine Gangschaltung und wurde auf singlespeed umgebaut (siehe Bilder), da es einschließlich für bergab Fahrten verwendet wurde. Die Steckachse in der Vorderen Felge ist kaputt, wurde aber mit einer Gewindestange stabilis...",
+    "features": [
+      "Амортизационная вилка",
+      "Дисковые тормоза",
+      "Широкие покрышки",
+      "Прочная рама"
+    ],
+    "deliveryInfo": "Только самовывоз",
+    "warranty": "2 года на раму, 1 год на компоненты",
+    "source": "kleinanzeigen",
+    "originalUrl": "https://www.kleinanzeigen.de/s-anzeige/yt-tues-downhill-2018-costum/3186572632-217-1718?utm_source=telegram&utm_campaign=socialbuttons&utm_medium=social&utm_content=app_ios",
+    "condition": "gut",
+    "year": 2018,
+    "wheelDiameter": null,
+    "location": "Nordrhein-Westfalen - Jülich",
+    "isNegotiable": true,
+    "addedAt": "2025-10-20T17:38:52.534Z"
+  },
+  {
+    "id": 1008,
+    "name": "Mafia Bikes Blackjack D",
+    "category": "Горный",
+    "brand": "Mafia Bikes",
+    "model": "Blackjack D",
+    "size": "M",
+    "price": 375,
+    "originalPrice": null,
+    "discount": 0,
+    "image": "src/images/bikes/id1008/0.webp",
+    "images": [
+      "src/images/bikes/id1008/0.webp",
+      "src/images/bikes/id1008/1.webp",
+      "src/images/bikes/id1008/2.webp",
+      "src/images/bikes/id1008/3.webp",
+      "src/images/bikes/id1008/4.webp"
+    ],
+    "specs": [
+      {
+        "label": "Бренд",
+        "value": "Mafia Bikes"
+      },
+      {
+        "label": "Модель",
+        "value": "Blackjack D"
+      },
+      {
+        "label": "Год выпуска",
+        "value": "Не указан"
+      },
+      {
+        "label": "Размер рамы",
+        "value": "M"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "Не указан"
+      },
+      {
+        "label": "Состояние",
+        "value": "gut"
+      },
+      {
+        "label": "Местоположение",
+        "value": "Nordrhein-Westfalen - Jülich"
+      },
+      {
+        "label": "Тип подвески",
+        "value": "Передняя"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "29\""
+      },
+      {
+        "label": "Материал рамы",
+        "value": "Алюминий"
+      },
+      {
+        "label": "Тормоза",
+        "value": "Дисковые гидравлические"
+      },
+      {
+        "label": "Ход подвески",
+        "value": "120 мм"
+      }
+    ],
+    "isNew": false,
+    "isFavorite": false,
+    "rating": "4.9",
+    "reviews": 35,
+    "reviewCount": 15,
+    "description": "Guten Tag, Verkaufe mein Mafiabikes Blackjack D dirtjump Es wurde einmal komplett neu in Schwarz lackiert, hat neuen Vorbau bekommen, neuen lenker bekommen, neue Griffe bekommen und andere Pedale. Fahrrad fährt und hat keine Probleme. Das Fahrrad wird mit einem Teileträger dazu verkauft (siehe bilder). Der Teileträger ist nicht komplett. Keine Pedale, keine Kette und die Bremse Funktioniert nicht. Würde das Bike auch ohne den Teileträger abgeben für 275 €. Die ist ein Privatverkauf. Keine Gewähr...",
+    "features": [
+      "Амортизационная вилка",
+      "Дисковые тормоза",
+      "Широкие покрышки",
+      "Прочная рама"
+    ],
+    "deliveryInfo": "Только самовывоз",
+    "warranty": "2 года на раму, 1 год на компоненты",
+    "source": "kleinanzeigen",
+    "originalUrl": "https://www.kleinanzeigen.de/s-anzeige/mafia-bikes-blackjack-d-dirtjump-teiletraeger/3186968535-217-1718?utm_source=telegram&utm_campaign=socialbuttons&utm_medium=social&utm_content=app_ios",
+    "condition": "gut",
+    "year": null,
+    "wheelDiameter": null,
+    "location": "Nordrhein-Westfalen - Jülich",
+    "isNegotiable": true,
+    "addedAt": "2025-10-20T17:39:27.288Z"
+  },
+  {
+    "id": 1009,
+    "name": "Specialized Demo 2016 L",
+    "category": "Горный",
+    "brand": "Specialized",
+    "model": "Demo 2016 L",
+    "size": "M",
+    "price": 1750,
+    "originalPrice": null,
+    "discount": 0,
+    "image": "src/images/bikes/id1009/0.webp",
+    "images": [
+      "src/images/bikes/id1009/0.webp",
+      "src/images/bikes/id1009/1.webp",
+      "src/images/bikes/id1009/2.webp",
+      "src/images/bikes/id1009/3.webp",
+      "src/images/bikes/id1009/4.webp"
+    ],
+    "specs": [
+      {
+        "label": "Бренд",
+        "value": "Specialized"
+      },
+      {
+        "label": "Модель",
+        "value": "Demo 2016 L"
+      },
+      {
+        "label": "Год выпуска",
+        "value": "2016"
+      },
+      {
+        "label": "Размер рамы",
+        "value": "M"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "Не указан"
+      },
+      {
+        "label": "Состояние",
+        "value": "gut"
+      },
+      {
+        "label": "Местоположение",
+        "value": "Bayern - Oberhausen a.d. Donau"
+      },
+      {
+        "label": "Тип подвески",
+        "value": "Передняя"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "29\""
+      },
+      {
+        "label": "Материал рамы",
+        "value": "Алюминий"
+      },
+      {
+        "label": "Тормоза",
+        "value": "Дисковые гидравлические"
+      },
+      {
+        "label": "Ход подвески",
+        "value": "120 мм"
+      }
+    ],
+    "isNew": false,
+    "isFavorite": false,
+    "rating": "4.3",
+    "reviews": 14,
+    "reviewCount": 17,
+    "description": "Ich biete ein sehr gutes downhill zum Verkauf an. Es steht leider nur noch in der Garage. Folgende Komponenten sind verbaut: Fox 40 Factory Original Ohlins Dämpfer Race Face Ausstattung Shimano Saint Bremsen Hope downhill Laufräder Maxxis Assagei tubeless Singlespeed Antrieb von sb one Verkauf ohne Pedale!!! Rahmenlager sind in einwandfreiem Zustand und frisch geschmiert. Gabelservice wurde auch gemacht. Hab noch einige Verschleißteile auf Lager wie zum Beispiel Rahmenlager, Dichtungen usw… Der ...",
+    "features": [
+      "Амортизационная вилка",
+      "Дисковые тормоза",
+      "Широкие покрышки",
+      "Прочная рама"
+    ],
+    "deliveryInfo": "Только самовывоз",
+    "warranty": "2 года на раму, 1 год на компоненты",
+    "source": "kleinanzeigen",
+    "originalUrl": "https://www.kleinanzeigen.de/s-anzeige/specialized-demo-2016-l-fox-40/3114730880-217-1284?utm_source=telegram&utm_campaign=socialbuttons&utm_medium=social&utm_content=app_ios",
+    "condition": "gut",
+    "year": 2016,
+    "wheelDiameter": null,
+    "location": "Bayern - Oberhausen a.d. Donau",
+    "isNegotiable": true,
+    "addedAt": "2025-10-20T17:39:57.938Z"
+  },
+  {
+    "id": 1010,
+    "name": "Mondraker Summum",
+    "category": "Горный",
+    "brand": "Mondraker",
+    "model": "Summum",
+    "size": "L",
+    "price": 1600,
+    "originalPrice": null,
+    "discount": 0,
+    "image": "src/images/bikes/id1010/0.webp",
+    "images": [
+      "src/images/bikes/id1010/0.webp",
+      "src/images/bikes/id1010/1.webp",
+      "src/images/bikes/id1010/2.webp",
+      "src/images/bikes/id1010/3.webp",
+      "src/images/bikes/id1010/4.webp"
+    ],
+    "specs": [
+      {
+        "label": "Бренд",
+        "value": "Mondraker"
+      },
+      {
+        "label": "Модель",
+        "value": "Summum"
+      },
+      {
+        "label": "Год выпуска",
+        "value": "Не указан"
+      },
+      {
+        "label": "Размер рамы",
+        "value": "L"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "Не указан"
+      },
+      {
+        "label": "Состояние",
+        "value": "sehr gut"
+      },
+      {
+        "label": "Местоположение",
+        "value": "Bayern - Straubing"
+      },
+      {
+        "label": "Тип подвески",
+        "value": "Передняя"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "29\""
+      },
+      {
+        "label": "Материал рамы",
+        "value": "Алюминий"
+      },
+      {
+        "label": "Тормоза",
+        "value": "Дисковые гидравлические"
+      },
+      {
+        "label": "Ход подвески",
+        "value": "120 мм"
+      }
+    ],
+    "isNew": false,
+    "isFavorite": false,
+    "rating": "4.5",
+    "reviews": 43,
+    "reviewCount": 45,
+    "description": "Hallo, verkaufe mein Mondraker Summum. Zustand sehr gut, siehe Bilder. Rahmengröße L. 27,5 Laufräder. Bei Fragen einfach melden, Details aus den Bildern entnehmen. Der Verkauf erfolgt unter jeglichem Ausschluss der Sachmangel Haftung. Privatverkauf. Nachricht senden",
+    "features": [
+      "Амортизационная вилка",
+      "Дисковые тормоза",
+      "Широкие покрышки",
+      "Прочная рама"
+    ],
+    "deliveryInfo": "Только самовывоз",
+    "warranty": "2 года на раму, 1 год на компоненты",
+    "source": "kleinanzeigen",
+    "originalUrl": "https://www.kleinanzeigen.de/s-anzeige/mondraker-summum/3157957310-217-7337?utm_source=telegram&utm_campaign=socialbuttons&utm_medium=social&utm_content=app_ios",
+    "condition": "sehr gut",
+    "year": null,
+    "wheelDiameter": null,
+    "location": "Bayern - Straubing",
+    "isNegotiable": false,
+    "addedAt": "2025-10-20T17:40:25.257Z"
+  },
+  {
+    "id": 1011,
+    "name": "Canyon Spectral 29 CF 7",
+    "category": "Горный",
+    "brand": "Canyon",
+    "model": "Spectral 29 CF 7",
+    "size": "XL",
+    "price": 2299,
+    "originalPrice": null,
+    "discount": 0,
+    "image": "src/images/bikes/id1011/0.webp",
+    "images": [
+      "src/images/bikes/id1011/0.webp",
+      "src/images/bikes/id1011/1.webp",
+      "src/images/bikes/id1011/2.webp",
+      "src/images/bikes/id1011/3.webp",
+      "src/images/bikes/id1011/4.webp"
+    ],
+    "specs": [
+      {
+        "label": "Бренд",
+        "value": "Canyon"
+      },
+      {
+        "label": "Модель",
+        "value": "Spectral 29 CF 7"
+      },
+      {
+        "label": "Год выпуска",
+        "value": "2024"
+      },
+      {
+        "label": "Размер рамы",
+        "value": "XL"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "29\""
+      },
+      {
+        "label": "Состояние",
+        "value": "Sehr Gut"
+      },
+      {
+        "label": "Местоположение",
+        "value": "Nordrhein-Westfalen - Attendorn"
+      },
+      {
+        "label": "Тип подвески",
+        "value": "Передняя"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "29\""
+      },
+      {
+        "label": "Материал рамы",
+        "value": "Алюминий"
+      },
+      {
+        "label": "Тормоза",
+        "value": "Дисковые гидравлические"
+      },
+      {
+        "label": "Ход подвески",
+        "value": "120 мм"
+      }
+    ],
+    "isNew": false,
+    "isFavorite": false,
+    "rating": "4.6",
+    "reviews": 29,
+    "reviewCount": 35,
+    "description": "Ich verkaufe mein Canyon Spectral 29 CF 7 (XL), das ich Ende Juni 2024 gekauft habe. Es befindet sich in einem sehr guten Zustand – wurde nur wenig gefahren und ist zu schade, um ungenutzt herumzustehen, da ich inzwischen hauptsächlich mit dem E-Bike unterwegs bin.",
+    "features": [
+      "Амортизационная вилка",
+      "Дисковые тормоза",
+      "Широкие покрышки",
+      "Прочная рама"
+    ],
+    "deliveryInfo": "Доставка доступна",
+    "warranty": "2 года на раму, 1 год на компоненты",
+    "source": "kleinanzeigen",
+    "originalUrl": "https://www.kleinanzeigen.de/s-anzeige/canyon-spectral-29-zoll-cf-7-xl-neuwertiges-carbon-trailbike/3196196119-217-1481?utm_source=telegram&utm_campaign=socialbuttons&utm_medium=social&utm_content=app_ios",
+    "condition": "Sehr Gut",
+    "year": 2024,
+    "wheelDiameter": "29\"",
+    "location": "Nordrhein-Westfalen - Attendorn",
+    "isNegotiable": true,
+    "addedAt": "2025-10-20T17:41:01.373Z"
+  },
+  {
+    "id": 1012,
+    "name": "Commencal Clash",
+    "category": "Горный",
+    "brand": "Commencal",
+    "model": "Clash",
+    "size": "L",
+    "price": 2400,
+    "originalPrice": null,
+    "discount": 0,
+    "image": "src/images/bikes/id1012/0.webp",
+    "images": [
+      "src/images/bikes/id1012/0.webp",
+      "src/images/bikes/id1012/1.webp",
+      "src/images/bikes/id1012/2.webp",
+      "src/images/bikes/id1012/3.webp",
+      "src/images/bikes/id1012/4.webp"
+    ],
+    "specs": [
+      {
+        "label": "Бренд",
+        "value": "Commencal"
+      },
+      {
+        "label": "Модель",
+        "value": "Clash"
+      },
+      {
+        "label": "Год выпуска",
+        "value": "Не указан"
+      },
+      {
+        "label": "Размер рамы",
+        "value": "L"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "Не указан"
+      },
+      {
+        "label": "Состояние",
+        "value": "Хорошее"
+      },
+      {
+        "label": "Местоположение",
+        "value": "Kr. Dachau - Dachau"
+      },
+      {
+        "label": "Тип подвески",
+        "value": "Передняя"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "29\""
+      },
+      {
+        "label": "Материал рамы",
+        "value": "Алюминий"
+      },
+      {
+        "label": "Тормоза",
+        "value": "Дисковые гидравлические"
+      },
+      {
+        "label": "Ход подвески",
+        "value": "120 мм"
+      }
+    ],
+    "isNew": false,
+    "isFavorite": false,
+    "rating": "3.6",
+    "reviews": 27,
+    "reviewCount": 18,
+    "description": "Ich verkaufe hier mein kaum genutztes Clash Commencal (Rahmengröße L). Das Fahrrad wurde nur einmal im Bikepark und sonst jediglich auf Trails im Wald bewegt. Zum herumstehen ist es einfach zu schade deswegen würd ich es gern abgeben. Probefahrten sind gerne gesehen. Fahrrad ist natürlich nicht so schmutzig wie auf den Bildern :). Bei Fragen oder Interesse einfach melden. Verkauf unter Ausschluss jeglicher Garantie oder Gewährleistung.",
+    "features": [
+      "Амортизационная вилка",
+      "Дисковые тормоза",
+      "Широкие покрышки",
+      "Прочная рама"
+    ],
+    "deliveryInfo": "Доставка доступна",
+    "warranty": "2 года на раму, 1 год на компоненты",
+    "source": "kleinanzeigen",
+    "originalUrl": "https://www.kleinanzeigen.de/s-anzeige/commencal-clash/3221581962-217-5977?utm_source=telegram&utm_campaign=socialbuttons&utm_medium=social&utm_content=app_ios",
+    "condition": "Хорошее",
+    "year": null,
+    "wheelDiameter": null,
+    "location": "Kr. Dachau - Dachau",
+    "isNegotiable": true,
+    "addedAt": "2025-10-20T17:41:32.415Z"
+  },
+  {
+    "id": 1013,
+    "name": "Trek Fuel EX-e 9.5",
+    "category": "Горный",
+    "brand": "Trek",
+    "model": "Fuel EX-e 9.5",
+    "size": "M",
+    "price": 2300,
+    "originalPrice": null,
+    "discount": 0,
+    "image": "src/images/bikes/id1013/0.webp",
+    "images": [
+      "src/images/bikes/id1013/0.webp",
+      "src/images/bikes/id1013/1.webp",
+      "src/images/bikes/id1013/2.webp",
+      "src/images/bikes/id1013/3.webp",
+      "src/images/bikes/id1013/4.webp"
+    ],
+    "specs": [
+      {
+        "label": "Бренд",
+        "value": "Trek"
+      },
+      {
+        "label": "Модель",
+        "value": "Fuel EX-e 9.5"
+      },
+      {
+        "label": "Год выпуска",
+        "value": "2023"
+      },
+      {
+        "label": "Размер рамы",
+        "value": "M"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "29\""
+      },
+      {
+        "label": "Состояние",
+        "value": "gut"
+      },
+      {
+        "label": "Местоположение",
+        "value": "Sachsen - Kamenz"
+      },
+      {
+        "label": "Тип подвески",
+        "value": "Передняя"
+      },
+      {
+        "label": "Диаметр колес",
+        "value": "29\""
+      },
+      {
+        "label": "Материал рамы",
+        "value": "Алюминий"
+      },
+      {
+        "label": "Тормоза",
+        "value": "Дисковые гидравлические"
+      },
+      {
+        "label": "Ход подвески",
+        "value": "120 мм"
+      }
+    ],
+    "isNew": false,
+    "isFavorite": false,
+    "rating": "3.7",
+    "reviews": 33,
+    "reviewCount": 28,
+    "description": "Verkaufe hier ein Trek EX-e Carbon Fully E-Bike mit TQ Motor. Fahrrad. Model 2023 .Reifen vorn und hinten 29\"sowie die Hinterradnabe wurden erneuert. Fahrrad weist normale Gebrauchsspuren auf. Laufleistung beträgt 3800km. Neupreis war 6595€.Bei Fragen einfach anrufen oder schreiben Nachricht senden",
+    "features": [
+      "Амортизационная вилка",
+      "Дисковые тормоза",
+      "Широкие покрышки",
+      "Прочная рама"
+    ],
+    "deliveryInfo": "Только самовывоз",
+    "warranty": "2 года на раму, 1 год на компоненты",
+    "source": "kleinanzeigen",
+    "originalUrl": "https://www.kleinanzeigen.de/s-anzeige/trek-fuel-ex-e-9-5-ebike-fully-carbon/3205932317-217-4114?utm_source=telegram&utm_campaign=socialbuttons&utm_medium=social&utm_content=app_ios",
+    "condition": "gut",
+    "year": 2023,
+    "wheelDiameter": "29\"",
+    "location": "Sachsen - Kamenz",
+    "isNegotiable": true,
+    "addedAt": "2025-10-22T14:56:26.235Z"
+  }
+]

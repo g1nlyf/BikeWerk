@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  autocat:
+    build:
+      context: ../../
+      dockerfile: autocat-klein/docker/Dockerfile
+    depends_on:
+      - redis
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-postgres://user:pass@host.docker.internal:5432/db}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - PLAYWRIGHT_HEADLESS=true
+    volumes:
+      - ../../:/app
+    command: npm run autocat -- --count=100
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"

@@ -1,0 +1,140 @@
+{
+  "meta": {
+    "source_platform": "buycycle",
+    "source_url": "https://www.buycycle.com/bike/specialized-stumpjumper-expert-carbon-2021-taglia-s3-m-2366740",
+    "source_ad_id": "2366740",
+    "created_at": "2024-05-15T10:00:00.000Z",
+    "updated_at": "2024-05-15T10:00:00.000Z",
+    "last_checked_at": "2024-05-15T10:00:00.000Z",
+    "is_active": true,
+    "parser_version": "2.5.0"
+  },
+  "basic_info": {
+    "name": "Specialized Stumpjumper Expert Carbon 2021",
+    "brand": "Specialized",
+    "model": "Stumpjumper Expert Carbon",
+    "year": 2021,
+    "category": "mtb",
+    "sub_category": "trail",
+    "description": "Велосипед Specialized Stumpjumper Expert Carbon был приобретен у нас в августе 2021 года и теперь перепродается из-за неиспользования, простояв в гараже более года из-за нехватки времени, и теперь мы продаем его от имени нашего клиента. Карбоновая рама полностью покрыта пленкой Chamaleon Skin, находится в отличном состоянии, руль заменен на карбоновый Renthal, а диски заменены на Braking. Остальная часть велосипеда ...",
+    "language": "ru"
+  },
+  "pricing": {
+    "price": 2900,
+    "original_price": null,
+    "discount": 0,
+    "currency": "EUR",
+    "is_negotiable": true,
+    "fmv": 3000,
+    "fmv_confidence": 0.8,
+    "market_comparison": "below_market",
+    "optimal_price": 2800,
+    "days_on_market": 0
+  },
+  "specs": {
+    "frame_size": "M",
+    "frame_material": "carbon",
+    "color": "Grün",
+    "weight": null,
+    "wheel_size": "29\"",
+    "suspension_type": "full",
+    "travel_front": null,
+    "travel_rear": null,
+    "groupset": null,
+    "groupset_speeds": null,
+    "brakes": null,
+    "brakes_type": "Scheiben",
+    "fork": null,
+    "shock": null,
+    "drivetrain": "Mechanisch",
+    "wheels": null,
+    "tires": null,
+    "pedals_included": false
+  },
+  "condition": {
+    "status": "used",
+    "score": 85,
+    "grade": "A",
+    "issues": [
+      "Велосипед не использовался более года из-за нехватки времени."
+    ],
+    "wear_indicators": {
+      "frame": "Минимальный износ, полностью покрыт защитной пленкой Chamaleon Skin.",
+      "drivetrain": "Очень хорошее состояние, низкий износ.",
+      "brakes": "Очень хорошее состояние, диски заменены на Braking.",
+      "tires": "Очень хорошее состояние, низкий износ."
+    }
+  },
+  "seller": {
+    "name": null,
+    "type": "dealer",
+    "rating": null,
+    "verified": false
+  },
+  "logistics": {
+    "location": "N/A",
+    "country": "Germany",
+    "shipping_option": "available",
+    "shipping_cost": 50,
+    "pickup_available": true
+  },
+  "media": {
+    "main_image": "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/cdcf8169-cdf6-4aef-a656-d82284bc2abe.webp?width=770",
+    "gallery": [
+      "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/cdcf8169-cdf6-4aef-a656-d82284bc2abe.webp?width=770",
+      "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/55c99d84-2f50-497f-812e-58749c08e8f6.webp?width=770",
+      "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/d8042d3b-bcde-42ba-a61b-ad44f2db9092.webp?width=770",
+      "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/59eb4084-d00d-45b5-9788-b9eb226cc3d8.webp?width=770",
+      "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/b75d79cc-6703-4cc8-9a10-7ef74a6fda8d.webp?width=770",
+      "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/d62aa894-1789-48b3-b07d-853a12341218.webp?width=770",
+      "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/7f1e75de-8e7f-4cd6-84a1-f5277d0a946e.webp?width=770",
+      "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/dd0f861a-0f88-4949-aa07-527225cc48e7.webp?width=770",
+      "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/3e35e50c-283b-45e5-9f0b-941ba5887099.webp?width=770",
+      "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/8ed167df-0ba5-4632-8c78-450a28208ce5.webp?width=770",
+      "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/fa2511f0-006e-41f8-a1d4-88ddb57c0560.webp?width=770",
+      "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/231f001c-7ab7-45ad-baba-fc8b5509b0db.webp?width=770",
+      "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/31a2bdd7-8a27-4323-a4b3-21547a183373.webp?width=770",
+      "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/e31e7b55-8482-486b-81eb-b884e88cbb00.webp?width=770",
+      "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/e7ad513c-8dc8-4c83-96e7-076bc8a5f63f.webp?width=770",
+      "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/8d1bdb1d-1b43-4ab3-ae03-3e44fbd27de2.webp?width=770",
+      "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/5c8b4621-daa9-4712-902a-4330cb90292b.webp?width=770",
+      "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/be91cacd-7e51-4bb2-ad5b-27c53b61b6ec.webp?width=770",
+      "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/3de70b55-4955-4742-8284-2d7f0383efe4.webp?width=770",
+      "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/90c8565d-be25-44c9-b466-dff896c34ddd.webp?width=770",
+      "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/f493f392-e21c-4a74-9173-8a8862536f63.webp?width=770",
+      "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/5ab9a66c-5244-48ba-88dd-d60da03126f3.webp?width=770",
+      "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/e5490f69-0a88-4f0f-a6f1-cc69fed3867a.webp?width=770",
+      "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/fe1accbf-f527-44cf-8b33-1d86c2d8e52c.webp?width=770"
+    ],
+    "photo_quality": 90
+  },
+  "ranking": {
+    "score": 0.75,
+    "value_score": 80,
+    "demand_score": 70,
+    "is_hot_offer": false,
+    "tier": 2,
+    "views": 0
+  },
+  "features": {
+    "upgrades": [
+      "Руль заменен на карбоновый Renthal",
+      "Диски заменены на Braking"
+    ],
+    "highlights": [
+      "Карбоновая рама полностью покрыта защитной пленкой Chamaleon Skin",
+      "Очень хорошее состояние, мало использовался"
+    ],
+    "included_accessories": [
+      "Седло"
+    ]
+  },
+  "quality_score": 88,
+  "completeness": 0.85,
+  "internal": {
+    "tags": [
+      "auto_imported",
+      "ai_normalized"
+    ]
+  }
+}

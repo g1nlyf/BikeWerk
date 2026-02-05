@@ -1,0 +1,52 @@
+{
+  "name": "bikeeu-telegram-bot",
+  "version": "1.0.0",
+  "description": "Telegram bot для автоматического добавления велосипедов в каталог BikeEU",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js",
+    "dev": "nodemon bot.js",
+    "test": "node test.js",
+    "status-bot": "node status-check-bot.js"
+  },
+  "keywords": [
+    "telegram",
+    "bot",
+    "bikes",
+    "kleinanzeigen",
+    "parser",
+    "gemini-ai"
+  ],
+  "author": "BikeEU Team",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.6.0",
+    "cheerio": "^1.0.0-rc.12",
+    "dotenv": "^17.2.3",
+    "groq-sdk": "^0.6.0",
+    "html-minifier-terser": "^7.2.0",
+    "https-proxy-agent": "^7.0.6",
+    "node-cron": "^4.2.1",
+    "node-fetch": "^2.7.0",
+    "node-telegram-bot-api": "^0.66.0",
+    "puppeteer": "^23.4.1",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "sharp": "^0.33.0",
+    "sql.js": "^1.13.0",
+    "sqlite3": "^5.1.7",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  },
+  "devDependencies": {
+    "@types/html-minifier-terser": "^7.0.2",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^24.10.1",
+    "jest": "^30.2.0",
+    "nodemon": "^3.0.0",
+    "ts-jest": "^29.4.5"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}

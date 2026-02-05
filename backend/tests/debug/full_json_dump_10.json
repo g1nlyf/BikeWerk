@@ -1,0 +1,1207 @@
+{
+  "1": {
+    "meta": {
+      "source_platform": "buycycle",
+      "created_at": "2026-01-28T18:22:45.928Z",
+      "is_active": true,
+      "source_url": "https://buycycle.com/de-de/product/reign-1-2019-71635",
+      "is_high_demand": true
+    },
+    "basic_info": {
+      "name": "Giant Reign 1 2019",
+      "brand": "Giant",
+      "model": "Reign 1",
+      "year": 2019,
+      "category": "mtb",
+      "description": "Giant Reign 1 2019 2019 – Высококачественные подержанные велосипеды и запчасти на buycycle"
+    },
+    "pricing": {
+      "price": 800,
+      "original_price": null,
+      "discount": 0,
+      "is_negotiable": false,
+      "currency": "EUR"
+    },
+    "specs": {
+      "frame_size": null,
+      "wheel_size": null,
+      "frame_material": null,
+      "color": null,
+      "suspension_type": "full",
+      "groupset": null,
+      "brakes": null,
+      "fork": null,
+      "shock": null
+    },
+    "condition": {
+      "status": "used",
+      "score": 75,
+      "grade": "Good",
+      "penalty": 0,
+      "reason": null,
+      "visual_rating": 0,
+      "issues": [],
+      "mechanic_notes": null
+    },
+    "inspection": {
+      "documents": {
+        "serial_number": null,
+        "has_receipt": false,
+        "has_documents": false
+      },
+      "history": {
+        "last_service": null,
+        "replaced_parts": [],
+        "owner_count": null,
+        "usage_history": null,
+        "usage_conditions": null
+      },
+      "technical": {
+        "frame_damage": null,
+        "component_condition": null,
+        "consumables": null,
+        "components_consistency": null
+      },
+      "photos": {
+        "serial_number": false,
+        "fork_stanchions": false,
+        "frame_defects": false,
+        "drivetrain": false,
+        "brake_levers": false,
+        "general_view": false,
+        "shock": false
+      }
+    },
+    "seller": {},
+    "logistics": {},
+    "media": {
+      "main_image": "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2273191/f028bcb4-3044-464d-881c-6b8b670c1f6e.webp?width=770",
+      "gallery": [
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2273191/f028bcb4-3044-464d-881c-6b8b670c1f6e.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2273191/94e14f0f-1b90-4bce-8d8e-55f81fa9d7b6.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2273191/cbfad90f-5ac5-4ac8-9906-affa37855edc.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2273191/36c00473-14b7-4d68-a557-a15a93f1bffc.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2273191/f028bcb4-3044-464d-881c-6b8b670c1f6e.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2273191/94e14f0f-1b90-4bce-8d8e-55f81fa9d7b6.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2273191/cbfad90f-5ac5-4ac8-9906-affa37855edc.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2273191/36c00473-14b7-4d68-a557-a15a93f1bffc.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/public/api/img/pdp/buycycle_packaging.webp"
+      ]
+    },
+    "ranking": {
+      "rank": 0.5,
+      "ranking_score": 0.5,
+      "hotness_score": 0,
+      "priority": "normal",
+      "is_hot_offer": false
+    },
+    "audit": {
+      "needs_audit": false,
+      "audit_status": "pending",
+      "audit_notes": null
+    },
+    "features": {
+      "raw_specs": {
+        "components": {},
+        "general_info": {}
+      },
+      "badges": [],
+      "upgrades": []
+    },
+    "quality_score": 60,
+    "source": "buycycle",
+    "original_url": "https://buycycle.com/de-de/product/reign-1-2019-71635"
+  },
+  "2": {
+    "meta": {
+      "source_platform": "buycycle",
+      "created_at": "2026-01-28T18:23:03.583Z",
+      "is_active": true,
+      "source_url": "https://buycycle.com/de-de/product/tyee-cf-56859bff87ed34-78175",
+      "is_high_demand": true
+    },
+    "basic_info": {
+      "name": "Propain Tyee CF 5",
+      "brand": "Propain",
+      "model": "Tyee CF 5",
+      "year": null,
+      "category": "mtb",
+      "description": "Велосипед имеет царапины от использования, но на раме есть защитная пленка, благодаря чему на раме может быть меньше царапин (единственные показанные царапины находятся на задней части рамы). Амортизатор не продается в комплекте."
+    },
+    "pricing": {
+      "price": 800,
+      "original_price": null,
+      "discount": 0,
+      "is_negotiable": false,
+      "currency": "EUR"
+    },
+    "specs": {
+      "frame_size": null,
+      "wheel_size": null,
+      "frame_material": "Carbon",
+      "color": null,
+      "suspension_type": "full_suspension",
+      "groupset": null,
+      "brakes": null,
+      "fork": null,
+      "shock": null
+    },
+    "condition": {
+      "status": "used",
+      "score": 75,
+      "grade": "good",
+      "penalty": 0,
+      "reason": "Царапины от использования, защитная пленка на раме, амортизатор не входит в комплект.",
+      "visual_rating": 0,
+      "issues": [
+        "scratches",
+        "shock_not_included"
+      ],
+      "mechanic_notes": null
+    },
+    "inspection": {
+      "documents": {
+        "serial_number": null,
+        "has_receipt": false,
+        "has_documents": false
+      },
+      "history": {
+        "last_service": null,
+        "replaced_parts": [],
+        "owner_count": null,
+        "usage_history": null,
+        "usage_conditions": null
+      },
+      "technical": {
+        "frame_damage": null,
+        "component_condition": null,
+        "consumables": null,
+        "components_consistency": null
+      },
+      "photos": {
+        "serial_number": false,
+        "fork_stanchions": false,
+        "frame_defects": false,
+        "drivetrain": false,
+        "brake_levers": false,
+        "general_view": false,
+        "shock": false
+      }
+    },
+    "seller": {},
+    "logistics": {},
+    "media": {
+      "main_image": "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/1939547/a1523c34-cf29-4062-87ff-0c30bf3d99b2.webp?width=770",
+      "gallery": [
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/1939547/a1523c34-cf29-4062-87ff-0c30bf3d99b2.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/1939547/3cdacec8-45b8-4e31-9195-507138cb8ff9.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/1939547/5294f5bf-9b53-4294-a356-fc2918b652b1.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/1939547/a654b5d8-527f-4b13-8f7f-27ab554eb2ab.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/1939547/c92a93d7-fe84-452a-ba42-ead251549b5b.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/1939547/a1523c34-cf29-4062-87ff-0c30bf3d99b2.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/1939547/3cdacec8-45b8-4e31-9195-507138cb8ff9.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/1939547/5294f5bf-9b53-4294-a356-fc2918b652b1.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/1939547/a654b5d8-527f-4b13-8f7f-27ab554eb2ab.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/1939547/c92a93d7-fe84-452a-ba42-ead251549b5b.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/public/api/img/pdp/buycycle_packaging.webp"
+      ]
+    },
+    "ranking": {
+      "rank": 0.5,
+      "ranking_score": 0.5,
+      "hotness_score": 0,
+      "priority": "normal",
+      "is_hot_offer": false
+    },
+    "audit": {
+      "needs_audit": false,
+      "audit_status": "pending",
+      "audit_notes": null
+    },
+    "features": {
+      "raw_specs": {
+        "components": {},
+        "general_info": {}
+      },
+      "badges": [],
+      "upgrades": []
+    },
+    "quality_score": 65,
+    "source": "buycycle",
+    "original_url": "https://buycycle.com/de-de/product/tyee-cf-56859bff87ed34-78175"
+  },
+  "3": {
+    "meta": {
+      "source_platform": "buycycle",
+      "created_at": "2026-01-28T18:23:20.723Z",
+      "is_active": true,
+      "source_url": "https://buycycle.com/de-de/product/root-miller-3-2021-50121",
+      "is_high_demand": true
+    },
+    "basic_info": {
+      "name": "ROOT MILLER 3 2021",
+      "brand": "Rose",
+      "model": "Root Miller 3",
+      "year": 2021,
+      "category": "mtb",
+      "description": "Я продаю свой Rose Root Miller 3, на котором редко ездили и который большую часть времени стоял без дела. Этот велосипед доставляет массу удовольствия на трейле и очень комфортен в управлении. Технически он в хорошем состоянии – есть лишь несколько мелких царапин (см. последнее фото), в остальном очень ухожен и готов к использованию. По всем вопросам обращайтесь!"
+    },
+    "pricing": {
+      "price": 1500,
+      "original_price": null,
+      "discount": 0,
+      "is_negotiable": false,
+      "currency": "EUR"
+    },
+    "specs": {
+      "frame_size": null,
+      "wheel_size": null,
+      "frame_material": null,
+      "color": null,
+      "suspension_type": "full-suspension",
+      "groupset": null,
+      "brakes": null,
+      "fork": null,
+      "shock": null
+    },
+    "condition": {
+      "status": "used",
+      "score": 75,
+      "grade": "Good",
+      "penalty": 25,
+      "reason": "Несколько мелких царапин",
+      "visual_rating": 75,
+      "issues": [
+        "scratches"
+      ],
+      "mechanic_notes": null
+    },
+    "inspection": {
+      "documents": {
+        "serial_number": null,
+        "has_receipt": false,
+        "has_documents": false
+      },
+      "history": {
+        "last_service": null,
+        "replaced_parts": [],
+        "owner_count": null,
+        "usage_history": null,
+        "usage_conditions": null
+      },
+      "technical": {
+        "frame_damage": null,
+        "component_condition": null,
+        "consumables": null,
+        "components_consistency": null
+      },
+      "photos": {
+        "serial_number": false,
+        "fork_stanchions": false,
+        "frame_defects": false,
+        "drivetrain": false,
+        "brake_levers": false,
+        "general_view": false,
+        "shock": false
+      }
+    },
+    "seller": {},
+    "logistics": {},
+    "media": {
+      "main_image": "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2212116/fc82ede2-18ca-420c-b4a4-696adccc1f1e.webp?width=770",
+      "gallery": [
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2212116/fc82ede2-18ca-420c-b4a4-696adccc1f1e.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2212116/4ee1794b-e3a6-4476-bce5-416b4ac96889.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2212116/fc84a213-59c9-4d20-986e-cb8ce233ae6.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2212116/583fcfad-dc31-443a-8ef9-aea1302a89da.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2212116/9232cbd5-b7be-4c6d-a254-55b01377b486.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2212116/a16dcdc2-cf5a-41c2-883d-9ac4580f5d1d.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2212116/fc82ede2-18ca-420c-b4a4-696adccc1f1e.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2212116/4ee1794b-e3a6-4476-bce5-416b4ac96889.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2212116/fc84a213-59c9-4d20-986e-cb8ce233ae6.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2212116/583fcfad-dc31-443a-8ef9-aea1302a89da.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2212116/9232cbd5-b7be-4c6d-a254-55b01377b486.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2212116/a16dcdc2-cf5a-41c2-883d-9ac4580f5d1d.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/public/api/img/pdp/buycycle_packaging.webp",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2212116/fc84a213-59c9-4d20-986e-cb8ce2333ae6.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2212116/fc84a213-59c9-4d20-986e-cb8ce2333ae6.webp?width=350"
+      ]
+    },
+    "ranking": {
+      "rank": 0.5,
+      "ranking_score": 0.5,
+      "hotness_score": 0,
+      "priority": "normal",
+      "is_hot_offer": false
+    },
+    "audit": {
+      "needs_audit": false,
+      "audit_status": "pending",
+      "audit_notes": null
+    },
+    "features": {
+      "raw_specs": {
+        "components": {},
+        "general_info": {}
+      },
+      "badges": [],
+      "upgrades": []
+    },
+    "quality_score": 65,
+    "source": "buycycle",
+    "original_url": "https://buycycle.com/de-de/product/root-miller-3-2021-50121"
+  },
+  "4": {
+    "meta": {
+      "source_platform": "buycycle",
+      "created_at": "2026-01-28T18:23:33.949Z",
+      "is_active": true,
+      "source_url": "https://buycycle.com/de-de/product/status-160-2022-90020",
+      "is_high_demand": true
+    },
+    "basic_info": {
+      "name": "Status 160 2022 ",
+      "brand": "Specialized",
+      "model": "Status 160",
+      "year": 2022,
+      "category": "mtb",
+      "description": "Имеет несколько совершенно нормальных царапин от падения и поцарапан, в остальном все в порядке."
+    },
+    "pricing": {
+      "price": 1300,
+      "original_price": null,
+      "discount": 0,
+      "is_negotiable": false,
+      "currency": "EUR"
+    },
+    "specs": {
+      "frame_size": null,
+      "wheel_size": null,
+      "frame_material": null,
+      "color": null,
+      "suspension_type": "full_suspension",
+      "groupset": null,
+      "brakes": null,
+      "fork": null,
+      "shock": null
+    },
+    "condition": {
+      "status": "used",
+      "score": 75,
+      "grade": "good",
+      "penalty": 0,
+      "reason": "Царапины от падения",
+      "visual_rating": 0,
+      "issues": [
+        "scratches"
+      ],
+      "mechanic_notes": null
+    },
+    "inspection": {
+      "documents": {
+        "serial_number": null,
+        "has_receipt": false,
+        "has_documents": false
+      },
+      "history": {
+        "last_service": null,
+        "replaced_parts": [],
+        "owner_count": null,
+        "usage_history": null,
+        "usage_conditions": null
+      },
+      "technical": {
+        "frame_damage": null,
+        "component_condition": null,
+        "consumables": null,
+        "components_consistency": null
+      },
+      "photos": {
+        "serial_number": false,
+        "fork_stanchions": false,
+        "frame_defects": false,
+        "drivetrain": false,
+        "brake_levers": false,
+        "general_view": false,
+        "shock": false
+      }
+    },
+    "seller": {},
+    "logistics": {},
+    "media": {
+      "main_image": "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2336144/339cf6b7-9e3a-4daf-87d8-142842316547.webp?width=770",
+      "gallery": [
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2336144/339cf6b7-9e3a-4daf-87d8-142842316547.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2336144/196a5915-75d8-45e6-a6c9-99ffe7870d57.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2336144/70c2b12d-2d35-43ec-b2f2-4bc5b84ad92a.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2336144/7199071b-de54-4857-b7c4-18e0b5f6a75e.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2336144/afbf68bd-2487-4b45-b225-8cfb7ac7c67b.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2336144/573bf282-b288-45ed-8cf4-27585a90effe.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2336144/19a8828d-cd86-4555-a8f0-4256b79775e8.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2336144/371027e7-043f-45d4-890c-45bf9df37e58.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2336144/339cf6b7-9e3a-4daf-87d8-142842316547.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2336144/196a5915-75d8-45e6-a6c9-99ffe7870d57.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2336144/70c2b12d-2d35-43ec-b2f2-4bc5b84ad92a.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2336144/7199071b-de54-4857-b7c4-18e0b5f6a75e.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2336144/afbf68bd-2487-4b45-b225-8cfb7ac7c67b.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2336144/573bf282-b288-45ed-8cf4-27585a90effe.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2336144/19a8828d-cd86-4555-a8f0-4256b79775e8.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2336144/371027e7-043f-45d4-890c-45bf9df37e58.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/public/api/img/pdp/buycycle_packaging.webp"
+      ]
+    },
+    "ranking": {
+      "rank": 0.5,
+      "ranking_score": 0.5,
+      "hotness_score": 0,
+      "priority": "normal",
+      "is_hot_offer": false
+    },
+    "audit": {
+      "needs_audit": false,
+      "audit_status": "pending",
+      "audit_notes": null
+    },
+    "features": {
+      "raw_specs": {
+        "components": {},
+        "general_info": {}
+      },
+      "badges": [],
+      "upgrades": []
+    },
+    "quality_score": 65,
+    "source": "buycycle",
+    "original_url": "https://buycycle.com/de-de/product/status-160-2022-90020"
+  },
+  "5": {
+    "meta": {
+      "source_platform": "buycycle",
+      "created_at": "2026-01-28T18:23:55.905Z",
+      "is_active": true,
+      "source_url": "https://buycycle.com/de-de/product/meta-am-sram-gx-eagle-36357",
+      "is_high_demand": true
+    },
+    "basic_info": {
+      "name": "META AM SRAM X0",
+      "brand": "Commencal",
+      "model": "Meta AM",
+      "year": null,
+      "category": "mtb",
+      "description": "Здравствуйте, я продаю свой Commencal Meta, который недавно прошел обслуживание (см. фото счета) и находится в очень хорошем рабочем состоянии. Как видно на фотографиях, он был слегка подварен из-за небольшой трещины, что, однако, не влияет на стабильность рамы, наоборот. Заднее колесо с этим ободом не может быть переведено на бескамерную систему..."
+    },
+    "pricing": {
+      "price": 1300,
+      "original_price": null,
+      "discount": 0,
+      "is_negotiable": false,
+      "currency": "EUR"
+    },
+    "specs": {
+      "frame_size": null,
+      "wheel_size": null,
+      "frame_material": null,
+      "color": null,
+      "suspension_type": "full-suspension",
+      "groupset": "SRAM X0",
+      "brakes": null,
+      "fork": null,
+      "shock": null
+    },
+    "condition": {
+      "status": "used",
+      "score": 40,
+      "grade": "Poor",
+      "penalty": 0,
+      "reason": "Рама была подварена из-за небольшой трещины; заднее колесо несовместимо с бескамерной системой.",
+      "visual_rating": 0,
+      "issues": [
+        "re-welded frame due to a small crack",
+        "rear wheel not tubeless compatible"
+      ],
+      "mechanic_notes": null
+    },
+    "inspection": {
+      "documents": {
+        "serial_number": null,
+        "has_receipt": true,
+        "has_documents": true
+      },
+      "history": {
+        "last_service": null,
+        "replaced_parts": [],
+        "owner_count": null,
+        "usage_history": null,
+        "usage_conditions": null
+      },
+      "technical": {
+        "frame_damage": "repaired crack",
+        "component_condition": "good",
+        "consumables": null,
+        "components_consistency": null
+      },
+      "photos": {
+        "serial_number": false,
+        "fork_stanchions": false,
+        "frame_defects": true,
+        "drivetrain": false,
+        "brake_levers": false,
+        "general_view": false,
+        "shock": false
+      }
+    },
+    "seller": {},
+    "logistics": {},
+    "media": {
+      "main_image": "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2351454/58a8de63-d349-4b7c-ab7d-8ccaa47b5ba8.webp?width=770",
+      "gallery": [
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2351454/58a8de63-d349-4b7c-ab7d-8ccaa47b5ba8.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2351454/1ede36e6-4bae-4e49-8380-788e33dc40da.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2351454/804de858-1a40-4db3-88b9-68c128272f1b.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2351454/9f3a8209-ac36-44a2-98c7-010136ca004d.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2351454/0a20f354-e684-4c13-ab38-b365ff28ebd9.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2351454/9067490c-7646-4b93-ac54-0a45c189bd67.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2351454/24029578-bb53-4e76-811a-449a44ac4f53.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2351454/609c4124-77cd-42bb-bea6-b66dab7095f1.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2351454/6bffaa1a-15f0-4156-925f-32aec37293fd.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2351454/f79c20c0-9182-408a-8a38-9fe7eb493631.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2351454/3d985aa7-7783-4e41-b153-685304912a11.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2351454/58a8de63-d349-4b7c-ab7d-8ccaa47b5ba8.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2351454/1ede36e6-4bae-4e49-8380-788e33dc40da.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2351454/804de858-1a40-4db3-88b9-68c128272f1b.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2351454/9f3a8209-ac36-44a2-98c7-010136ca004d.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2351454/0a20f354-e684-4c13-ab38-b365ff28ebd9.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2351454/9067490c-7646-4b93-ac54-0a45c189bd67.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2351454/24029578-bb53-4e76-811a-449a44ac4f53.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2351454/609c4124-77cd-42bb-bea6-b66dab7095f1.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2351454/6bffaa1a-15f0-4156-925f-32aec37293fd.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2351454/f79c20c0-9182-408a-8a38-9fe7eb493631.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2351454/3d985aa7-7783-4e41-b153-685304912a11.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/public/api/img/pdp/buycycle_packaging.webp"
+      ]
+    },
+    "ranking": {
+      "rank": 0.5,
+      "ranking_score": 0.5,
+      "hotness_score": 0,
+      "priority": "normal",
+      "is_hot_offer": false
+    },
+    "audit": {
+      "needs_audit": false,
+      "audit_status": "pending",
+      "audit_notes": null
+    },
+    "features": {
+      "raw_specs": {
+        "components": {},
+        "general_info": {}
+      },
+      "badges": [],
+      "upgrades": []
+    },
+    "quality_score": 65,
+    "source": "buycycle",
+    "original_url": "https://buycycle.com/de-de/product/meta-am-sram-gx-eagle-36357"
+  },
+  "6": {
+    "meta": {
+      "source_platform": "buycycle",
+      "created_at": "2026-01-28T18:24:15.952Z",
+      "is_active": true,
+      "source_url": "https://buycycle.com/de-de/product/soul-fire-1-2021-88658",
+      "is_high_demand": true
+    },
+    "basic_info": {
+      "name": "SOUL FIRE 1 2021",
+      "brand": "Rose",
+      "model": "SOUL FIRE 1",
+      "year": 2021,
+      "category": "mtb",
+      "description": "Rose SOUL FIRE 1 2021 – Высококачественные подержанные велосипеды и запчасти на buycycle"
+    },
+    "pricing": {
+      "price": 999,
+      "original_price": null,
+      "discount": 0,
+      "is_negotiable": false,
+      "currency": "EUR"
+    },
+    "specs": {
+      "frame_size": null,
+      "wheel_size": null,
+      "frame_material": null,
+      "color": null,
+      "suspension_type": "full-suspension",
+      "groupset": null,
+      "brakes": null,
+      "fork": null,
+      "shock": null
+    },
+    "condition": {
+      "status": "used",
+      "score": 75,
+      "grade": "Good",
+      "penalty": 0,
+      "reason": "Описание состояния отсутствует, но указано, что велосипед подержанный.",
+      "visual_rating": 0,
+      "issues": [],
+      "mechanic_notes": null
+    },
+    "inspection": {
+      "documents": {
+        "serial_number": null,
+        "has_receipt": false,
+        "has_documents": false
+      },
+      "history": {
+        "last_service": null,
+        "replaced_parts": [],
+        "owner_count": null,
+        "usage_history": null,
+        "usage_conditions": null
+      },
+      "technical": {
+        "frame_damage": null,
+        "component_condition": null,
+        "consumables": null,
+        "components_consistency": null
+      },
+      "photos": {
+        "serial_number": false,
+        "fork_stanchions": false,
+        "frame_defects": false,
+        "drivetrain": false,
+        "brake_levers": false,
+        "general_view": false,
+        "shock": false
+      }
+    },
+    "seller": {},
+    "logistics": {},
+    "media": {
+      "main_image": "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2305781/ade8649d-5025-4ded-a6a8-17422e815b02.webp?width=770",
+      "gallery": [
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2305781/ade8649d-5025-4ded-a6a8-17422e815b02.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2305781/3f9effb1-95b2-4e34-8378-e68ec065487a.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2305781/3e794446-53cd-4d49-868a-ae123f1de7b4.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2305781/961bd7d2-508b-4ec7-a41c-294d6be4996c.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2305781/d9ff0bfe-635c-4ac2-933d-ea32fd306459.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2305781/0b623d59-2718-4c74-bca2-1ab57eae5a3a.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2305781/ade8649d-5025-4ded-a6a8-17422e815b02.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2305781/3f9effb1-95b2-4e34-8378-e68ec065487a.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2305781/3e794446-53cd-4d49-868a-ae123f1de7b4.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2305781/961bd7d2-508b-4ec7-a41c-294d6be4996c.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2305781/d9ff0bfe-635c-4ac2-933d-ea32fd306459.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2305781/0b623d59-2718-4c74-bca2-1ab57eae5a3a.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/public/api/img/pdp/buycycle_packaging.webp"
+      ]
+    },
+    "ranking": {
+      "rank": 0.5,
+      "ranking_score": 0.5,
+      "hotness_score": 0,
+      "priority": "normal",
+      "is_hot_offer": false
+    },
+    "audit": {
+      "needs_audit": false,
+      "audit_status": "pending",
+      "audit_notes": null
+    },
+    "features": {
+      "raw_specs": {
+        "components": {},
+        "general_info": {}
+      },
+      "badges": [],
+      "upgrades": []
+    },
+    "quality_score": 60,
+    "source": "buycycle",
+    "original_url": "https://buycycle.com/de-de/product/soul-fire-1-2021-88658"
+  },
+  "7": {
+    "meta": {
+      "source_platform": "buycycle",
+      "created_at": "2026-01-28T18:24:35.968Z",
+      "is_active": true,
+      "source_url": "https://buycycle.com/de-de/product/jeffsy-core-2-2021-13720",
+      "is_high_demand": true
+    },
+    "basic_info": {
+      "name": "Jeffsy CORE 2 2021",
+      "brand": "YT",
+      "model": "Jeffsy CORE 2",
+      "year": 2021,
+      "category": "mtb",
+      "description": "Велосипед до сих пор полностью использовался с бескамерными шинами. После повреждения заднего обода (вмятина в ободе) бескамерная эксплуатация там больше невозможна. Переднее колесо по-прежнему используется с бескамерной шиной, в то время как на заднем колесе в настоящее время установлен камера. Остальная часть велосипеда находится в очень хорошем состоянии. Флягодержатель Fidlock и фляга YT..."
+    },
+    "pricing": {
+      "price": 1360,
+      "original_price": null,
+      "discount": 0,
+      "is_negotiable": false,
+      "currency": "EUR"
+    },
+    "specs": {
+      "frame_size": null,
+      "wheel_size": null,
+      "frame_material": null,
+      "color": null,
+      "suspension_type": "full-suspension",
+      "groupset": null,
+      "brakes": null,
+      "fork": null,
+      "shock": null
+    },
+    "condition": {
+      "status": "used",
+      "score": 65,
+      "grade": "Fair",
+      "penalty": 0,
+      "reason": "Повреждение заднего обода (вмятина), невозможность использования бескамерной системы на заднем колесе.",
+      "visual_rating": 0,
+      "issues": [
+        "Поврежден задний обод",
+        "Невозможна бескамерная эксплуатация заднего колеса"
+      ],
+      "mechanic_notes": null
+    },
+    "inspection": {
+      "documents": {
+        "serial_number": null,
+        "has_receipt": false,
+        "has_documents": false
+      },
+      "history": {
+        "last_service": null,
+        "replaced_parts": [],
+        "owner_count": null,
+        "usage_history": null,
+        "usage_conditions": null
+      },
+      "technical": {
+        "frame_damage": null,
+        "component_condition": null,
+        "consumables": null,
+        "components_consistency": null
+      },
+      "photos": {
+        "serial_number": false,
+        "fork_stanchions": false,
+        "frame_defects": false,
+        "drivetrain": false,
+        "brake_levers": false,
+        "general_view": false,
+        "shock": false
+      }
+    },
+    "seller": {},
+    "logistics": {},
+    "media": {
+      "main_image": "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2312068/596511b7-0a66-44a4-92fb-b31e6bb47aad.webp?width=770",
+      "gallery": [
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2312068/596511b7-0a66-44a4-92fb-b31e6bb47aad.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2312068/50537ab4-bd05-44dc-ad05-6dfaee81aab6.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2312068/cf00e6b5-d877-4202-8d6b-8fa215ef9edf.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2312068/a3975866-ed14-446e-b246-0c302646d054.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2312068/ca1e6f97-ea4c-41ad-831c-d958c50634e8.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2312068/429bf131-067b-4311-ab95-e8e7239f0cd2.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2312068/064fa532-d929-462c-b570-b70157e1eefa.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2312068/6e6430e5-7de6-48d7-a7d7-388624c7bb10.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2312068/596511b7-0a66-44a4-92fb-b31e6bb47aad.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2312068/50537ab4-bd05-44dc-ad05-6dfaee81aab6.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2312068/cf00e6b5-d877-4202-8d6b-8fa215ef9edf.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2312068/a3975866-ed14-446e-b246-0c302646d054.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2312068/ca1e6f97-ea4c-41ad-831c-d958c50634e8.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2312068/429bf131-067b-4311-ab95-e8e7239f0cd2.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2312068/064fa532-d929-462c-b570-b70157e1eefa.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2312068/6e6430e5-7de6-48d7-a7d7-388624c7bb10.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/public/api/img/pdp/buycycle_packaging.webp"
+      ]
+    },
+    "ranking": {
+      "rank": 0.5,
+      "ranking_score": 0.5,
+      "hotness_score": 0,
+      "priority": "normal",
+      "is_hot_offer": false
+    },
+    "audit": {
+      "needs_audit": false,
+      "audit_status": "pending",
+      "audit_notes": null
+    },
+    "features": {
+      "raw_specs": {
+        "components": {},
+        "general_info": {}
+      },
+      "badges": [],
+      "upgrades": []
+    },
+    "quality_score": 65,
+    "source": "buycycle",
+    "original_url": "https://buycycle.com/de-de/product/jeffsy-core-2-2021-13720"
+  },
+  "8": {
+    "meta": {
+      "source_platform": "buycycle",
+      "created_at": "2026-01-28T18:24:58.820Z",
+      "is_active": true,
+      "source_url": "https://buycycle.com/de-de/product/spectral-al-50-2020-95641",
+      "is_high_demand": true
+    },
+    "basic_info": {
+      "name": "Spectral AL 5.0 2020",
+      "brand": "Canyon",
+      "model": "Spectral AL 5.0",
+      "year": 2020,
+      "category": "mtb",
+      "description": "Я продаю Canyon Spectral AL 5 2020 года! Велосипед не использовался в байк-парке. Соответствующие аксессуары имеются и, конечно же, будут включены. Возможна отправка в оригинальной коробке!"
+    },
+    "pricing": {
+      "price": 1250,
+      "original_price": null,
+      "discount": 0,
+      "is_negotiable": false,
+      "currency": "EUR"
+    },
+    "specs": {
+      "frame_size": null,
+      "wheel_size": null,
+      "frame_material": "Aluminum",
+      "color": null,
+      "suspension_type": null,
+      "groupset": null,
+      "brakes": null,
+      "fork": null,
+      "shock": null
+    },
+    "condition": {
+      "status": "used",
+      "score": 90,
+      "grade": "very_good",
+      "penalty": 0,
+      "reason": null,
+      "visual_rating": 0,
+      "issues": [],
+      "mechanic_notes": null
+    },
+    "inspection": {
+      "documents": {
+        "serial_number": null,
+        "has_receipt": false,
+        "has_documents": false
+      },
+      "history": {
+        "last_service": null,
+        "replaced_parts": [],
+        "owner_count": null,
+        "usage_history": null,
+        "usage_conditions": null
+      },
+      "technical": {
+        "frame_damage": null,
+        "component_condition": null,
+        "consumables": null,
+        "components_consistency": null
+      },
+      "photos": {
+        "serial_number": false,
+        "fork_stanchions": false,
+        "frame_defects": false,
+        "drivetrain": false,
+        "brake_levers": false,
+        "general_view": false,
+        "shock": false
+      }
+    },
+    "seller": {},
+    "logistics": {},
+    "media": {
+      "main_image": "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2221999/1fe2cb54-1a01-4a55-a402-1540e6271318.webp?width=770",
+      "gallery": [
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2221999/1fe2cb54-1a01-4a55-a402-1540e6271318.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2221999/fed79d99-e516-4c3b-aff6-fd2fa6e50b06.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2221999/4b49143b-ee88-475f-99e8-3022268f3dc9.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2221999/610adb1a-d227-42a4-93a4-1cbce52c75ac.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2221999/f0e4ab7f-9a7c-4512-87c3-c59ddc7c918c.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2221999/ecfe4054-7259-4f2f-9c37-13af61fd6bac.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2221999/1fe2cb54-1a01-4a55-a402-1540e6271318.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2221999/fed79d99-e516-4c3b-aff6-fd2fa6e50b06.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2221999/4b49143b-ee88-475f-99e8-3022268f3dc9.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2221999/610adb1a-d227-42a4-93a4-1cbce52c75ac.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2221999/f0e4ab7f-9a7c-4512-87c3-c59ddc7c918c.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2221999/ecfe4054-7259-4f2f-9c37-13af61fd6bac.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/public/api/img/pdp/buycycle_packaging.webp"
+      ]
+    },
+    "ranking": {
+      "rank": 0.5,
+      "ranking_score": 0.5,
+      "hotness_score": 0,
+      "priority": "normal",
+      "is_hot_offer": false
+    },
+    "audit": {
+      "needs_audit": false,
+      "audit_status": "pending",
+      "audit_notes": null
+    },
+    "features": {
+      "raw_specs": {
+        "components": {},
+        "general_info": {}
+      },
+      "badges": [],
+      "upgrades": []
+    },
+    "quality_score": 60,
+    "source": "buycycle",
+    "original_url": "https://buycycle.com/de-de/product/spectral-al-50-2020-95641"
+  },
+  "9": {
+    "meta": {
+      "source_platform": "buycycle",
+      "created_at": "2026-01-28T18:25:17.180Z",
+      "is_active": true,
+      "source_url": "https://buycycle.com/de-de/product/rail-shimano-deore-xt-99188",
+      "is_high_demand": true
+    },
+    "basic_info": {
+      "name": "Trek Rail SRAM XX1 Eagle 2023",
+      "brand": "Trek",
+      "model": "Rail SRAM XX1 Eagle",
+      "year": 2023,
+      "category": "ebike",
+      "description": "Trek Rail SRAM XX1 Eagle 2023 – Высококачественные подержанные велосипеды и запчасти на buycycle"
+    },
+    "pricing": {
+      "price": 2200,
+      "original_price": null,
+      "discount": 0,
+      "is_negotiable": false,
+      "currency": "EUR"
+    },
+    "specs": {
+      "frame_size": null,
+      "wheel_size": null,
+      "frame_material": null,
+      "color": null,
+      "suspension_type": null,
+      "groupset": "SRAM XX1 Eagle",
+      "brakes": null,
+      "fork": null,
+      "shock": null
+    },
+    "condition": {
+      "status": "used",
+      "score": 80,
+      "grade": "Good",
+      "penalty": 0,
+      "reason": null,
+      "visual_rating": 0,
+      "issues": [],
+      "mechanic_notes": null
+    },
+    "inspection": {
+      "documents": {
+        "serial_number": null,
+        "has_receipt": false,
+        "has_documents": false
+      },
+      "history": {
+        "last_service": null,
+        "replaced_parts": [],
+        "owner_count": null,
+        "usage_history": null,
+        "usage_conditions": null
+      },
+      "technical": {
+        "frame_damage": null,
+        "component_condition": null,
+        "consumables": null,
+        "components_consistency": null
+      },
+      "photos": {
+        "serial_number": false,
+        "fork_stanchions": false,
+        "frame_defects": false,
+        "drivetrain": false,
+        "brake_levers": false,
+        "general_view": false,
+        "shock": false
+      }
+    },
+    "seller": {},
+    "logistics": {},
+    "media": {
+      "main_image": "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2265892/83506387-0749-484d-816b-a5845214167f.webp?width=770",
+      "gallery": [
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2265892/83506387-0749-484d-816b-a5845214167f.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2265892/47850114-6b43-4aeb-b80c-b773b5c652b4.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2265892/fb329cda-a32e-4e62-b40a-54a6ce6445d0.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2265892/7c578d4b-3ecf-4581-9939-b95d6b4e9124.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2265892/83506387-0749-484d-816b-a5845214167f.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2265892/47850114-6b43-4aeb-b80c-b773b5c652b4.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2265892/fb329cda-a32e-4e62-b40a-54a6ce6445d0.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2265892/7c578d4b-3ecf-4581-9939-b95d6b4e9124.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/public/api/img/pdp/buycycle_packaging.webp"
+      ]
+    },
+    "ranking": {
+      "rank": 0.5,
+      "ranking_score": 0.5,
+      "hotness_score": 0,
+      "priority": "normal",
+      "is_hot_offer": false
+    },
+    "audit": {
+      "needs_audit": false,
+      "audit_status": "pending",
+      "audit_notes": null
+    },
+    "features": {
+      "raw_specs": {
+        "components": {},
+        "general_info": {}
+      },
+      "badges": [],
+      "upgrades": []
+    },
+    "quality_score": 65,
+    "source": "buycycle",
+    "original_url": "https://buycycle.com/de-de/product/rail-shimano-deore-xt-99188"
+  },
+  "10": {
+    "meta": {
+      "source_platform": "buycycle",
+      "created_at": "2026-01-28T18:25:39.611Z",
+      "is_active": true,
+      "source_url": "https://buycycle.com/de-de/product/reaction-c62-one-2023-14137",
+      "is_high_demand": true
+    },
+    "basic_info": {
+      "name": "Cube REACTION C:62 ONE 2023",
+      "brand": "Cube",
+      "model": "REACTION C:62 ONE",
+      "year": 2023,
+      "category": "mtb",
+      "description": "4 поездки (всего около 100 км). Как новый. Только что из сервиса. Одна или две маленькие царапины, не более."
+    },
+    "pricing": {
+      "price": 700,
+      "original_price": null,
+      "discount": 0,
+      "is_negotiable": false,
+      "currency": "EUR"
+    },
+    "specs": {
+      "frame_size": null,
+      "wheel_size": null,
+      "frame_material": "Carbon",
+      "color": null,
+      "suspension_type": "hardtail",
+      "groupset": null,
+      "brakes": null,
+      "fork": null,
+      "shock": null
+    },
+    "condition": {
+      "status": "used",
+      "score": 90,
+      "grade": "Excellent",
+      "penalty": 0,
+      "reason": "Одна или две маленькие царапины.",
+      "visual_rating": 0,
+      "issues": [
+        "minor cosmetic flaws"
+      ],
+      "mechanic_notes": null
+    },
+    "inspection": {
+      "documents": {
+        "serial_number": null,
+        "has_receipt": false,
+        "has_documents": false
+      },
+      "history": {
+        "last_service": "recently",
+        "replaced_parts": [],
+        "owner_count": null,
+        "usage_history": "4 rides (approx. 100 km total)",
+        "usage_conditions": null
+      },
+      "technical": {
+        "frame_damage": null,
+        "component_condition": null,
+        "consumables": null,
+        "components_consistency": null
+      },
+      "photos": {
+        "serial_number": false,
+        "fork_stanchions": false,
+        "frame_defects": false,
+        "drivetrain": false,
+        "brake_levers": false,
+        "general_view": false,
+        "shock": false
+      }
+    },
+    "seller": {},
+    "logistics": {},
+    "media": {
+      "main_image": "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2336038/36591b2b-e282-481f-a1ea-c4608afd7b68.webp?width=770",
+      "gallery": [
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2336038/36591b2b-e282-481f-a1ea-c4608afd7b68.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2336038/fd82234f-89ae-4d48-bbec-5330890492c5.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2336038/f3cc0457-56f8-4499-aa42-1d9731287dca.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2336038/b2d14161-368c-46d6-a83d-9e28a79a58ef.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2336038/4f07cd63-8879-4806-ac68-200f8ddbed4d.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2336038/3ae6efa0-264e-4ffe-b822-f75257ffdd3a.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2336038/24831e7b-d6af-4c5d-83e6-0cb54a94ee77.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2336038/b0bb5c88-529b-40a6-8289-656525e1a9e0.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2336038/1af84bfb-de66-4fd7-a291-a6131d9a8d0e.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2336038/a4a82da7-9dda-4ab2-ab04-487b8fa4804e.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2336038/0071f649-ea98-4ee4-9f5d-a3e332cc8816.webp?width=770",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2336038/36591b2b-e282-481f-a1ea-c4608afd7b68.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2336038/fd82234f-89ae-4d48-bbec-5330890492c5.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2336038/f3cc0457-56f8-4499-aa42-1d9731287dca.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2336038/b2d14161-368c-46d6-a83d-9e28a79a58ef.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2336038/4f07cd63-8879-4806-ac68-200f8ddbed4d.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2336038/3ae6efa0-264e-4ffe-b822-f75257ffdd3a.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2336038/24831e7b-d6af-4c5d-83e6-0cb54a94ee77.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2336038/b0bb5c88-529b-40a6-8289-656525e1a9e0.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2336038/1af84bfb-de66-4fd7-a291-a6131d9a8d0e.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2336038/a4a82da7-9dda-4ab2-ab04-487b8fa4804e.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2336038/0071f649-ea98-4ee4-9f5d-a3e332cc8816.webp?width=350",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/public/api/img/pdp/buycycle_packaging.webp"
+      ]
+    },
+    "ranking": {
+      "rank": 0.5,
+      "ranking_score": 0.5,
+      "hotness_score": 0,
+      "priority": "normal",
+      "is_hot_offer": false
+    },
+    "audit": {
+      "needs_audit": false,
+      "audit_status": "pending",
+      "audit_notes": null
+    },
+    "features": {
+      "raw_specs": {
+        "components": {},
+        "general_info": {}
+      },
+      "badges": [],
+      "upgrades": []
+    },
+    "quality_score": 65,
+    "source": "buycycle",
+    "original_url": "https://buycycle.com/de-de/product/reaction-c62-one-2023-14137"
+  }
+}

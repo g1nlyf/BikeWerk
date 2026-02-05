@@ -1,0 +1,137 @@
+const supabase = require('./supabase');
+const gemini = require('./geminiProcessor');
+
+class OrderDispatcher {
+    
+    /**
+     * Main dispatch function: Assigns manager and generates tasks
+     * @param {Object} order - The created order object (must have id, order_code)
+     * @param {Object} bikeSnapshot - The bike details
+     * @returns {Promise<{manager: Object, tasks: Array}>}
+     */
+    async dispatchOrder(order, bikeSnapshot) {
+        console.log(`[OrderDispatcher] Dispatching Order ${order.order_code}...`);
+
+        try {
+            // 1. Auto-Assign Manager
+            const manager = await this._assignBestManager(order.id);
+            
+            // 2. AI Task Generation
+            const bikeName = order.bike_name || bikeSnapshot?.title || 'Unknown Bike';
+            const tasks = await this._generateAndSaveTasks(order.id, bikeName, bikeSnapshot, manager.id);
+
+            return { manager, tasks };
+        } catch (error) {
+            console.error('[OrderDispatcher] Dispatch Failed:', error);
+            // Non-blocking error - we don't want to fail the order creation if dispatch fails
+            // But we should probably alert admins (log for now)
+            return { manager: null, tasks: [] };
+        }
+    }
+
+    /**
+     * Find manager with least active orders/tasks and assign
+     */
+    async _assignBestManager(orderId) {
+        // 1. Get all active managers
+        // We also want their telegram_id to ensure they can receive notifications
+        // Assuming telegram_id is in users OR manager_subscribers (via join is hard with simple query)
+        // Let's rely on users table having telegram_id if populated correctly by registration
+        const { data: managers, error: userError } = await supabase.supabase
+            .from('users')
+            .select('id, username, full_name, telegram_id')
+            .eq('role', 'manager')
+            .eq('active', true);
+
+        if (userError || !managers || managers.length === 0) {
+            console.warn('[OrderDispatcher] No active managers found. Skipping assignment.');
+            return null;
+        }
+
+        // Filter managers with no telegram_id (can't notify them)
+        // If telegram_id is null, they haven't registered via bot yet.
+        const validManagers = managers.filter(m => m.telegram_id);
+        
+        if (validManagers.length === 0) {
+             console.warn('[OrderDispatcher] Active managers found, but NONE have telegram_id. Bot notifications will fail.');
+             // Fallback: assign to any active manager anyway, so CRM works, even if bot doesn't.
+             // But log warning.
+        }
+
+        const candidateManagers = validManagers.length > 0 ? validManagers : managers;
+
+        // 2. Get active order counts for each manager
+        // We can do this via a raw query or multiple count queries. 
+        // For simplicity and speed in prototype: fetch all active orders and aggregate in JS.
+        // Optimization: Create a database view for manager_load later.
+        
+        const { data: activeOrders } = await supabase.supabase
+            .from('orders')
+            .select('assigned_manager')
+            .not('status', 'in', '("closed","cancelled","delivered")'); // Filter closed ones
+
+        const loadMap = {};
+        candidateManagers.forEach(m => loadMap[m.id] = 0);
+
+        if (activeOrders) {
+            activeOrders.forEach(o => {
+                if (o.assigned_manager && loadMap[o.assigned_manager] !== undefined) {
+                    loadMap[o.assigned_manager]++;
+                }
+            });
+        }
+
+        // 3. Find min load
+        // Sort managers by load ASC
+        candidateManagers.sort((a, b) => loadMap[a.id] - loadMap[b.id]);
+        const bestManager = candidateManagers[0];
+
+        console.log(`[OrderDispatcher] Assigning to ${bestManager.username} (Load: ${loadMap[bestManager.id]})`);
+        if (!bestManager.telegram_id) {
+             console.warn(`[OrderDispatcher] WARNING: Assigned manager ${bestManager.username} has no Telegram link.`);
+        }
+
+        // 4. Update Order
+        await supabase.supabase
+            .from('orders')
+            .update({ assigned_manager: bestManager.id })
+            .eq('id', orderId);
+
+        return bestManager;
+    }
+
+    /**
+     * Generate AI tasks and save to DB
+     */
+    async _generateAndSaveTasks(orderId, bikeName, bikeSnapshot, managerId) {
+        // 1. Call Gemini
+        console.log(`[OrderDispatcher] Generating AI Tasks for ${bikeName}...`);
+        const taskDescriptions = await gemini.generateTechnicalTasks(bikeName, bikeSnapshot);
+
+        if (!taskDescriptions || taskDescriptions.length === 0) return [];
+
+        // 2. Prepare Task Objects
+        const tasksToInsert = taskDescriptions.map(desc => ({
+            order_id: String(orderId), // Ensure String/Text for schema compatibility
+            title: desc,
+            description: 'Generated by AI based on bike snapshot',
+            completed: false,
+            assigned_to: managerId
+        }));
+
+        // 3. Bulk Insert
+        const { data, error } = await supabase.supabase
+            .from('tasks')
+            .insert(tasksToInsert)
+            .select();
+
+        if (error) {
+            console.error('[OrderDispatcher] Failed to save tasks:', error);
+            return [];
+        }
+
+        return data;
+    }
+}
+
+module.exports = new OrderDispatcher();

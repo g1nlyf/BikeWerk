@@ -1,0 +1,298 @@
+/**
+ * FMVAnalyzer.js
+ * Анализирует market_history для расчёта Fair Market Value
+ */
+
+class FMVAnalyzer {
+    constructor(db) {
+        this.db = db;
+    }
+
+    /**
+     * Главный метод: получить FMV для модели
+     * @param {string} brand - "Specialized"
+     * @param {string} model - "Stumpjumper"
+     * @param {number} year - 2021
+     * @param {object} options - { frameSize: "L", frameMaterial: "carbon" }
+     * @returns {object} { fmv, confidence, sample_size, price_range, data_source }
+     */
+    async getFairMarketValue(brand, model, year, options = {}) {
+        console.log(`📊 [FMV] Analyzing: ${brand} ${model} ${year}`);
+
+        // 1. Получаем данные из market_history
+        const marketData = await this.getMarketData(brand, model, year, options);
+
+        if (marketData.length === 0) {
+            console.log(`   ⚠️ No market data found, using estimation`);
+            return this.estimateFMV(brand, model, year, options);
+        }
+
+        console.log(`   📈 Found ${marketData.length} comparable listings`);
+
+        // 2. Фильтруем outliers
+        const filtered = this.removeOutliers(marketData);
+        console.log(`   🔍 After outlier removal: ${filtered.length} listings`);
+
+        // 3. Рассчитываем median (более устойчив чем average)
+        const prices = filtered.map(item => item.price);
+        const median = this.calculateMedian(prices);
+
+        // 4. Рассчитываем confidence
+        const confidence = this.calculateConfidence(filtered.length, filtered);
+
+        // 5. Price range
+        const priceRange = {
+            min: Math.min(...prices),
+            max: Math.max(...prices),
+            q1: this.calculatePercentile(prices, 25),
+            q3: this.calculatePercentile(prices, 75)
+        };
+
+        console.log(`   💰 FMV: €${median} (confidence: ${(confidence * 100).toFixed(0)}%)`);
+
+        return {
+            fmv: Math.round(median),
+            confidence: confidence,
+            sample_size: filtered.length,
+            price_range: priceRange,
+            data_source: 'market_history',
+            last_updated: new Date().toISOString()
+        };
+    }
+
+    /**
+     * Получить market data из БД
+     */
+    async getMarketData(brand, model, year, options) {
+        // Adjust column names to match actual schema (price_eur)
+        // Also handling optional columns if they exist or just ignoring them for now if not critical
+        const query = `
+            SELECT price_eur as price, created_at, frame_size
+            FROM market_history
+            WHERE LOWER(brand) = LOWER(?)
+              AND LOWER(model) LIKE LOWER(?)
+              AND year = ?
+              AND price_eur > 0
+              AND created_at > datetime('now', '-90 days')
+            ORDER BY created_at DESC
+            LIMIT 100
+        `;
+
+        const modelPattern = `%${model}%`;
+        const results = await this.db.query(query, [brand, modelPattern, year]);
+
+        // Фильтруем по frame_size и frame_material если указаны
+        let filtered = results;
+
+        if (options.frameSize) {
+            filtered = filtered.filter(item => 
+                item.frame_size && item.frame_size.toLowerCase() === options.frameSize.toLowerCase()
+            );
+        }
+
+        // Frame material filtering is tricky if not in DB. 
+        // For now, we skip it or assume market data matches broadly.
+        // if (options.frameMaterial) { ... }
+
+        // Если фильтры слишком строгие (< 3 результатов), вернём нефильтрованные
+        if (filtered.length < 3 && results.length >= 3) {
+            console.log(`   ⚠️ Too few results with filters (${filtered.length}), using unfiltered (${results.length})`);
+            return results;
+        }
+
+        return filtered;
+    }
+
+    /**
+     * Удаляет outliers (IQR метод)
+     */
+    removeOutliers(data) {
+        if (data.length < 4) return data; // Слишком мало данных
+
+        const prices = data.map(item => item.price).sort((a, b) => a - b);
+        
+        const q1 = this.calculatePercentile(prices, 25);
+        const q3 = this.calculatePercentile(prices, 75);
+        const iqr = q3 - q1;
+
+        const lowerBound = q1 - 1.5 * iqr;
+        const upperBound = q3 + 1.5 * iqr;
+
+        return data.filter(item => 
+            item.price >= lowerBound && item.price <= upperBound
+        );
+    }
+
+    /**
+     * Рассчитывает median
+     */
+    calculateMedian(numbers) {
+        if (numbers.length === 0) return 0;
+
+        const sorted = [...numbers].sort((a, b) => a - b);
+        const mid = Math.floor(sorted.length / 2);
+
+        if (sorted.length % 2 === 0) {
+            return (sorted[mid - 1] + sorted[mid]) / 2;
+        } else {
+            return sorted[mid];
+        }
+    }
+
+    /**
+     * Рассчитывает percentile
+     */
+    calculatePercentile(numbers, percentile) {
+        if (numbers.length === 0) return 0;
+
+        const sorted = [...numbers].sort((a, b) => a - b);
+        const index = (percentile / 100) * (sorted.length - 1);
+        const lower = Math.floor(index);
+        const upper = Math.ceil(index);
+        const weight = index % 1;
+
+        if (lower === upper) {
+            return sorted[lower];
+        }
+
+        return sorted[lower] * (1 - weight) + sorted[upper] * weight;
+    }
+
+    /**
+     * Рассчитывает confidence на основе sample size и variance
+     */
+    calculateConfidence(sampleSize, data) {
+        // Базовый confidence на основе sample size
+        let confidence = 0;
+
+        if (sampleSize >= 20) confidence = 0.95;
+        else if (sampleSize >= 10) confidence = 0.85;
+        else if (sampleSize >= 5) confidence = 0.75;
+        else if (sampleSize >= 3) confidence = 0.60;
+        else confidence = 0.40;
+
+        // Корректируем на основе variance (если prices сильно разбросаны = меньше confidence)
+        if (data.length >= 3) {
+            const prices = data.map(item => item.price);
+            const mean = prices.reduce((sum, p) => sum + p, 0) / prices.length;
+            const variance = prices.reduce((sum, p) => sum + Math.pow(p - mean, 2), 0) / prices.length;
+            const coefficientOfVariation = Math.sqrt(variance) / mean;
+
+            // Если CV > 0.3 (30% разброс), снижаем confidence
+            if (coefficientOfVariation > 0.3) {
+                confidence *= 0.9;
+            }
+            if (coefficientOfVariation > 0.5) {
+                confidence *= 0.8;
+            }
+        }
+
+        return Math.min(confidence, 1.0);
+    }
+
+    /**
+     * Estimation fallback если нет market data
+     */
+    estimateFMV(brand, model, year, options) {
+        console.log(`   🔮 Using estimation (no market data)`);
+
+        // Базовая цена по бренду
+        const brandTier = this.getBrandTier(brand);
+        let basePriceNew = brandTier.basePrice;
+
+        // Корректируем по материалу
+        if (options.frameMaterial === 'carbon') {
+            basePriceNew *= 1.5;
+        }
+
+        // Depreciation
+        const age = new Date().getFullYear() - year;
+        let depreciationFactor;
+
+        if (age <= 1) depreciationFactor = 0.80;
+        else if (age <= 2) depreciationFactor = 0.70;
+        else if (age <= 3) depreciationFactor = 0.60;
+        else if (age <= 5) depreciationFactor = 0.45;
+        else if (age <= 7) depreciationFactor = 0.30;
+        else depreciationFactor = 0.20;
+
+        const fmv = Math.round(basePriceNew * depreciationFactor);
+
+        return {
+            fmv: fmv,
+            confidence: 0.50, // Низкий confidence для estimation
+            sample_size: 0,
+            price_range: {
+                min: Math.round(fmv * 0.8),
+                max: Math.round(fmv * 1.2)
+            },
+            data_source: 'estimation',
+            last_updated: new Date().toISOString()
+        };
+    }
+
+    /**
+     * Возвращает кривую амортизации для бренда/модели
+     */
+    getDepreciationCurve(brand, model, years) {
+        return years.map(year => {
+            const age = new Date().getFullYear() - year;
+            let depreciationFactor;
+
+            if (age <= 1) depreciationFactor = 0.80;
+            else if (age <= 2) depreciationFactor = 0.70;
+            else if (age <= 3) depreciationFactor = 0.60;
+            else if (age <= 5) depreciationFactor = 0.45;
+            else if (age <= 7) depreciationFactor = 0.30;
+            else depreciationFactor = 0.20;
+
+            return {
+                year,
+                age,
+                factor: depreciationFactor,
+                estimated_value_retention: (depreciationFactor * 100) + '%'
+            };
+        });
+    }
+
+    /**
+     * Определяет tier бренда
+     */
+    getBrandTier(brand) {
+        const tiers = {
+            'specialized': { tier: 1, basePrice: 3500 },
+            'trek': { tier: 1, basePrice: 3500 },
+            'santa cruz': { tier: 1, basePrice: 4500 },
+            'yt': { tier: 1, basePrice: 3200 },
+            'canyon': { tier: 1, basePrice: 3000 },
+            'scott': { tier: 1, basePrice: 3000 },
+            'giant': { tier: 2, basePrice: 2000 },
+            'cube': { tier: 2, basePrice: 2000 },
+            'focus': { tier: 2, basePrice: 2000 },
+            'merida': { tier: 2, basePrice: 1800 },
+            'ghost': { tier: 2, basePrice: 1800 },
+            'bulls': { tier: 3, basePrice: 1500 },
+            'kellys': { tier: 3, basePrice: 1200 }
+        };
+
+        const brandLower = brand.toLowerCase();
+        return tiers[brandLower] || { tier: 3, basePrice: 1500 };
+    }
+
+    /**
+     * Определяет market comparison
+     */
+    getMarketComparison(price, fmv) {
+        if (!fmv || fmv === 0) return 'unknown';
+
+        const diff = ((price - fmv) / fmv) * 100;
+
+        if (diff <= -20) return 'well_below_market';
+        if (diff <= -10) return 'below_market';
+        if (diff <= 10) return 'at_market';
+        if (diff <= 25) return 'above_market';
+        return 'well_above_market';
+    }
+}
+
+module.exports = FMVAnalyzer;

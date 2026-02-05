@@ -1,0 +1,54 @@
+{
+  "templates": [
+    {
+      "name": "Specialized Stumpjumper",
+      "urlPattern": "https://www.kleinanzeigen.de/s-fahrraeder/specialized-stumpjumper/k0c217",
+      "type": "specific"
+    },
+    {
+      "name": "Santa Cruz Nomad",
+      "urlPattern": "https://www.kleinanzeigen.de/s-fahrraeder/santa-cruz-nomad/k0c217",
+      "type": "specific"
+    },
+    {
+      "name": "Canyon Spectral",
+      "urlPattern": "https://www.kleinanzeigen.de/s-fahrraeder/canyon-spectral/k0c217",
+      "type": "specific"
+    },
+    {
+      "name": "YT Capra",
+      "urlPattern": "https://www.kleinanzeigen.de/s-fahrraeder/yt-capra/k0c217",
+      "type": "specific"
+    },
+    {
+      "name": "Propain Tyee",
+      "urlPattern": "https://www.kleinanzeigen.de/s-fahrraeder/propain-tyee/k0c217",
+      "type": "specific"
+    },
+    {
+      "name": "Trek Slash",
+      "urlPattern": "https://www.kleinanzeigen.de/s-fahrraeder/trek-slash/k0c217",
+      "type": "specific"
+    },
+    {
+      "name": "Commencal Meta",
+      "urlPattern": "https://www.kleinanzeigen.de/s-fahrraeder/commencal-meta/k0c217",
+      "type": "specific"
+    },
+    {
+      "name": "Orbea Rallon",
+      "urlPattern": "https://www.kleinanzeigen.de/s-fahrraeder/orbea-rallon/k0c217",
+      "type": "specific"
+    },
+    {
+      "name": "Santa Cruz Megatower",
+      "urlPattern": "https://www.kleinanzeigen.de/s-fahrraeder/santa-cruz-megatower/k0c217",
+      "type": "specific"
+    },
+    {
+      "name": "Mondraker Summum",
+      "urlPattern": "https://www.kleinanzeigen.de/s-fahrraeder/mondraker-summum/k0c217",
+      "type": "specific"
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "tier1": [
+    {"name": "YT", "models": ["capra", "jeffsy", "izzo", "tues", "decoy", "szepter"], "minPrice": 1500},
+    {"name": "Santa Cruz", "models": ["bronson", "hightower", "nomad", "megatower", "tallboy", "5010", "blur", "v10"], "minPrice": 1500},
+    {"name": "Specialized", "models": ["stumpjumper", "enduro", "epic", "status", "demo", "levo", "kenevo"], "minPrice": 1200},
+    {"name": "Canyon", "models": ["spectral", "neuron", "torque", "strive", "sender", "lux", "exceed"], "minPrice": 1200},
+    {"name": "Trek", "models": ["slash", "remedy", "fuel ex", "session", "supercaliber", "rail"], "minPrice": 1200},
+    {"name": "Evil", "models": ["wreckoning", "following", "insurgent", "offering"], "minPrice": 2000},
+    {"name": "Transition", "models": ["sentinel", "patrol", "scout", "spire", "smuggler"], "minPrice": 1800},
+    {"name": "Pivot", "models": ["switchblade", "mach", "firebird", "shuttle"], "minPrice": 2000},
+    {"name": "Yeti", "models": ["sb130", "sb140", "sb150", "sb160", "arc"], "minPrice": 2000},
+    {"name": "Ibis", "models": ["ripmo", "ripley", "mojo", "exie"], "minPrice": 2000}
+  ],
+  "tier2": [
+    {"name": "Scott", "models": ["genius", "spark", "ransom", "gambler", "scale"], "minPrice": 800},
+    {"name": "Cube", "models": ["stereo", "ams", "reaction", "hanzz", "two15"], "minPrice": 600},
+    {"name": "Ghost", "models": ["riot", "slamr", "kato", "roket"], "minPrice": 600},
+    {"name": "Focus", "models": ["jam", "sam", "raven", "bold"], "minPrice": 800},
+    {"name": "Bulls", "models": ["copperhead", "wild", "sonic", "sharptail"], "minPrice": 500},
+    {"name": "Radon", "models": ["slide", "swoop", "jealous", "cragger"], "minPrice": 700},
+    {"name": "Rose", "models": ["uncle jimbo", "count", "thrill"], "minPrice": 800},
+    {"name": "Commencal", "models": ["meta", "clash", "supreme", "furious"], "minPrice": 1000},
+    {"name": "Nukeproof", "models": ["mega", "reactor", "scout", "dissent"], "minPrice": 1000},
+    {"name": "Norco", "models": ["range", "sight", "fluid", "optic"], "minPrice": 1000}
+  ],
+  "tier3": [
+    {"name": "Giant", "models": ["trance", "reign", "anthem", "talon"], "minPrice": 500},
+    {"name": "Cannondale", "models": ["habit", "trigger", "scalpel", "jekyll"], "minPrice": 700},
+    {"name": "Merida", "models": ["one-twenty", "one-forty", "big trail", "ninety-six"], "minPrice": 500},
+    {"name": "Orbea", "models": ["occam", "rallon", "alma", "oiz"], "minPrice": 700},
+    {"name": "Polygon", "models": ["siskiu", "collosus", "xtrada"], "minPrice": 600},
+    {"name": "Marin", "models": ["alpine", "rift zone", "hawk hill", "mount vision"], "minPrice": 500},
+    {"name": "Kona", "models": ["process", "hei hei", "honzo", "operator"], "minPrice": 700},
+    {"name": "GT", "models": ["force", "sensor", "zaskar", "fury"], "minPrice": 500},
+    {"name": "Felt", "models": ["decree", "edict", "doctrine"], "minPrice": 700},
+    {"name": "Bergamont", "models": ["trailster", "contrail", "revox"], "minPrice": 600}
+  ]
+}

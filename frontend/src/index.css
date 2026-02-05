@@ -1,0 +1,155 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Глобальный плавный скролл */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Переменные темы, совместимые с конфигом tailwind (hsl(var(--...))) */
+:root {
+  /* Фон и основной текст: белый + глубокий тёмно‑синий */
+  --background: 0 0% 100%; /* белый */
+  --foreground: 222 47% 12%; /* navy-900 для основного текста */
+
+  --card: 0 0% 100%;
+  --card-foreground: 222.2 47.4% 11.2%;
+
+  --popover: 0 0% 100%;
+  --popover-foreground: 222.2 47.4% 11.2%;
+
+  /* primary — главный акцент: чёрный */
+  --primary: 0 0% 0%;
+  --primary-foreground: 0 0% 100%;
+
+  /* secondary — вспомогательный акцент: оранжевый */
+  --secondary: 20 90% 48%;
+  --secondary-foreground: 0 0% 100%;
+
+  --muted: 210 40% 96%; /* светлые нейтральные */
+  --muted-foreground: 215 17% 47%;
+
+  /* accent — мягкие подсветки/фон для hover */
+  --accent: 210 40% 97%;
+  --accent-foreground: 222 47% 12%;
+
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 210 40% 98%;
+
+  --border: 214.3 31.8% 91.4%;
+  --input: 214.3 31.8% 91.4%;
+  /* Фокус‑кольца — тёплый акцент для видимости */
+  --ring: 20 90% 52%;
+
+  /* Брендовый тёмно‑синий для заголовков, ссылок, outline */
+  --brand: 210 46% 16%; /* ~#132D4E */
+  --brand-foreground: 210 40% 98%;
+
+  --radius: 0.5rem;
+}
+
+.dark {
+  --background: 222 84% 5%; /* глубокий тёмный navy */
+  --foreground: 210 40% 96%;
+
+  --card: 222.2 84% 4.9%;
+  --card-foreground: 210 40% 98%;
+
+  --popover: 222.2 84% 4.9%;
+  --popover-foreground: 210 40% 98%;
+
+  /* Главный акцент — чёрный в тёмной теме */
+  --primary: 0 0% 0%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 20 92% 52%;
+  --secondary-foreground: 0 0% 100%;
+
+  --muted: 217.2 32.6% 17.5%;
+  --muted-foreground: 215 20.2% 65.1%;
+
+  --accent: 222 24% 18%;
+  --accent-foreground: 210 40% 92%;
+
+  --destructive: 0 62.8% 30.6%;
+  --destructive-foreground: 0 0% 98%;
+
+  --border: 217.2 32.6% 17.5%;
+  --input: 217.2 32.6% 17.5%;
+  --ring: 20 92% 52%;
+
+  /* Бренд в тёмной теме — более светлый для текста/бордеров */
+  --brand: 210 40% 80%;
+  --brand-foreground: 222 84% 6%;
+}
+
+@keyframes accordion-down {
+  from {
+    height: 0;
+  }
+  to {
+    height: var(--radix-accordion-content-height);
+  }
+}
+
+@keyframes accordion-up {
+  from {
+    height: var(--radix-accordion-content-height);
+  }
+  to {
+    height: 0;
+  }
+}
+
+@layer base {
+  * {
+    border-color: theme(colors.border);
+  }
+  body {
+    background-color: theme(colors.background);
+    color: theme(colors.foreground);
+    overflow-x: hidden;
+  }
+}
+
+/* Утилита для применения шрифта Manrope точечно на страницах/блоках */
+@layer utilities {
+  .animate-pulse-glow {
+    animation: pulse-glow 3s infinite ease-in-out;
+  }
+}
+
+@keyframes pulse-glow {
+  0% {
+    box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.4);
+    border-color: rgba(251, 191, 36, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 15px 2px rgba(251, 191, 36, 0.6);
+    border-color: rgba(251, 191, 36, 0.8);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.4);
+    border-color: rgba(251, 191, 36, 0.4);
+  }
+}
+
+@layer utilities {
+  .font-manrope {
+    font-family: 'Manrope', ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  }
+  .font-dm-sans {
+    font-family: 'DM Sans', ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+}
+
+/* Mobile viewport optimization based on height and aspect ratio */
+@media (max-height: 1024px), (max-aspect-ratio: 1024/1183) {
+  .mobile-safe { padding-left: 12px !important; padding-right: 12px !important; }
+  .hero-picture img { width: 100%; height: auto; object-fit: cover; }
+  header .h-16 { height: 56px; }
+  .container, .mx-auto { padding-left: 12px; padding-right: 12px; }
+}

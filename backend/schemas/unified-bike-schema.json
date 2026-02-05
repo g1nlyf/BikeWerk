@@ -1,0 +1,314 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Unified Bike Format",
+  "version": "2.2.0",
+  "description": "Полный формат данных о велосипеде для BikeWerk (191 поля БД)",
+  
+  "example": {
+    "meta": {
+      "source_platform": "buycycle",
+      "source_url": "https://buycycle.com/de-de/product/tues-comp-2021-26483",
+      "source_ad_id": "26483",
+      "created_at": "2026-01-31T10:15:32Z",
+      "updated_at": "2026-01-31T10:15:32Z",
+      "last_checked_at": "2026-01-31T10:15:32Z",
+      "is_active": true,
+      "parser_version": "2.2.0",
+      "platform_trust": {
+        "reviews_count": 10864,
+        "source": "Trustpilot",
+        "rating": 4.5
+      }
+    },
+    
+    "basic_info": {
+      "name": "YT Industries Tues Comp 2021",
+      "brand": "YT Industries",
+      "model": "Tues Comp",
+      "year": 2021,
+      "category": "mtb",
+      "sub_category": "downhill",
+      "breadcrumb": "Alle Fahrräder > MTB > Downhill",
+      "description": "Виниловая защита с первого дня, очень мало царапин и отлично ухожен.",
+      "language": "ru"
+    },
+    
+    "pricing": {
+      "price": 2500,
+      "original_price": 3499,
+      "discount": 999,
+      "currency": "EUR",
+      "is_negotiable": false,
+      "buyer_protection": {
+        "available": true,
+        "price": 2538,
+        "display": "€ 2.538 mit Käuferschutz"
+      },
+      "fmv": 2800,
+      "fmv_confidence": 0.85,
+      "market_comparison": "below_market",
+      "optimal_price": 2900,
+      "price_history": [],
+      "days_on_market": 6
+    },
+    
+    "specs": {
+      "frame_size": "L",
+      "frame_material": "aluminum",
+      "color": "Schwarz",
+      "weight": 16.8,
+      "wheel_size": "27.5",
+      "suspension_type": "full",
+      "travel_front": 203,
+      "travel_rear": 200,
+      "groupset": "SRAM GX",
+      "groupset_speeds": 11,
+      "shifting_type": "mechanical",
+      "brakes": "Shimano Saint",
+      "brakes_type": "hydraulic_disc",
+      "rotor_front": 203,
+      "rotor_rear": 200,
+      "fork": "FOX 40 Float Performance Elite",
+      "shock": "Fox Float X2 Performance",
+      "drivetrain": "1x11",
+      "cassette": "SRAM XG-1275",
+      "chain": "SRAM GX",
+      "crankset": "Truvativ Descendant",
+      "wheels": "e*thirteen DH R1",
+      "tires_front": "Maxxis Minion DHF 27.5x2.5",
+      "tires_rear": "Maxxis Minion DHR II 27.5x2.4",
+      "handlebars": "Race Face Atlas",
+      "handlebars_width": 800,
+      "stem": "Race Face Atlas 35mm",
+      "stem_length": 35,
+      "saddle": "YT Industries",
+      "seatpost": "Race Face Turbine Dropper 150mm",
+      "seatpost_travel": 150,
+      "pedals": "Shimano Saint",
+      "pedals_included": true,
+      "component_upgrades": [
+        {
+          "component": "Bremsen",
+          "value": "Shimano Saint",
+          "replaced": true,
+          "badge": "Ersetzt",
+          "original": "SRAM Code R"
+        },
+        {
+          "component": "Laufräder",
+          "value": "e*thirteen DH R1",
+          "replaced": true,
+          "badge": "Ersetzt",
+          "original": "DT Swiss M1900"
+        }
+      ],
+      "geometry": {
+        "reach": 445,
+        "stack": 625,
+        "head_angle": 63,
+        "seat_angle": 76,
+        "chainstay_length": 435,
+        "wheelbase": 1280,
+        "bb_drop": 30
+      }
+    },
+    
+    "condition": {
+      "status": "used",
+      "score": 85,
+      "grade": "A",
+      "visual_rating": 5,
+      "functional_rating": 5,
+      "receipt_available": false,
+      "issues": [
+        "Очень мало царапин (виниловая защита с первого дня)"
+      ],
+      "maintenance_needed": [],
+      "wear_indicators": {
+        "frame": "excellent",
+        "fork_stanchions": "excellent",
+        "drivetrain": "good",
+        "brakes": "excellent",
+        "tires": "good",
+        "suspension_bearings": "excellent"
+      },
+      "crash_history": false,
+      "frame_damage": false
+    },
+    
+    "inspection": {
+      "completed": false,
+      "date": null,
+      "inspector": null,
+      "checklist": {
+        "1_brand_verified": true,
+        "2_model_verified": true,
+        "3_year_verified": true,
+        "4_frame_size_verified": true,
+        "5_serial_number": null,
+        "24_crash_history": false,
+        "26_upgrades_verified": true,
+        "28_final_approval": null
+      },
+      "checklist_completed": 5,
+      "checklist_total": 28,
+      "notes": [
+        "Авто-заполнение: бренд, модель, год, размер рамы извлечены из источника",
+        "Обнаружены апгрейды: тормоза и колеса"
+      ]
+    },
+    
+    "seller": {
+      "name": "izan C.",
+      "type": "private",
+      "rating": 5.0,
+      "rating_visual": "★★★★★",
+      "last_active": "Zuletzt aktiv: vor 6 Tagen",
+      "reviews_count": null,
+      "member_since": null,
+      "badges": [],
+      "verified": false,
+      "professional": false,
+      "trust_score": 75
+    },
+    
+    "logistics": {
+      "location": "Calafell",
+      "country": "ES",
+      "zip_code": null,
+      "coordinates": {
+        "lat": null,
+        "lon": null
+      },
+      "shipping_option": "pickup_or_shipping",
+      "shipping_cost": null,
+      "shipping_provider": null,
+      "shipping_days": null,
+      "shipping_insured": null,
+      "shipping_tracked": null,
+      "international": true,
+      "pickup_available": true,
+      "ready_to_ship": true
+    },
+    
+    "media": {
+      "main_image": "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2055293/7e17b591-b29b-4a07-b67f-9a3ca4f2341f.webp",
+      "gallery": [
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2055293/7e17b591-b29b-4a07-b67f-9a3ca4f2341f.webp",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2055293/9d90cd92-8cfd-44e5-830c-bb569810dd95.webp",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2055293/e4475a8e-7639-4bd7-a46f-3697c5ea3f44.webp",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2055293/4563acf4-2e5d-43f5-9c2b-b4ba02658308.webp",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2055293/6d604174-186e-422e-b1ac-072bc8961ac7.webp",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2055293/0dfcb978-cc97-4b30-9f94-245259ba36e9.webp",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2055293/3d8eaa1f-4cce-4f25-9e0b-ca582459266e.webp",
+        "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2055293/496ff4f9-4c39-4b8c-860c-e20acf80a7ba.webp"
+      ],
+      "video_url": null,
+      "photo_quality": 90,
+      "photo_coverage": {
+        "drive_side": true,
+        "non_drive_side": true,
+        "front": true,
+        "rear": true,
+        "details": true,
+        "cockpit": true,
+        "suspension": true
+      }
+    },
+    
+    "ranking": {
+      "score": 0.88,
+      "value_score": 90,
+      "demand_score": 85,
+      "urgency_score": 75,
+      "likes": 11,
+      "is_hot_offer": true,
+      "is_super_deal": true,
+      "is_high_demand": true,
+      "badges": ["super_deal", "upgraded", "price_drop", "below_market"],
+      "tier": 1,
+      "views": 0,
+      "publish_date": "2026-01-25"
+    },
+    
+    "audit": {
+      "needs_audit": false,
+      "status": "pending",
+      "notes": [],
+      "approved": false,
+      "flagged": false,
+      "manager_assigned": null
+    },
+    
+    "features": {
+      "upgrades": [
+        "Тормоза обновлены до Shimano Saint (из SRAM Code R)",
+        "Колеса обновлены до e*thirteen DH R1 (из DT Swiss M1900)",
+        "Виниловая защита рамы с первого дня"
+      ],
+      "highlights": [
+        "Очень хорошее состояние",
+        "Отлично ухожен",
+        "Минимальные косметические дефекты",
+        "Топовые компоненты",
+        "Виниловая защита"
+      ],
+      "included_accessories": [
+        "Педали Shimano Saint"
+      ],
+      "special_notes": "Велосипед в отличном состоянии. Виниловая защита рамы установлена с первого дня эксплуатации. Обновленные тормоза и колеса."
+    },
+    
+    "quality_score": 85,
+    "completeness": 88.5,
+    
+    "ai_analysis": {
+      "model": "gemini-1.5-flash",
+      "processed_at": "2026-01-31T15:20:15Z",
+      "processing_time": 16.3,
+      "attempts": 1,
+      "confidence": 0.88,
+      "extracted_from": "structured_data",
+      "inferred_fields": [
+        "sub_category",
+        "condition_score",
+        "rotor_sizes",
+        "component_original_parts"
+      ],
+      "corrections": [
+        {
+          "field": "category",
+          "original": "bikes",
+          "corrected": "mtb",
+          "reason": "Определено по breadcrumb и характеристикам подвески"
+        },
+        {
+          "field": "sub_category",
+          "original": null,
+          "corrected": "downhill",
+          "reason": "203mm вилка + DH компоненты + breadcrumb указывают на downhill"
+        }
+      ]
+    },
+    
+    "market_data": {
+      "market_value": 2800,
+      "comparable_listings": 8,
+      "average_price": 3100,
+      "price_percentile": 20,
+      "days_to_sell_estimate": 5,
+      "demand_level": "high",
+      "market_trend": "stable"
+    },
+    
+    "internal": {
+      "database_id": null,
+      "version": 1,
+      "deactivated_at": null,
+      "deactivation_reason": null,
+      "processing_errors": [],
+      "warnings": [],
+      "tags": ["auto_imported", "ai_normalized", "photos_optimized", "upgraded_components"]
+    }
+  }
+}

@@ -1,0 +1,473 @@
+create table public.customers (
+  id uuid not null default gen_random_uuid (),
+  full_name text not null,
+  phone text null,
+  email text null,
+  preferred_channel public.preferred_channel_enum null default 'telegram'::preferred_channel_enum,
+  country text null,
+  created_at timestamp with time zone not null default now(),
+  constraint customers_pkey primary key (id)
+) TABLESPACE pg_default;
+
+create index IF not exists idx_customers_created on public.customers using btree (created_at) TABLESPACE pg_default;
+
+
+create table public.documents (
+  id uuid not null default gen_random_uuid (),
+  order_id uuid null,
+  type public.document_type_enum not null,
+  file_url text not null,
+  uploaded_at timestamp with time zone not null default now(),
+  constraint documents_pkey primary key (id),
+  constraint documents_order_id_fkey foreign KEY (order_id) references orders (id) on delete CASCADE
+) TABLESPACE pg_default;
+
+create index IF not exists idx_documents_order on public.documents using btree (order_id) TABLESPACE pg_default;
+
+create table public.leads (
+  id uuid not null default gen_random_uuid (),
+  source text not null,
+  customer_id uuid null,
+  bike_url text null,
+  bike_snapshot jsonb null,
+  customer_comment text null,
+  estimated_budget_eur integer null,
+  status public.lead_status_enum not null default 'new'::lead_status_enum,
+  created_at timestamp with time zone not null default now(),
+  constraint leads_pkey primary key (id),
+  constraint leads_customer_id_fkey foreign KEY (customer_id) references customers (id) on delete set null
+) TABLESPACE pg_default;
+
+create index IF not exists idx_leads_status_created on public.leads using btree (status, created_at) TABLESPACE pg_default;
+
+create table public.order_status_events (
+  id uuid not null default gen_random_uuid (),
+  order_id uuid null,
+  old_status text null,
+  new_status text null,
+  changed_by uuid null,
+  created_at timestamp with time zone not null default now(),
+  constraint order_status_events_pkey primary key (id),
+  constraint order_status_events_changed_by_fkey foreign KEY (changed_by) references users (id) on delete set null,
+  constraint order_status_events_order_id_fkey foreign KEY (order_id) references orders (id) on delete CASCADE
+) TABLESPACE pg_default;
+
+create index IF not exists idx_order_status_events_order on public.order_status_events using btree (order_id) TABLESPACE pg_default;
+
+create table public.orders (
+  id uuid not null default gen_random_uuid (),
+  order_code text not null,
+  customer_id uuid null,
+  lead_id uuid null,
+  bike_url text null,
+  bike_snapshot jsonb null,
+  final_price_eur numeric(12, 2) null,
+  commission_eur numeric(12, 2) null,
+  status public.order_status_enum not null default 'awaiting_payment'::order_status_enum,
+  assigned_manager uuid null,
+  created_at timestamp with time zone not null default now(),
+  constraint orders_pkey primary key (id),
+  constraint orders_order_code_key unique (order_code),
+  constraint orders_assigned_manager_fkey foreign KEY (assigned_manager) references users (id) on delete set null,
+  constraint orders_customer_id_fkey foreign KEY (customer_id) references customers (id) on delete set null,
+  constraint orders_lead_id_fkey foreign KEY (lead_id) references leads (id) on delete set null,
+  constraint chk_final_price_nonneg check (
+    (
+      (final_price_eur >= (0)::numeric)
+      or (final_price_eur is null)
+    )
+  )
+) TABLESPACE pg_default;
+
+create index IF not exists idx_orders_status_created on public.orders using btree (status, created_at) TABLESPACE pg_default;
+
+create index IF not exists idx_orders_order_code on public.orders using btree (order_code) TABLESPACE pg_default;
+
+create table public.payments (
+  id uuid not null default gen_random_uuid (),
+  order_id uuid null,
+  direction public.payment_direction_enum not null,
+  role public.payment_role_enum not null,
+  method public.payment_method_enum not null,
+  amount numeric(12, 2) not null,
+  currency public.currency_enum not null,
+  status public.payment_status_enum not null default 'planned'::payment_status_enum,
+  external_reference text null,
+  related_payment_id uuid null,
+  created_at timestamp with time zone not null default now(),
+  constraint payments_pkey primary key (id),
+  constraint payments_order_id_fkey foreign KEY (order_id) references orders (id) on delete CASCADE,
+  constraint payments_related_payment_id_fkey foreign KEY (related_payment_id) references payments (id) on delete set null,
+  constraint chk_amount_positive check ((amount >= (0)::numeric))
+) TABLESPACE pg_default;
+
+create index IF not exists idx_payments_order on public.payments using btree (order_id) TABLESPACE pg_default;
+
+create index IF not exists idx_payments_status on public.payments using btree (status) TABLESPACE pg_default;
+
+create table public.shipments (
+  id uuid not null default gen_random_uuid (),
+  order_id uuid null,
+  provider public.shipment_provider_enum not null default 'rusbid'::shipment_provider_enum,
+  tracking_number text null,
+  warehouse_received boolean null default false,
+  warehouse_photos_received boolean null default false,
+  client_received boolean null default false,
+  estimated_delivery_date date null,
+  ruspost_status jsonb null,
+  ruspost_last_update timestamp with time zone null,
+  created_at timestamp with time zone not null default now(),
+  constraint shipments_pkey primary key (id),
+  constraint shipments_order_id_fkey foreign KEY (order_id) references orders (id) on delete CASCADE
+) TABLESPACE pg_default;
+
+create index IF not exists idx_shipments_tracking on public.shipments using btree (tracking_number) TABLESPACE pg_default;
+
+create index IF not exists idx_shipments_order on public.shipments using btree (order_id) TABLESPACE pg_default;
+
+create table public.tasks (
+  id uuid not null default gen_random_uuid (),
+  order_id uuid null,
+  title text not null,
+  description text null,
+  due_at timestamp with time zone null,
+  completed boolean null default false,
+  assigned_to uuid null,
+  created_at timestamp with time zone not null default now(),
+  constraint tasks_pkey primary key (id),
+  constraint tasks_assigned_to_fkey foreign KEY (assigned_to) references users (id) on delete set null,
+  constraint tasks_order_id_fkey foreign KEY (order_id) references orders (id) on delete CASCADE
+) TABLESPACE pg_default;
+
+create index IF not exists idx_tasks_order on public.tasks using btree (order_id) TABLESPACE pg_default;
+
+create table public.users (
+  id uuid not null default gen_random_uuid (),
+  name text not null,
+  role public.user_role_enum not null default 'manager'::user_role_enum,
+  active boolean not null default true,
+  created_at timestamp with time zone not null default now(),
+  constraint users_pkey primary key (id)
+) TABLESPACE pg_default;
+
+create index IF not exists idx_users_active on public.users using btree (active) TABLESPACE pg_default;
+
+Ниже — аккуратно структурированное пояснение «словами» как устроена у нас система таблиц CRM, какие поля в каких сценариях заполняются и как таблицы взаимодействуют друг с другом. Пишу практично — чтобы можно было передать это менеджеру или продуктологу и чтобы любая техническая команда поняла ожидаемое поведение системы без деталей реализации.
+
+Краткая схема (в двух строках)
+
+Есть каноническая база данных CRM: основные сущности — leads (заявки), orders (заказы), payments (платежи), users (CRM-пользователи), customers (клиенты), дополнительные — documents, tasks, shipments, и служебные таблицы order_status_events и audit_log. Система работает через безопасные процедуры (RPC) — все критичные операции идут через них, а не через прямые UPDATE/INSERT.
+
+Какие поля где и что они значат (в общем виде)
+
+Ниже — ключевые таблицы и важные колонки, описанные простыми словами.
+
+leads (заявки)
+
+id — внутренний идентификатор заявки.
+
+created_at / updated_at — время создания/последнего изменения.
+
+customer_id — ссылка на customers.
+
+contact (телефон, email) — контакт клиента.
+
+source — откуда пришёл лид (telegram, сайт, авито и т.п.).
+
+status — текущий статус заявки (новая, в работе, отклонена и т.д.).
+
+assigned_to — CRM-пользователь, ответственный за заявку.
+
+notes / description — заметки оператора.
+
+заполнение: при создании лида обязательны id, created_at, contact, source; остальное добавляется по мере работы оператора.
+
+orders (заказы)
+
+id — внутренний идентификатор заказа.
+
+order_number — человеческий номер/номер для клиента.
+
+lead_id — если заказ родился из лида — ссылка на leads.
+
+customer_id — ссылка на customers.
+
+items — список позиций (модель байка, комплектация).
+
+total_amount, currency — сумма заказа.
+
+status — текущий статус заказа (создан, оплачен, в доставке, доставлен, закрыт).
+
+assigned_manager — менеджер, курирующий заказ.
+
+created_by / updated_by — CRM-пользователь, который инициировал операцию.
+
+заполнение: при создании заказа фиксируются id, order_number, customer_id, items, total_amount, currency, status=created. lead_id может быть установлен, если это продолжение лида.
+
+payments (платежи, ledger)
+
+id — платежная запись.
+
+order_id — привязка к заказу.
+
+amount, currency — сумма и валюта.
+
+direction — incoming / outgoing.
+
+role — роль платежа: client_payment, supplier_payment, refund и т.п.
+
+method — способ/канал оплаты.
+
+status — completed / pending / failed.
+
+external_reference — внешний идентификатор от платёжного провайдера.
+
+created_by — CRM-пользователь, который зарегистрировал платеж.
+
+заполнение: при фиксации платежа обязательно order_id, amount, direction, role, created_by; уникальность по external_reference используется для дедупликации.
+
+users (CRM-пользователи)
+
+id, email, role (admin/manager), active.
+
+используются для аутентификации и как created_by / updated_by в других таблицах.
+
+customers
+
+профиль покупателя: id, full_name, contacts, billing_address, прочие данные для доставки/таможни.
+
+order_status_events
+
+хранит полный лог статусных переходов: id, order_id, old_status, new_status, actor_id, created_at.
+
+заполняется автоматически при переходах статуса через safe-RPC.
+
+audit_log
+
+общий журнал аудита: actor_id, action, entity, entity_id, payload, created_at.
+
+записывает ключевые изменения: смены статусов, записи платежей, прикрепление документов.
+
+documents, tasks, shipments
+
+documents хранит ссылки на файлы/документы (паспорт покупателя, накладные) — поля: order_id, document_type, storage_url, uploaded_by.
+
+tasks — внутренние задачи: title, description, assignee_id, due_at, created_by.
+
+shipments — трекинг доставки: order_id, carrier, tracking_number, status.
+
+Общая логика работы CRM — словами, шаг за шагом
+
+Ниже — все типовые сценарии и что именно в базе заполняется и когда. Для каждого сценария описано «кто что делает» и «какие поля меняются».
+
+1. Поступил лид (пользователь оставил заявку на сайте/в мессенджере)
+
+Что происходит:
+
+Создаётся запись в leads с контактами клиента, источником (site/telegram), временем создания.
+
+status ставится new, created_at фиксируется.
+
+При создании через публичную форму может одновременно создаваться customer (если нет совпадения) и записываться customer_id в leads.
+
+Какие поля заполняются:
+
+leads.id, leads.created_at, leads.contact, leads.source, leads.status=new, leads.customer_id (опционально).
+
+Почему это важно:
+
+Лиды централизуют входящие запросы; от них могут отталкиваться дальнейшие продажи и служебные действия.
+
+2. Оператор начинает работу с лидом
+
+Что происходит:
+
+Оператор открывает заявку, меняет status (например, in_progress), добавляет notes.
+
+При каждой смене статуса вызывается безопасная процедура, которая:
+
+проверяет права оператора,
+
+записывает событие в order_status_events (для заявок аналогичная таблица или event в audit_log),
+
+пишет запись в audit_log.
+
+Какие поля заполняются/меняются:
+
+leads.status, leads.assigned_to, leads.updated_at, и в логах — order_status_events/audit_log.
+
+3. Из лида создаётся заказ (быстрый заказ или через checkout)
+
+Что происходит:
+
+Если клиент подтвердил покупку, система создаёт запись в orders. Если заказ происходит из лида — orders.lead_id связывается с leads.id.
+
+Заполняются позиции, сумма, валюта, status=created, created_by = CRM-пользователь (либо system для автоматического процесса).
+
+Создаётся запись в order_status_events о начальном статусе.
+
+Какие поля заполняются:
+
+orders.id, orders.order_number, orders.lead_id, orders.customer_id, orders.items, orders.total_amount, orders.currency, orders.status.
+
+Дополнительно:
+
+В checkout стартует процесс платежа — для этого формируется временный платежный объект или сразу идёт запись в payments после подтверждения приёма денег.
+
+4. Клиент платит (incoming client_payment)
+
+Что происходит:
+
+После подтверждения успешного приёма средств создаётся запись в payments с direction=incoming, role=client_payment, status=completed, created_by = CRM-пользователь (идентифицированный через identity).
+
+Safe-процедура record_generic_payment_safe проверяет бизнес-условия: сумма положительная, заказ существует, пользователь активен.
+
+Если всё ок — платеж сохраняется, orders.status автоматически переводится в paid (или следующий статус) внутри safe-процедуры; создаётся запись в order_status_events и audit_log.
+
+Какие поля заполняются:
+
+payments.order_id, payments.amount, payments.currency, payments.direction= incoming, payments.role=client_payment, payments.status=completed, payments.external_reference, payments.created_by; и в orders.status — paid, плюс order_status_events запись.
+
+Контроль:
+
+Если external_reference уже существует, вторая запись не создаётся — это защищает от повторной регистрации одного и того же факта оплаты.
+
+5. Выплата поставщику / исходящий платеж (outgoing / supplier_payment)
+
+Что происходит:
+
+Исходящий платеж регистрируется в payments с direction=outgoing и соответствующей ролью.
+
+Guard-логика проверяет, что перед исходящим платежом есть соответствующий completed incoming client_payment (или другое условие по роли). Если проверка не проходит — операция отклоняется.
+
+Refund (возврат клиенту) требует роли admin у created_by — без права запрещается.
+
+Какие поля заполняются:
+
+payments.direction=outgoing, payments.role, payments.amount, payments.created_by, payments.status.
+
+Почему это важно:
+
+Guards предотвращают мошенничество и логические рассогласования — нельзя выплатить поставщику, пока клиент не оплатил.
+
+6. Смена статуса заказа менеджером (доставка, завершён, отмена)
+
+Что происходит:
+
+Менеджер вызывает safe-RPC advance_order_status_safe с новым статусом и своим идентификатором.
+
+RPC проверяет корректность перехода (правила бизнес-логики), обновляет orders.status, добавляет запись в order_status_events и audit_log.
+
+Какие поля меняются:
+
+orders.status, orders.updated_at, order_status_events (новая запись), audit_log (запись об изменении).
+
+Особенности:
+
+Для статусов вроде delivered/closed могут быть дополнительные проверки прав (только admin) — это трейд-оф между автоматикой и контролем.
+
+7. Прикрепление документа (паспорта, накладной)
+
+Что происходит:
+
+Файл загружается в хранилище, в таблицу documents записывается order_id, document_type, storage_url, uploaded_by.
+
+При необходимости процедура проверяет права uploaded_by и записывает в audit_log.
+
+Какие поля заполняются:
+
+documents.order_id, documents.document_type, documents.storage_url, documents.uploaded_by, documents.created_at.
+
+8. Создание задачи для внутренней команды
+
+Что происходит:
+
+Оператор создаёт запись в tasks — назначает assignee_id, ставит дедлайн due_at, добавляет описание.
+
+В tasks.created_by сохраняется инициатор, и событие фиксируется в audit_log.
+
+Какие поля заполняются:
+
+tasks.title, tasks.description, tasks.assignee_id, tasks.due_at, tasks.created_by, tasks.status= open.
+
+9. Интеграция с identity / user_identity_map
+
+Что происходит:
+
+При каждом защищённом HTTP-запросе сервер резолвит локального пользователя в crm_user_id через user_identity_map или по email.
+
+Полученный crm_user_id передаётся в RPC как p_user_id / created_by / updated_by.
+
+Почему:
+
+Это обеспечивает один источник прав (CRM users) и предотвращает вызовы safe-RPC с null пользовательским id.
+
+Взаимодействие таблиц — высокоуровневая картина
+
+leads → orders
+Лид может породить заказ; orders.lead_id поддерживает связь — это позволяет проследить воронку «заявка → продажа».
+
+orders ↔ payments
+Платежи привязаны по order_id. Платежи влияют на статус заказа: успешный incoming обычно переводит orders.status в «оплачен» или аналогичный.
+
+orders → order_status_events и audit_log
+Для каждого статусного перехода есть запись в истории и в аудите — это источник правды о том, кто и когда сделал изменение.
+
+documents и tasks связываются с orders (и/или leads) для исполнения вспомогательных операций (документы доставки, задачи по подготовке посылки).
+
+users (CRM) — центральный актор
+Все критичные действия должны быть связаны с users.id (через created_by/updated_by/actor_id) — только так срабатывает audit и guards.
+
+Защитные механизмы и бизнес-правила (словами)
+
+Safe-RPC: все важные операции идут через процедуры, которые внутри проверяют права, валидность данных и атомарно делают несколько изменений (например: записать платеж и сменить статус заказа).
+
+Guards: на уровне БД стоят триггеры, не позволяющие напрямую обновлять критичные поля (status) без прохода через безопасный путь.
+
+Audit: каждая операция, меняющая бизнес-сущность, логируется в audit_log с указанием actor_id и полезной нагрузкой — это гарантия трассируемости.
+
+Идемпотентность / дедупликация: платежи дублируются только по разным external_reference; одинаковый external_reference блокирует второй ввод.
+
+RBAC: некоторые операции (refund, закрытие заказа) доступны только пользователям с ролью admin.
+
+Типичные последовательности (одним абзацем каждую)
+
+Quick-order (гость): клиент на лендинге заполняет форму → создаётся lead и customer → создаётся order из лида (orders.lead_id выставлен) → система запускает платёжный процесс → после успешного incoming создаётся запись в payments → orders.status переводится в paid → далее создаётся запись в order_status_events и audit_log.
+
+Checkout (авторизованный клиент): пользователь с JWT → resolveCrmUserForRequest возвращает crm_user_id → createOrderFromCart создаёт orders и сразу регистрирует payments с created_by=crm_user_id → safe-RPC гарантирует целостность и запись аудита.
+
+Административный статус-апдейт: менеджер инициирует смену статуса → вызов advance_order_status_safe с actor_id → проверка допустимости перехода → обновление orders.status + запись event + audit.
+
+Возврат/рефанд: админ инициирует refund → guard проверяет права и предшествующие плайменты → если всё ок, создаётся payments с direction=outgoing и role=refund → аудит.
+
+Контроль качества данных — практические правила
+
+Все операции, которые важны для бухгалтерии/юридии, обязательно имеют created_by/actor_id.
+
+Вся история должна быть доступна в order_status_events и audit_log.
+
+Нельзя менять orders.status напрямую — только через RPC; прямой PATCH должен падать (и падать он будет, потому что триггер запрещает это).
+
+Для платежей обязателен external_reference от провайдера, если платёж пришёл извне — это ключ для дедупликации.
+
+Короткий чеклист для разработчика/менеджера при внедрении функции
+
+При создании заказа — связать его с лидом (если есть) и customer.
+
+При регистрации платежа — передавать created_by (crm_user_id) и external_reference.
+
+При смене статуса — использовать advance_order_status_safe (чтобы автоматически попал в order_status_events и audit_log).
+
+При добавлении документа/задачи — записать uploaded_by/created_by.
+
+Никогда не давать прямой доступ REST к orders.status — всё через RPC.
+
+Заключение — почему такая схема хороша (коротко)
+
+Централизация бизнес-логики через safe-RPC делает операции атомарными и проверяемыми: бухгалтерия и служба безопасности получают корректные записи.
+
+Audit + events дают прозрачность для клиентов и внутреннего контроля.
+
+Guards на уровне БД защищают от обхода логики через прямые запросы.
+
+Структура легко читается: лиды → заказы → платежи → статусная история → аудит.

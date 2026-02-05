@@ -1,0 +1,227 @@
+# TASK
+You are a bike data analyst for BikeWerk (Germany). Normalize raw bike listing data into standardized JSON.
+
+Input: Raw scraped data provided at the end.
+Output: Complete Unified Format JSON (valid JSON only).
+
+---
+# CRITICAL RULES
+1. **PHOTOS**: Analyze photos if available to assess condition.
+2. **RUSSIAN TRANSLATION**: Translate ALL descriptive fields to Russian.
+3. **TIMESTAMPS**: Use "2026-02-01T12:00:00.000Z" (example).
+4. **VALID JSON ONLY**: No markdown blocks, no comments.
+5. **STRICT STRING ESCAPING**:
+   - Newlines: use \n (double backslash)
+   - Quotes: use \" 
+   - Backslashes: use \\
+   - Tabs: use \t
+   - NO raw control characters (0x00-0x1F) in strings!
+6. **NO JUNK IN NAME**: Remove "Reserviert", "Gelöscht", "Verkauft", bullet points (•) from basic_info.name.
+7. **COMPLETE RESPONSE**: ALWAYS complete the JSON. Do NOT stop mid-field.
+
+---
+# JSON STRUCTURE
+```json
+{
+  "meta": {
+    "source_platform": "string",
+    "source_url": "string",
+    "source_ad_id": "string",
+    "created_at": "ISO8601 string",
+    "updated_at": "ISO8601 string",
+    "last_checked_at": "ISO8601 string",
+    "is_active": true,
+    "parser_version": "2.5.0"
+  },
+  "basic_info": {
+    "name": "string (Brand + Model + Year)",
+    "brand": "string",
+    "model": "string",
+    "year": "integer or null",
+    "category": "string (mtb|road|gravel|city|ebike|bmx|kids|other)",
+    "sub_category": "string (xc|trail|enduro|downhill|null)",
+    "description": "string (Russian translation)",
+    "language": "ru"
+  },
+  "pricing": {
+    "price": "integer",
+    "original_price": "integer or null",
+    "discount": "integer",
+    "currency": "EUR",
+    "is_negotiable": "boolean",
+    "fmv": "integer (Fair Market Value)",
+    "fmv_confidence": "number (0.0-1.0)",
+    "market_comparison": "string (below_market|at_market|above_market)",
+    "optimal_price": "integer",
+    "days_on_market": 0
+  },
+  "specs": {
+    "frame_size": "string",
+    "frame_material": "string (aluminum|carbon|steel|titanium)",
+    "color": "string",
+    "weight": "number or null",
+    "wheel_size": "string",
+    "suspension_type": "string (hardtail|full|rigid)",
+    "travel_front": "number or null",
+    "travel_rear": "number or null",
+    "groupset": "string",
+    "groupset_speeds": "integer",
+    "brakes": "string",
+    "brakes_type": "string",
+    "fork": "string",
+    "shock": "string",
+    "drivetrain": "string",
+    "wheels": "string",
+    "tires": "string",
+    "pedals_included": "boolean"
+  },
+  "condition": {
+    "status": "string (used|new|defective)",
+    "score": "integer (0-100)",
+    "grade": "string (A|B|C)",
+    "issues": ["string (Russian)"],
+    "wear_indicators": {
+      "frame": "string",
+      "drivetrain": "string",
+      "brakes": "string",
+      "tires": "string"
+    }
+  },
+  "seller": {
+    "name": "string",
+    "type": "string (private|dealer)",
+    "rating": "number",
+    "verified": "boolean"
+  },
+  "logistics": {
+    "location": "string",
+    "country": "string",
+    "shipping_option": "string",
+    "shipping_cost": "number",
+    "pickup_available": "boolean"
+  },
+  "media": {
+    "main_image": "string (url)",
+    "gallery": ["string (url)"],
+    "photo_quality": "integer (0-100)"
+  },
+  "ranking": {
+    "score": "number (0.0-1.0)",
+    "value_score": "integer",
+    "demand_score": "integer",
+    "is_hot_offer": "boolean",
+    "tier": "integer",
+    "views": 0
+  },
+  "features": {
+    "upgrades": ["string (Russian)"],
+    "highlights": ["string (Russian)"],
+    "included_accessories": ["string (Russian)"]
+  },
+  "quality_score": "integer",
+  "completeness": "number",
+  "internal": {
+    "tags": ["auto_imported", "ai_normalized"]
+  }
+}
+```
+
+INPUT DATA (will be appended below)
+OUTPUT FORMAT REQUIREMENTS
+CRITICAL: Return ONLY valid JSON. No explanations, no markdown, no code blocks.
+
+Your response must:
+
+Start with { and end with }
+
+Be valid, parseable JSON
+
+Have NO trailing commas
+
+Have NO comments inside JSON
+
+Have ALL string values in double quotes
+
+Have ALL Russian text properly escaped
+
+DO NOT wrap your response in markdown code blocks.
+DO NOT add any text before or after the JSON.
+START your response with { immediately.
+
+=======================================================
+ACTUAL INPUT DATA:
+=======================================================
+Source: buycycle
+Title: Specialized Stumpjumper Expert Carbon 2021 Taglia S3/M
+Price: 2900 EUR
+Location: N/A
+Description: Specialized Stumpjumper Expert Carbon acquistata presso di noi ad Agosto 2021 ed adesso rivenduta per inutilizzo, ferma in garage da più di un anno per mancanza di tempo ed adesso vediamo per conto del nostro cliente. Telaio in carbonio completamente pellicolato Chamaleon Skin tenuta in ottimo stato, manubrio sostituito con Renthal in carbonio, e dischi sostituiti con Braking. Il resto della bici ...
+Components (Raw): {
+  "raw_text": "SattelIncludedPedaleNot Included",
+  "Sattel": "Included",
+  "Pedale": "Not Included"
+}
+General Info: {
+  "Zustand": "Sehr gut",
+  "Jahr": "2021",
+  "Rahmengröße": "M",
+  "Passend für Körpergröße": "163 - 178cm",
+  "Federungstyp": "Vollfederung",
+  "Farbe": "Grün",
+  "Quittung verfügbar": "Ja",
+  "Schaltart": "Mechanisch",
+  "Bremstyp": "Scheiben",
+  "Rahmenmaterial": "Carbon"
+}
+Images: [
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/cdcf8169-cdf6-4aef-a656-d82284bc2abe.webp?width=770",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/55c99d84-2f50-497f-812e-58749c08e8f6.webp?width=770",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/d8042d3b-bcde-42ba-a61b-ad44f2db9092.webp?width=770",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/59eb4084-d00d-45b5-9788-b9eb226cc3d8.webp?width=770",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/b75d79cc-6703-4cc8-9a10-7ef74a6fda8d.webp?width=770",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/d62aa894-1789-48b3-b07d-853a12341218.webp?width=770",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/7f1e75de-8e7f-4cd6-84a1-f5277d0a946e.webp?width=770",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/dd0f861a-0f88-4949-aa07-527225cc48e7.webp?width=770",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/3e35e50c-283b-45e5-9f0b-941ba5887099.webp?width=770",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/8ed167df-0ba5-4632-8c78-450a28208ce5.webp?width=770",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/fa2511f0-006e-41f8-a1d4-88ddb57c0560.webp?width=770",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/231f001c-7ab7-45ad-baba-fc8b5509b0db.webp?width=770",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/31a2bdd7-8a27-4323-a4b3-21547a183373.webp?width=770",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/e31e7b55-8482-486b-81eb-b884e88cbb00.webp?width=770",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/e7ad513c-8dc8-4c83-96e7-076bc8a5f63f.webp?width=770",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/8d1bdb1d-1b43-4ab3-ae03-3e44fbd27de2.webp?width=770",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/5c8b4621-daa9-4712-902a-4330cb90292b.webp?width=770",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/be91cacd-7e51-4bb2-ad5b-27c53b61b6ec.webp?width=770",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/3de70b55-4955-4742-8284-2d7f0383efe4.webp?width=770",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/90c8565d-be25-44c9-b466-dff896c34ddd.webp?width=770",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/f493f392-e21c-4a74-9173-8a8862536f63.webp?width=770",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/5ab9a66c-5244-48ba-88dd-d60da03126f3.webp?width=770",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/e5490f69-0a88-4f0f-a6f1-cc69fed3867a.webp?width=770",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/fe1accbf-f527-44cf-8b33-1d86c2d8e52c.webp?width=770",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/cdcf8169-cdf6-4aef-a656-d82284bc2abe.webp?width=350",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/55c99d84-2f50-497f-812e-58749c08e8f6.webp?width=350",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/d8042d3b-bcde-42ba-a61b-ad44f2db9092.webp?width=350",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/59eb4084-d00d-45b5-9788-b9eb226cc3d8.webp?width=350",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/b75d79cc-6703-4cc8-9a10-7ef74a6fda8d.webp?width=350",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/d62aa894-1789-48b3-b07d-853a12341218.webp?width=350",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/7f1e75de-8e7f-4cd6-84a1-f5277d0a946e.webp?width=350",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/dd0f861a-0f88-4949-aa07-527225cc48e7.webp?width=350",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/3e35e50c-283b-45e5-9f0b-941ba5887099.webp?width=350",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/8ed167df-0ba5-4632-8c78-450a28208ce5.webp?width=350",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/fa2511f0-006e-41f8-a1d4-88ddb57c0560.webp?width=350",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/231f001c-7ab7-45ad-baba-fc8b5509b0db.webp?width=350",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/31a2bdd7-8a27-4323-a4b3-21547a183373.webp?width=350",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/e31e7b55-8482-486b-81eb-b884e88cbb00.webp?width=350",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/e7ad513c-8dc8-4c83-96e7-076bc8a5f63f.webp?width=350",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/8d1bdb1d-1b43-4ab3-ae03-3e44fbd27de2.webp?width=350",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/5c8b4621-daa9-4712-902a-4330cb90292b.webp?width=350",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/be91cacd-7e51-4bb2-ad5b-27c53b61b6ec.webp?width=350",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/3de70b55-4955-4742-8284-2d7f0383efe4.webp?width=350",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/90c8565d-be25-44c9-b466-dff896c34ddd.webp?width=350",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/f493f392-e21c-4a74-9173-8a8862536f63.webp?width=350",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/5ab9a66c-5244-48ba-88dd-d60da03126f3.webp?width=350",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/e5490f69-0a88-4f0f-a6f1-cc69fed3867a.webp?width=350",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/bike/media/2366740/fe1accbf-f527-44cf-8b33-1d86c2d8e52c.webp?width=350",
+  "https://d1mgeijqpfaspl.cloudfront.net/uploads/public/api/img/pdp/buycycle_packaging.webp"
+]
+=======================================================
