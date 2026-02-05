@@ -82,6 +82,7 @@ class ValuationService {
   async calculateFMVWithDepreciation(brand, model, target_year, trim_level) {
       if (!target_year) return this.calculateFMV(brand, model, null, trim_level);
 
+      const ANNUAL_DEPRECIATION = 0.12; // 12% per year
       // Get data for neighboring years (±3 years)
       const yearData = [];
       for (let y = target_year - 3; y <= target_year + 3; y++) {
@@ -91,10 +92,23 @@ class ValuationService {
           }
       }
       
-      if (yearData.length === 0) return null;
+      if (yearData.length === 0) {
+        if (!brand) return null;
+        const ceiling = this.getBrandPriceCeiling(brand);
+        if (!ceiling) return null;
+        const currentYear = new Date().getFullYear();
+        const age = target_year ? Math.max(0, currentYear - target_year) : 0;
+        const estimated = Math.round(ceiling * Math.pow(1 - ANNUAL_DEPRECIATION, age));
+        return {
+          fmv: estimated,
+          finalPrice: estimated,
+          confidence: 'LOW',
+          method: 'brand_ceiling_estimate',
+          years_used: []
+        };
+      }
       
       // Weighted average with depreciation adjustment
-      const ANNUAL_DEPRECIATION = 0.12; // 12% per year
       let weighted_sum = 0;
       let weight_total = 0;
       
@@ -153,3 +167,9 @@ class ValuationService {
 }
 
 module.exports = ValuationService;
+
+
+
+
+
+

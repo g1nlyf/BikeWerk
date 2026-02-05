@@ -6,14 +6,14 @@ const axios = require('axios');
 const { HttpsProxyAgent } = require('https-proxy-agent');
 
 const proxyUrl = 'http://user258350:otuspk@191.101.73.161:8984';
-const STATIC_KEY = 'AIzaSyBwFKlgRwTPpx8Ufss9_aOYm9zikt9SGj0';
+const STATIC_KEY = 'AIzaSyBjngHVn2auhLXRMTCY0q9mrqVaiRkfj4g';
 
 class GeminiProcessor {
     constructor(apiKey, apiUrl) {
         // STRICT FORCE: Ignore passed apiKey, use only the authorized one
-        this.apiKey = 'AIzaSyBwFKlgRwTPpx8Ufss9_aOYm9zikt9SGj0';
+        this.apiKey = 'AIzaSyBjngHVn2auhLXRMTCY0q9mrqVaiRkfj4g';
         this.apiUrl = apiUrl;
-        this.timeout = 30000;
+        this.timeout = 60000;
         this.cooldownMs = 0; // User confirms no limits
         this._lastCallAt = 0;
         this.rpmLimit = 1000; // Unlimited
@@ -34,7 +34,7 @@ class GeminiProcessor {
 
     async processBikeData(rawBikeData, htmlContent = '') {
         console.log('🤖 Обрабатываю данные велосипеда через Gemini API...');
-        
+
         try {
             if (!this.apiKey) {
                 console.warn('⚠️ Gemini API ключ не найден, использую тестовые данные');
@@ -44,21 +44,21 @@ class GeminiProcessor {
             // Check if we have images
             if (Array.isArray(rawBikeData.images) && rawBikeData.images.length > 0) {
                 console.log(`📸 Найдено ${rawBikeData.images.length} изображений. Пробую мультимодальный режим...`);
-                
+
                 // Image Pruning Strategy: First, Middle, Last
                 const images = rawBikeData.images;
                 const imagesToProcess = [];
                 if (images.length > 0) imagesToProcess.push(images[0]); // Hero Shot
                 if (images.length > 2) imagesToProcess.push(images[Math.floor(images.length / 2)]); // Context/Details
                 if (images.length > 1) imagesToProcess.push(images[images.length - 1]); // Rear/Extra
-                
+
                 // Ensure max 3 unique images
                 const uniqueImages = [...new Set(imagesToProcess)].slice(0, 3);
-                
+
                 console.log(`📉 Vision Compression: Selected ${uniqueImages.length} images for analysis.`);
 
                 const imageParts = [];
-                
+
                 for (const imgUrl of uniqueImages) {
                     try {
                         const buffer = await this._fetchImageToBuffer(imgUrl);
@@ -79,7 +79,7 @@ class GeminiProcessor {
                     const prompt = this.createLeanPrompt(rawBikeData);
                     const response = await this.callGeminiMultimodal([{ text: prompt }, ...imageParts]);
                     const processedData = this.parseGeminiResponse(response);
-                    
+
                     const finalData = {
                         ...rawBikeData,
                         ...processedData,
@@ -88,11 +88,11 @@ class GeminiProcessor {
                         processedMode: 'multimodal_lean'
                     };
                     delete finalData.rawHtmlContent;
-                    try { this.validateGeminiData(finalData); } catch(e) { console.warn('Validation Warning:', e.message); }
+                    try { this.validateGeminiData(finalData); } catch (e) { console.warn('Validation Warning:', e.message); }
                     console.log('✅ Данные успешно обработаны Gemini API (Lean Multimodal)');
                     return finalData;
                 } else {
-                     console.log('⚠️ Не удалось получить валидные изображения для анализа, переключаюсь на текстовый режим.');
+                    console.log('⚠️ Не удалось получить валидные изображения для анализа, переключаюсь на текстовый режим.');
                 }
             } else {
                 console.log('⚠️ No images for AI analysis (массив images пуст). Использую только текст.');
@@ -102,9 +102,9 @@ class GeminiProcessor {
             const contentToAnalyze = rawBikeData.rawHtmlContent || htmlContent;
             const prompt = this.createPrompt(rawBikeData, contentToAnalyze);
             const response = await this.callGeminiAPI(prompt);
-            
+
             const processedData = this.parseGeminiResponse(response);
-            
+
             // Объединяем исходные данные с обработанными
             const finalData = {
                 ...rawBikeData,
@@ -112,28 +112,28 @@ class GeminiProcessor {
                 processedByGemini: true,
                 processingDate: new Date().toISOString()
             };
-            try { this.validateGeminiData(finalData); } catch(e) { console.warn('Validation Warning:', e.message); }
+            try { this.validateGeminiData(finalData); } catch (e) { console.warn('Validation Warning:', e.message); }
 
             // Удаляем rawHtmlContent из финальных данных для экономии места
             delete finalData.rawHtmlContent;
 
             console.log('✅ Данные успешно обработаны Gemini API');
             return finalData;
-            
+
         } catch (error) {
             console.error('❌ Ошибка при обработке Gemini API:', error.message);
             // Fallback to Groq if needed (Placeholder for now, logic to be added)
             if (error.message.includes('429') || error.message.includes('Quota')) {
-                 console.log('🔄 Triggering Fallback Strategy (Groq/Llama)...');
-                 // TODO: Implement Groq Fallback
+                console.log('🔄 Triggering Fallback Strategy (Groq/Llama)...');
+                // TODO: Implement Groq Fallback
             }
 
             console.log('🔄 Использую исходные данные без обработки Gemini');
-            
+
             // Удаляем rawHtmlContent из данных при ошибке
             const fallbackData = { ...rawBikeData };
             delete fallbackData.rawHtmlContent;
-            
+
             return {
                 ...fallbackData,
                 processedByGemini: false,
@@ -148,14 +148,14 @@ class GeminiProcessor {
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const arrayBuffer = await response.arrayBuffer();
             const buffer = Buffer.from(arrayBuffer);
-            
+
             // Validate and resize/convert if needed using sharp
             // Gemini has a size limit, so resizing is good practice
             const resized = await sharp(buffer)
                 .resize({ width: 1024, height: 1024, fit: 'inside', withoutEnlargement: true })
                 .jpeg({ quality: 80 })
                 .toBuffer();
-                
+
             return resized;
         } catch (e) {
             console.warn(`Failed to fetch image ${url}: ${e.message}`);
@@ -176,7 +176,7 @@ class GeminiProcessor {
                 try {
                     const part = await this._imagePartForGemini(p);
                     if (part) imgParts.push(part);
-                } catch (_) {}
+                } catch (_) { }
             }
 
             const prompt = this.createFlexiblePrompt(context);
@@ -189,7 +189,7 @@ class GeminiProcessor {
                 processingDate: new Date().toISOString(),
                 processedMode: 'multimodal'
             };
-            try { this.validateGeminiData(finalData); } catch(e) { console.warn('Validation Warning:', e.message); }
+            try { this.validateGeminiData(finalData); } catch (e) { console.warn('Validation Warning:', e.message); }
             return finalData;
         } catch (error) {
             console.error('❌ Ошибка при мультимодальной обработке Gemini:', error.message);
@@ -204,7 +204,7 @@ class GeminiProcessor {
                     processingDate: new Date().toISOString(),
                     processedMode: 'text_fallback'
                 };
-                try { this.validateGeminiData(finalData); } catch(e) { console.warn('Validation Warning:', e.message); }
+                try { this.validateGeminiData(finalData); } catch (e) { console.warn('Validation Warning:', e.message); }
                 return finalData;
             } catch (e2) {
                 console.error('❌ Фолбэк на текстовый режим не удался:', e2.message);
@@ -227,18 +227,18 @@ class GeminiProcessor {
                 console.warn('MultiKey Client Failed (Multimodal), falling back...', e.message);
             }
         }
-        
+
         // Fallback to single key (not implemented fully for multimodal in this class, but let's keep structure)
         throw new Error('Multimodal requests require MultiKey Client');
     }
 
     async processBikeDataFromTwoShots(firstImagePath, secondImagePath, context = {}) {
-            
-            try {
-                if (!this.apiKey) {
-                    const base = this.generateTestData(context);
-                    return { ...context, ...base, processedByGemini: false };
-                }
+
+        try {
+            if (!this.apiKey) {
+                const base = this.generateTestData(context);
+                return { ...context, ...base, processedByGemini: false };
+            }
             const parts1 = [];
             parts1.push({ text: 'Тебе будет предоставлено 2 скриншота одной страницы. Сейчас прилагаю первый. После получения второго скриншота через 5 секунд проанализируй оба изображения комплексно.' });
             parts1.push(await this._imagePartForGemini(firstImagePath));
@@ -276,7 +276,7 @@ class GeminiProcessor {
                 try {
                     const part = await this._imagePartForGemini(p);
                     if (part) imgParts.push(part);
-                } catch (_) {}
+                } catch (_) { }
             }
             const prompt = [
                 'Определи курс продажи евро (второй столбец) на странице банка.',
@@ -313,7 +313,7 @@ class GeminiProcessor {
 
     async generateMarketingCopy(bikeData, avgPrice) {
         console.log(`✍️ Generating marketing copy for ${bikeData.brand} ${bikeData.model}...`);
-        
+
         const savings = Math.round(avgPrice - bikeData.price);
         const discountPercent = Math.round((savings / avgPrice) * 100);
 
@@ -376,7 +376,7 @@ class GeminiProcessor {
 
     async generateReport(orderData) {
         console.log(`📝 Generating CRM report for order #${orderData.order_code}...`);
-        
+
         const prompt = `
 Role: Ты — Менеджер Заботы о Клиентах (Customer Care) премиального сервиса BikeEU.
 Задача: Написать сообщение клиенту в Telegram.
@@ -430,17 +430,17 @@ ${JSON.stringify(orderData.timeline_events || [])}
         console.log('🤖 Семантическое обогащение (Semantic Enrichment)...');
         // 1. Standard processing (Classification, etc.)
         const processed = await this.processBikeData(rawScrapedData);
-        
+
         // 2. Deep Vision Audit (Specs & Condition)
         let audit = {};
         if (rawScrapedData.images && rawScrapedData.images.length > 0) {
-             try {
+            try {
                 // Pass original title/desc for context
                 audit = await this.analyzeCondition(rawScrapedData.images, rawScrapedData.title, rawScrapedData.description);
                 if (audit.error) audit = {}; // Handle error gracefully
-             } catch (e) {
+            } catch (e) {
                 console.warn('Deep Audit failed:', e.message);
-             }
+            }
         }
 
         // 3. Translation
@@ -532,7 +532,7 @@ JSON Structure (Return ONLY this JSON):
             const responseText = await this._mkClient.generateContent({ contents });
             return responseText;
         }
-        
+
         const requestBody = {
             contents: [{
                 parts: [{ text: prompt }]
@@ -638,7 +638,7 @@ JSON Structure (Return ONLY this JSON):
                 return joined;
             }
             return '{}';
-            
+
         } catch (error) {
             console.error(`❌ Исключение при вызове Gemini API:`, error);
             throw error;
@@ -780,7 +780,7 @@ JSON Structure (Return ONLY this JSON):
         // "One-Shot JSON" Optimization
         // Only ask for fields that AI can improve: discipline, condition*, year (if hidden), predicted_year
         // Do NOT ask for seller, price, location as parser is trusted.
-        
+
         const t = [
             'Role: Ты — Визуальный Инспектор велосипедов. Твоя задача — подтвердить модель и оценить состояние по 3-м фото.',
             'Тебе даны ПРОВЕРЕННЫЕ данные от парсера (Название, Цена, Продавец). Не пытайся их переопределить, если нет явной ошибки.',
@@ -892,8 +892,8 @@ JSON Structure (Return ONLY this JSON):
             description: imageData.description || null,
             confidence_score: imageData.confidence_score || null
         };
-        const brands = ['Mondraker','Commencal','Santa Cruz','YT','Propain','Nukeproof','Pivot','Norco','Kona','Marin','Orbea','Canyon','Cube','Trek','Specialized','Scott','Cannondale','Giant','Merida','Ibis','Intense','Transition','Rocky Mountain','Lapierre','Rose','Vitus','Radon','Polygon','Ghost','BMC','BH','Forbidden'];
-        const genericWords = ['fahrrad','bike','mountainbike','downhillbike'];
+        const brands = ['Mondraker', 'Commencal', 'Santa Cruz', 'YT', 'Propain', 'Nukeproof', 'Pivot', 'Norco', 'Kona', 'Marin', 'Orbea', 'Canyon', 'Cube', 'Trek', 'Specialized', 'Scott', 'Cannondale', 'Giant', 'Merida', 'Ibis', 'Intense', 'Transition', 'Rocky Mountain', 'Lapierre', 'Rose', 'Vitus', 'Radon', 'Polygon', 'Ghost', 'BMC', 'BH', 'Forbidden'];
+        const genericWords = ['fahrrad', 'bike', 'mountainbike', 'downhillbike'];
         const pickBrandModel = (title) => {
             if (!title) return { brand: null, model: null };
             const t = String(title).trim();
@@ -912,7 +912,7 @@ JSON Structure (Return ONLY this JSON):
             let out = { ...baseRaw, ...baseImg };
             out.brand = normalizeName(out.brand);
             out.model = normalizeName(out.model);
-            
+
             // Prioritize Parser for Seller Data if Gemini is empty
             if (!out.sellerName && baseRaw.sellerName) out.sellerName = baseRaw.sellerName;
             if (!out.sellerType && baseRaw.sellerType) out.sellerType = baseRaw.sellerType;
@@ -1084,7 +1084,7 @@ JSON Structure (Return ONLY this JSON):
 
     validateGeminiData(data) {
         const requiredFields = ['price', 'brand', 'model', 'condition', 'frameSize'];
-        
+
         for (const field of requiredFields) {
             if (data[field] === undefined || data[field] === null) {
                 // Allow null for some fields if we really can't find them, but price is critical
@@ -1095,7 +1095,7 @@ JSON Structure (Return ONLY this JSON):
         if (data.isBike === false) {
             throw new Error('Это не велосипед (isBike=false)');
         }
-        
+
         // Ensure numeric price
         if (typeof data.price !== 'number' || data.price < 0) {
             throw new Error('Неверный формат цены');
@@ -1104,7 +1104,7 @@ JSON Structure (Return ONLY this JSON):
 
     generateTestData(rawBikeData) {
         console.log('🧪 Генерирую тестовые данные...');
-        
+
         return {
             ...rawBikeData,
             brand: rawBikeData.brand || 'TestBrand',
@@ -1160,7 +1160,7 @@ JSON Structure (Return ONLY this JSON):
 
             const response = await this.callGeminiAPI(prompt);
             return response.trim();
-            
+
         } catch (error) {
             console.error('❌ Ошибка улучшения описания:', error.message);
             return description;
@@ -1204,29 +1204,29 @@ JSON Structure (Return ONLY this JSON):
     }
 
     async analyzeCondition(imageUrls, title = '', description = '') {
-         const key = STATIC_KEY;
-         const targetUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.0-pro-preview:generateContent'; 
-         const agent = new HttpsProxyAgent(proxyUrl);
-         
-         try {
-             const images = Array.isArray(imageUrls) ? imageUrls : [imageUrls];
-             const limitedImages = images.slice(0, 5); 
-             
-             console.log(`Deep Audit: Processing ${limitedImages.length} images...`);
+        const key = STATIC_KEY;
+        const targetUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.0-pro-preview:generateContent';
+        const agent = new HttpsProxyAgent(proxyUrl);
 
-             const imageParts = [];
-             for (const url of limitedImages) {
-                 try {
-                     let base64Image;
-                     let mimeType;
-                     
-                     if (url.startsWith('data:')) {
+        try {
+            const images = Array.isArray(imageUrls) ? imageUrls : [imageUrls];
+            const limitedImages = images.slice(0, 5);
+
+            console.log(`Deep Audit: Processing ${limitedImages.length} images...`);
+
+            const imageParts = [];
+            for (const url of limitedImages) {
+                try {
+                    let base64Image;
+                    let mimeType;
+
+                    if (url.startsWith('data:')) {
                         const matches = url.match(/^data:(.+);base64,(.+)$/);
                         if (matches && matches.length === 3) {
                             mimeType = matches[1];
                             base64Image = matches[2];
                         }
-                     } else {
+                    } else {
                         const imageResponse = await axios.get(url, {
                             responseType: 'arraybuffer',
                             timeout: 20000,
@@ -1236,24 +1236,24 @@ JSON Structure (Return ONLY this JSON):
                         });
                         base64Image = Buffer.from(imageResponse.data).toString('base64');
                         mimeType = imageResponse.headers['content-type'] || 'image/jpeg';
-                     }
-                     
-                     if (base64Image) {
-                         imageParts.push({
+                    }
+
+                    if (base64Image) {
+                        imageParts.push({
                             inline_data: {
                                 mime_type: mimeType,
                                 data: base64Image
                             }
-                         });
-                     }
-                 } catch (e) {
-                     console.warn(`Failed to fetch image for audit: ${url}`, e.message);
-                 }
-             }
- 
-             if (imageParts.length === 0) return { error: 'No valid images for audit' };
+                        });
+                    }
+                } catch (e) {
+                    console.warn(`Failed to fetch image for audit: ${url}`, e.message);
+                }
+            }
 
-             const prompt = `
+            if (imageParts.length === 0) return { error: 'No valid images for audit' };
+
+            const prompt = `
             ROLE: You are the Chief Technical Inspector at an elite bicycle auction house.
             TASK: Perform a forensic visual audit of these bicycle images.
             CONTEXT:
@@ -1290,7 +1290,7 @@ JSON Structure (Return ONLY this JSON):
                 "confidence_score": <number 0-100>
             }
             `;
-            
+
             const response = await axios.post(
                 `${targetUrl}?key=${key}`,
                 {

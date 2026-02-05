@@ -7,26 +7,25 @@ const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const DatabaseManager = require('../../database/db-manager');
 const UnifiedNormalizer = require('./UnifiedNormalizer');
 const UnifiedBikeMapper = require('../mappers/unified-bike-mapper');
-const DatabaseService = require('./DatabaseService');
+const DatabaseService = require('../../services/database-service-v2');
 
 puppeteer.use(StealthPlugin());
 
 class HotDealHunter {
     constructor() {
         this.dbManager = new DatabaseManager();
-        this.dbService = new DatabaseService({ dbManager: this.dbManager });
-        
+        this.dbService = new DatabaseService();
         // Buycycle High Demand URLs
         this.HOT_URLS = [
             'https://buycycle.com/de-de/shop/main-types/bikes/bike-types/mountainbike/min-price/500/sort-by/new/high-demand/1'
         ];
-        
+
         // Whitelist of premium brands to focus on
         this.ALLOWED_BRANDS = [
-            'Specialized', 'Canyon', 'Santa Cruz', 'Trek', 'Cannondale', 
+            'Specialized', 'Canyon', 'Santa Cruz', 'Trek', 'Cannondale',
             'Scott', 'Cube', 'Orbea', 'Giant', 'Yeti', 'Pivot', 'Propain',
-            'Commencal', 'Radon', 'YT', 'Bianchi', 'Pinarello', 'Colnago', 
-            'Rose', 'Focus', 'BMC', 'S-Works', 'Status', 'Jeffsy', 'Capra', 
+            'Commencal', 'Radon', 'YT', 'Bianchi', 'Pinarello', 'Colnago',
+            'Rose', 'Focus', 'BMC', 'S-Works', 'Status', 'Jeffsy', 'Capra',
             'Tyee', 'Spectral', 'Norco', 'Kona', 'Nukeproof', 'Transition'
         ];
     }
@@ -38,14 +37,14 @@ class HotDealHunter {
     async hunt(limit = 5) {
         console.log('\n🔥 STARTING HOT DEAL HUNT 🔥');
         console.log(`   Limit: ${limit} bikes | Source: Buycycle High Demand\n`);
-        
+
         const stats = { found: 0, processed: 0, added: 0, duplicates: 0, errors: 0 };
-        
+
         let browser = null;
         try {
-            browser = await puppeteer.launch({ 
+            browser = await puppeteer.launch({
                 headless: "new",
-                args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'] 
+                args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
             });
             const page = await browser.newPage();
             await page.setViewport({ width: 1920, height: 1080 });
@@ -56,7 +55,7 @@ class HotDealHunter {
 
             for (const url of this.HOT_URLS) {
                 console.log(`   ➡️ Scanning: ${url}`);
-                
+
                 // 1. Navigate with retry
                 try {
                     await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
@@ -68,7 +67,7 @@ class HotDealHunter {
                         await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
                     } catch (e2) {
                         console.error(`   ❌ Retry failed: ${e2.message}`);
-                    continue;
+                        continue;
                     }
                 }
 
@@ -79,16 +78,16 @@ class HotDealHunter {
 
                 // 3. Filter by whitelist and process top N
                 let processedCount = 0;
-                
+
                 for (const candidate of listings) {
                     if (processedCount >= limit) break;
 
                     // A. Check Whitelist
                     const brand = this.extractBrand(candidate);
-                    const isWhitelisted = this.ALLOWED_BRANDS.some(b => 
+                    const isWhitelisted = this.ALLOWED_BRANDS.some(b =>
                         brand.toLowerCase().includes(b.toLowerCase())
                     );
-                    
+
                     if (!isWhitelisted) {
                         continue;
                     }
@@ -105,18 +104,18 @@ class HotDealHunter {
 
                     // C. Deep Analysis & Save
                     try {
-                    const success = await this.processHotCandidate(browser, candidate);
-                    if (success) {
-                        processedCount++;
-                        stats.added++;
-                    } else {
-                        stats.errors++;
-                    }
+                        const success = await this.processHotCandidate(browser, candidate);
+                        if (success) {
+                            processedCount++;
+                            stats.added++;
+                        } else {
+                            stats.errors++;
+                        }
                     } catch (e) {
                         console.error(`      ❌ Error: ${e.message}`);
                         stats.errors++;
                     }
-                    
+
                     // Rate limiting
                     await new Promise(r => setTimeout(r, 2000));
                 }
@@ -125,7 +124,7 @@ class HotDealHunter {
             console.log(`\n✅ Hot Deal Hunt Complete`);
             console.log(`   Found: ${stats.found} | Processed: ${stats.processed}`);
             console.log(`   Added: ${stats.added} | Duplicates: ${stats.duplicates} | Errors: ${stats.errors}\n`);
-            
+
             return stats;
 
         } catch (e) {
@@ -156,7 +155,7 @@ class HotDealHunter {
     async checkDuplicate(url) {
         try {
             const db = this.dbManager.getDatabase();
-            
+
             // Check bikes table
             const bike = db.prepare('SELECT id FROM bikes WHERE source_url = ? LIMIT 1').get(url);
             if (bike) return true;
@@ -169,7 +168,7 @@ class HotDealHunter {
                 // Table might not exist, ignore
             }
 
-        return false;
+            return false;
         } catch (e) {
             console.error(`   ⚠️ Duplicate check error: ${e.message}`);
             return false;
@@ -183,11 +182,11 @@ class HotDealHunter {
         try {
             // Wait for cookie banner to appear
             await page.waitForSelector('#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll, [id*="accept"], button[class*="accept"]', { timeout: 5000 });
-            
+
             // Click accept button
             await page.click('#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll');
             console.log('   🍪 Accepted cookies');
-            
+
             // Wait for banner to disappear
             await new Promise(r => setTimeout(r, 1000));
         } catch (e) {
@@ -201,7 +200,7 @@ class HotDealHunter {
     async extractListingsFromPage(page) {
         // Wait for content to load
         await new Promise(r => setTimeout(r, 2000));
-        
+
         // Try __NEXT_DATA__ first (most reliable)
         try {
             const nextData = await page.evaluate(() => {
@@ -231,7 +230,7 @@ class HotDealHunter {
                     }
                     Object.values(obj).forEach(traverse);
                 };
-                
+
                 if (nextData.props?.pageProps) traverse(nextData.props.pageProps);
                 else traverse(nextData);
 
@@ -244,7 +243,7 @@ class HotDealHunter {
                         unique.push(item);
                     }
                 }
-                
+
                 if (unique.length > 0) {
                     return unique;
                 }
@@ -257,42 +256,42 @@ class HotDealHunter {
         console.log('   📝 Using DOM scraping with Constructor.io data attributes...');
         return await page.evaluate(() => {
             const results = [];
-            
+
             // Find all product cards with Constructor.io data attributes
             const productCards = document.querySelectorAll('[data-cnstrc-item-id]');
-            
+
             for (const card of productCards) {
                 try {
                     // Extract from data attributes (most reliable)
                     const itemId = card.getAttribute('data-cnstrc-item-id');
                     const itemName = card.getAttribute('data-cnstrc-item-name');
                     const itemPrice = card.getAttribute('data-cnstrc-item-price');
-                    
+
                     const price = parseInt(itemPrice) || 0;
                     const title = itemName || '';
-                    
+
                     // Get URL from link inside card
                     const link = card.querySelector('a[href*="/product/"]');
                     const href = link?.getAttribute('href') || '';
                     const url = href.startsWith('http') ? href : `https://buycycle.com${href}`;
-                    
+
                     // Skip invalid entries
                     if (!title || price < 500 || results.some(r => r.url === url)) {
                         continue;
                     }
-                    
+
                     // Extract brand from title (first word usually)
                     const cleanTitle = title.replace(/Stark gefragt\d*/gi, '').replace(/sehr gefragt/gi, '').trim();
                     const brand = cleanTitle.split(/[\s-]/)[0] || 'Unknown';
-                    
+
                     // Try to extract year from title
                     const yearMatch = cleanTitle.match(/\b(20\d{2})\b/);
                     const year = yearMatch ? parseInt(yearMatch[1]) : null;
-                    
+
                     // Get images
                     const imgEl = card.querySelector('img');
                     const image = imgEl?.src || imgEl?.getAttribute('data-src');
-                    
+
                     results.push({
                         title: cleanTitle,
                         brand,
@@ -309,19 +308,19 @@ class HotDealHunter {
                     // Skip this item
                 }
             }
-            
+
             // If no data attributes found, try traditional DOM scraping
             if (results.length === 0) {
                 const productLinks = document.querySelectorAll('a[href*="/product/"]');
                 for (const link of productLinks) {
                     const href = link.getAttribute('href');
                     const url = href?.startsWith('http') ? href : `https://buycycle.com${href}`;
-                    
+
                     // Extract from URL slug as fallback
                     const slug = href?.split('/').pop() || '';
                     const title = slug.replace(/-/g, ' ').replace(/\d+$/, '').trim();
                     const brand = title.split(/[\s-]/)[0] || 'Unknown';
-                    
+
                     if (title && title.length > 3 && !results.some(r => r.url === url)) {
                         results.push({
                             title,
@@ -334,7 +333,7 @@ class HotDealHunter {
                     }
                 }
             }
-            
+
             return results.slice(0, 30);
         });
     }
@@ -351,7 +350,7 @@ class HotDealHunter {
 
             // Scrape detailed info
             const details = await this.scrapeListingDetails(page);
-            
+
             // Merge candidate + details
             const rawBike = {
                 ...candidate,
@@ -364,7 +363,7 @@ class HotDealHunter {
             };
 
             console.log(`      🤖 Normalizing with AI...`);
-            
+
             // Normalize through UnifiedNormalizer (includes Gemini AI)
             const normalized = await UnifiedNormalizer.normalize(rawBike, 'buycycle');
 
@@ -380,12 +379,12 @@ class HotDealHunter {
             normalized.ranking.ranking_score = Math.max(normalized.ranking.ranking_score || 0.7, 0.80);
             normalized.ranking.hotness_score = 0.9;
             normalized.ranking.priority = 'high';
-            
+
             normalized.meta = normalized.meta || {};
             normalized.meta.source_platform = 'buycycle';
             normalized.meta.source_url = candidate.url;
             normalized.meta.is_high_demand = true;
-            
+
             normalized.internal = normalized.internal || {};
             normalized.internal.tags = normalized.internal.tags || [];
             normalized.internal.tags.push('hot_deal');
@@ -393,20 +392,26 @@ class HotDealHunter {
 
             // Save to database
             console.log(`      💾 Saving to database...`);
-            const saveResult = await this.dbService.saveBikesToDB(normalized, { skipPhotoDownload: false });
-            
+            if (!normalized) {
+                console.log(`      ⚠️ Normalization failed, skipping save.`);
+                return false;
+            }
+
+            const saveResult = await this.dbService.saveBikesToDB([normalized], { skipPhotoDownload: false });
+
             if (saveResult.inserted > 0) {
-                console.log(`      ✅ Saved: ${normalized.basic_info?.name || 'Unknown'} (ID: ${saveResult.results[0]?.bike_id})`);
-            
+                const savedId = saveResult.results[0]?.id;
+                console.log(`      ✅ Saved: ${normalized.basic_info?.name || 'Unknown'} (ID: ${savedId || 'unknown'})`);
+
                 // Log event
                 this.logHunterEvent('HOT_DEAL_ADDED', {
-                    bike_id: saveResult.results[0]?.bike_id,
+                    bike_id: savedId,
                     title: normalized.basic_info?.name,
                     price: normalized.pricing?.price,
                     quality_score: normalized.quality_score
                 });
 
-            return true;
+                return true;
             } else {
                 console.log(`      ⚠️ Save failed: ${saveResult.results[0]?.reason || 'Unknown'}`);
                 return false;
@@ -431,31 +436,31 @@ class HotDealHunter {
             // JSON-LD extraction
             const scripts = document.querySelectorAll('script[type="application/ld+json"]');
             for (const s of scripts) {
-        try {
+                try {
                     const data = JSON.parse(s.textContent);
                     const product = Array.isArray(data) ? data.find(i => i['@type'] === 'Product') : (data['@type'] === 'Product' ? data : null);
-                    
+
                     if (product) {
                         details.title = product.name;
                         details.brand = product.brand?.name || product.brand;
                         details.description = product.description;
                         details.images = Array.isArray(product.image) ? product.image : [product.image];
-                        
+
                         if (product.offers) {
                             const offer = Array.isArray(product.offers) ? product.offers[0] : product.offers;
                             details.price = parseFloat(offer.price);
                             details.currency = offer.priceCurrency;
                         }
                     }
-                } catch (e) {}
+                } catch (e) { }
             }
 
             // DOM fallback for components
             const headings = Array.from(document.querySelectorAll('h2, div.text-xl'));
-            const detailsHeader = headings.find(h => 
+            const detailsHeader = headings.find(h =>
                 h.textContent.includes('Fahrraddetails') || h.textContent.includes('Bike details')
             );
-            
+
             if (detailsHeader) {
                 let container = detailsHeader.nextElementSibling;
                 while (container && (container.tagName === 'HR' || container.textContent.trim().length === 0)) {
@@ -471,7 +476,7 @@ class HotDealHunter {
             const domImages = Array.from(document.querySelectorAll('img[src*="/uploads/"], img[src*="cloudfront"]'))
                 .map(img => img.src)
                 .filter(src => src && src.length > 20 && !src.includes('avatar') && !src.includes('logo'));
-            
+
             details.images = [...new Set([...(details.images || []), ...domImages])];
 
             // Description
@@ -516,8 +521,8 @@ class HotDealHunter {
             `).run(type, 'HotDealHunter', JSON.stringify(details));
         } catch (e) {
             console.error(`   ⚠️ Failed to log event: ${e.message}`);
+        }
     }
-}
 }
 
 // Export singleton instance

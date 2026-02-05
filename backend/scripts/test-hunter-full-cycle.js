@@ -75,10 +75,17 @@ const customLogger = (msg) => {
         await hunter.ensureInitialized();
         console.log('✅ Hunter Initialized');
 
+        const HARD_TIMEOUT_MS = 300000; // 5 minutes
+        const hardTimer = setTimeout(() => {
+            console.error('\n❌ HARD TIMEOUT: Hunter cycle exceeded 5 minutes.');
+            process.exit(1);
+        }, HARD_TIMEOUT_MS);
+
         // Trigger Hunt
         // Use 'mtb' to ensure we get results (Canyon MTB is usually reliable)
         // Or 'auto' to test smart targets
-        await hunter.hunt({ category: 'mtb', quota: 1 });
+        await hunter.hunt({ category: 'mtb', quota: 1, maxTargets: 5, maxRuntimeMs: 240000 });
+        clearTimeout(hardTimer);
 
         console.log('\n🏁 HUNT CYCLE FINISHED. ANALYZING RESULTS...\n');
 

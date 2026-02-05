@@ -52,14 +52,14 @@ let updated = 0;
 
 db.transaction(() => {
     for (const bike of bikes) {
-        // 1. FMV Margin Score (0-0.4)
-        // Higher margin = better deal
+        // 1. FMV Margin Score (-0.4 to 0.4)
+        // Higher margin = better deal, negative margins penalize ranking
         let fmvScore = 0;
         if (bike.fmv && bike.price && bike.fmv > 0) {
             const margin = (bike.fmv - bike.price) / bike.fmv;
-            // Clamp to -0.3 to 0.5 range, then normalize to 0-0.4
-            const normalizedMargin = Math.max(-0.3, Math.min(0.5, margin));
-            fmvScore = (normalizedMargin + 0.3) / 0.8 * 0.4;
+            // Clamp to -0.6..0.6 and map to -0.4..0.4
+            const clampedMargin = Math.max(-0.6, Math.min(0.6, margin));
+            fmvScore = (clampedMargin / 0.6) * 0.4;
         }
         
         // 2. Hotness Boost (0-0.2)

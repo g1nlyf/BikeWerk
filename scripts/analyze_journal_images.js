@@ -7,7 +7,7 @@ const { HttpsProxyAgent } = require('https-proxy-agent');
 const fetch = require('node-fetch');
 
 // Hardcode keys from .env to be sure
-const GEMINI_API_KEY = 'AIzaSyBwFKlgRwTPpx8Ufss9_aOYm9zikt9SGj0';
+const GEMINI_API_KEY = 'AIzaSyBjngHVn2auhLXRMTCY0q9mrqVaiRkfj4g';
 
 const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 const PROXY_URL = 'http://user258350:otuspk@191.101.73.161:8984';
@@ -17,7 +17,7 @@ const IMAGES_DIR = path.resolve(__dirname, '../frontend/public/journal reference
 
 async function analyzeImages() {
     console.log(`📂 Scanning directory: ${IMAGES_DIR}`);
-    
+
     if (!fs.existsSync(IMAGES_DIR)) {
         console.error('❌ Directory not found!');
         return;
@@ -29,7 +29,7 @@ async function analyzeImages() {
     for (const file of files) {
         const filePath = path.join(IMAGES_DIR, file);
         console.log(`\n🔍 Analyzing: ${file}...`);
-        
+
         try {
             const description = await analyzeImageWithGemini(filePath);
             console.log(`✅ Description for ${file}:`);
@@ -69,20 +69,20 @@ async function analyzeImageWithGemini(filePath) {
     // 3. Send Request (via Proxy)
     const agent = new HttpsProxyAgent(PROXY_URL);
     const url = `${GEMINI_URL}?key=${GEMINI_API_KEY}`;
-    
+
     try {
         const response = await axios.post(url, requestBody, {
             headers: { 'Content-Type': 'application/json' },
             httpsAgent: agent,
-            proxy: false 
+            proxy: false
         });
 
         return response.data.candidates[0].content.parts[0].text.trim();
     } catch (error) {
-         if (error.response) {
+        if (error.response) {
             throw new Error(`Gemini API Error: ${error.response.status} - ${JSON.stringify(error.response.data)}`);
-         }
-         throw error;
+        }
+        throw error;
     }
 }
 

@@ -29,22 +29,22 @@ interface KeyState {
 }
 
 export class GeminiClient {
-    private timeout = 20000; 
-    private cooldownMs = 1000; 
+    private timeout = 20000;
+    private cooldownMs = 1000;
     private _lastCallAt = 0;
     private lastUsedProjectIndex = 0;
-    
+
     // Rate limiting per key
     // Gemini 2.0 Flash Free Tier is approx 15 RPM. We'll be conservative.
-    private rpmLimit = 10; 
-    private tpmLimit = 1000000; 
-    private rpdLimit = 1400; 
+    private rpmLimit = 10;
+    private tpmLimit = 1000000;
+    private rpdLimit = 1400;
 
     private keyStates: KeyState[] = [];
 
     private _parseEnvKeys(): string[] {
         // STRICT OVERRIDE: Only allow the authorized key
-        return ['AIzaSyBwFKlgRwTPpx8Ufss9_aOYm9zikt9SGj0'];
+        return ['AIzaSyBjngHVn2auhLXRMTCY0q9mrqVaiRkfj4g'];
     }
 
     private _markKeyMinuteExhausted(keyState: KeyState) {
@@ -96,15 +96,15 @@ export class GeminiClient {
         let customConfig = {};
 
         if (typeof prompt === 'string') {
-             contents = [{ parts: [{ text: prompt }] }];
+            contents = [{ parts: [{ text: prompt }] }];
         } else if (Array.isArray(prompt)) {
-             contents = prompt; 
+            contents = prompt;
         } else if (prompt.contents) {
-             contents = prompt.contents;
-             if (prompt.generationConfig) customConfig = prompt.generationConfig;
+            contents = prompt.contents;
+            if (prompt.generationConfig) customConfig = prompt.generationConfig;
         } else {
-             // Fallback
-             contents = [{ parts: [{ text: JSON.stringify(prompt) }] }];
+            // Fallback
+            contents = [{ parts: [{ text: JSON.stringify(prompt) }] }];
         }
 
         const requestBody = {
@@ -124,7 +124,7 @@ export class GeminiClient {
         // Try models in order
         for (const model of this.MODELS) {
             const modelBaseUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-            
+
             console.log(`🤖 Trying model: ${model}...`);
 
             const maxAttempts = Math.max(2, Math.min(this.keyStates.length, 10));
@@ -137,7 +137,7 @@ export class GeminiClient {
                 const keyState = await this._acquireKey(estTokens, remainingMs);
                 const apiKey = keyState.key;
                 const keyLabel = keyState.label;
-                
+
                 console.log(`   🚀 [Attempt ${attempt}/${maxAttempts}] Using Key ${keyLabel} for ${model}...`);
 
                 const fullUrl = `${modelBaseUrl}?key=${apiKey}`;
@@ -177,7 +177,7 @@ export class GeminiClient {
                     } else if (response.status >= 400) {
                         this._markKeyMinuteExhausted(keyState);
                     }
-                
+
                 } catch (e: any) {
                     // Axios throws for 500+ or timeout
                     if (e.response && e.response.status === 429) {
@@ -198,10 +198,10 @@ export class GeminiClient {
         const parts = data?.candidates?.[0]?.content?.parts || [];
         const textPart = parts.find((p: any) => typeof p.text === 'string');
         if (textPart && textPart.text) return textPart.text;
-        
+
         const joined = parts.map((p: any) => p?.text || '').filter(Boolean).join('\n');
         if (joined) return joined;
-        
+
         return '{}';
     }
 
@@ -214,7 +214,7 @@ export class GeminiClient {
         if (this.keyStates.length === 0) {
             throw new Error('GEMINI_API_KEYS / GEMINI_API_KEY is not configured');
         }
-        
+
         // Group keys by project
         const projects = new Map<number, KeyState[]>();
         for (const k of this.keyStates) {
@@ -237,8 +237,8 @@ export class GeminiClient {
                 const projectKeys = projects.get(pid) || [];
 
                 // Find valid keys in this project
-                const validKeys = projectKeys.filter((k: KeyState) => 
-                    k.minuteCalls < this.rpmLimit && 
+                const validKeys = projectKeys.filter((k: KeyState) =>
+                    k.minuteCalls < this.rpmLimit &&
                     (k.minuteTokens + estimatedTokens) < this.tpmLimit &&
                     k.dayCalls < this.rpdLimit
                 );
@@ -247,7 +247,7 @@ export class GeminiClient {
                     // Pick the best key in this project (LRU)
                     validKeys.sort((a: KeyState, b: KeyState) => a.lastUsedTime - b.lastUsedTime);
                     foundKey = validKeys[0];
-                    
+
                     // Update rotation index
                     this.lastUsedProjectIndex = pIdx;
                     break;
@@ -259,7 +259,7 @@ export class GeminiClient {
                 foundKey.minuteTokens += estimatedTokens;
                 foundKey.dayCalls++;
                 foundKey.lastUsedTime = Date.now();
-                
+
                 console.log(`[GEMINI_ROUTER] Project ${foundKey.projectId} | Key ${foundKey.label} | Status: Active`);
                 return foundKey;
             }

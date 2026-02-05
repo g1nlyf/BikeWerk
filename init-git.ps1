@@ -22,6 +22,10 @@ git status
 Write-Host "`n=== Next Steps ===" -ForegroundColor Yellow
 Write-Host "1. Create a repository on GitHub: https://github.com/new"
 Write-Host "2. Run these commands to connect and push:"
-Write-Host "   git remote add origin https://github.com/YOUR-USERNAME/eubike.git"
+Write-Host "   git remote add origin https://github.com/g1nlyf/BikeWerk.git"
 Write-Host "   git branch -M main"
 Write-Host "   git push -u origin main"
+
+git remote add origin https://github.com/g1nlyf/BikeWerk.git
+git branch -M main
+git push -u origin main

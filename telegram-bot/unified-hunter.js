@@ -542,14 +542,23 @@ class UnifiedHunter {
      * @param {Object} options.filters - { minPrice, maxPrice, customQuery }
      */
     async hunt(options) {
-        const { category = 'MTB', quota = 50 } = options || {};
+        const { category = 'MTB', quota = 50, maxTargets = null, maxRuntimeMs = null } = options || {};
         this.log(`[HUNTER] 🏹 Starting Hunt: ${category}`);
 
-        const targets = await this.getSmartTargets();
-        let processedCount = 0;
+        const startedAt = Date.now();
+        const hasTimedOut = () => maxRuntimeMs && (Date.now() - startedAt) > maxRuntimeMs;
 
-        for (const target of targets) {
-            if (processedCount >= quota) break;
+        const targets = await this.getSmartTargets();
+        const targetList = Number.isFinite(maxTargets) ? targets.slice(0, Math.max(0, maxTargets)) : targets;
+        let processedCount = 0;
+        let stopEarly = false;
+
+        for (const target of targetList) {
+            if (processedCount >= quota || stopEarly) break;
+            if (hasTimedOut()) {
+                this.log(`[HUNTER] ⏱️ Max runtime reached (${maxRuntimeMs}ms). Stopping early.`);
+                break;
+            }
 
             this.log(`[HUNTER] 🎯 ${target.name}`);
             this.log(`[HUNTER] 🔗 ${target.urlPattern}`); // urlPattern holds the URL
@@ -572,6 +581,11 @@ class UnifiedHunter {
             const itemsToProcess = filteredItems.slice(0, target.quota);
 
             for (const item of itemsToProcess) {
+                if (hasTimedOut()) {
+                    this.log(`[HUNTER] ⏱️ Max runtime reached (${maxRuntimeMs}ms) during processing.`);
+                    stopEarly = true;
+                    break;
+                }
                 // Pre-Filter (Double check not strictly needed if applyFunnelFilter works, but cheapPreFilter returns reason)
                 // Let's rely on applyFunnelFilter for rejection logic.
                 // However, we still need to process.
@@ -580,6 +594,10 @@ class UnifiedHunter {
                 const success = await this.processListing(item.link);
                 if (success) {
                     processedCount++;
+                    if (processedCount >= quota) {
+                        stopEarly = true;
+                        break;
+                    }
                     // Delay
                     await new Promise(r => setTimeout(r, 5000));
                 }

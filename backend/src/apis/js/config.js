@@ -1,15 +1,15 @@
 // Конфигурация для BikeEU калькулятора
 const CONFIG = {
     // Gemini API настройки
-    GEMINI_API_KEY: 'AIzaSyCS6qbM0otGtFcrLbqi_X44oQUCMkCV8kY',
+    GEMINI_API_KEY: 'AIzaSyBjngHVn2auhLXRMTCY0q9mrqVaiRkfj4g',
     GEMINI_API_URL: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent',
-    
+
     // Supabase CRM настройки
     SUPABASE: {
         URL: 'https://lclalsznmrjgqsgaqtps.supabase.co',
         ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxjbGFsc3pubXJqZ3FzZ2FxdHBzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA5Nzg5MDgsImV4cCI6MjA3NjU1NDkwOH0.nyTQDoddHyrY4_QizmQFLue8EjNqeQaJ0U021Hbc7YI'
     },
-    
+
     // Настройки парсера
     PARSER: {
         TIMEOUT: 30000, // 30 секунд
@@ -22,7 +22,7 @@ const CONFIG = {
             'leboncoin.fr'
         ]
     },
-    
+
     // Тестовые данные для демонстрации
     DEMO_DATA: {
         price: 1200,

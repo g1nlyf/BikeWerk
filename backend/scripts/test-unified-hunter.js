@@ -20,7 +20,14 @@ async function testUnifiedHunter() {
     const db = dbManager.getDatabase();
     
     // Get initial count
-    const beforeCount = db.prepare('SELECT COUNT(*) as cnt FROM bikes WHERE source_platform LIKE ?').get('%kleinanzeigen%');
+    const beforeCount = db.prepare(`
+        SELECT COUNT(*) as cnt
+        FROM bikes
+        WHERE
+            COALESCE(source_platform, '') LIKE ?
+            OR COALESCE(source_url, '') LIKE ?
+            OR COALESCE(original_url, '') LIKE ?
+    `).get('%kleinanzeigen%', '%kleinanzeigen%', '%kleinanzeigen%');
     console.log(`📊 Kleinanzeigen bikes before: ${beforeCount.cnt}\n`);
     
     // Load UnifiedHunter
@@ -91,7 +98,14 @@ async function testUnifiedHunter() {
     }
     
     // Final count
-    const afterCount = db.prepare('SELECT COUNT(*) as cnt FROM bikes WHERE source_platform LIKE ?').get('%kleinanzeigen%');
+    const afterCount = db.prepare(`
+        SELECT COUNT(*) as cnt
+        FROM bikes
+        WHERE
+            COALESCE(source_platform, '') LIKE ?
+            OR COALESCE(source_url, '') LIKE ?
+            OR COALESCE(original_url, '') LIKE ?
+    `).get('%kleinanzeigen%', '%kleinanzeigen%', '%kleinanzeigen%');
     console.log(`\n📊 Kleinanzeigen bikes after: ${afterCount.cnt} (+${afterCount.cnt - beforeCount.cnt})`);
     
     console.log('\n✅ Test complete!\n');

@@ -24,7 +24,7 @@ const { aiInspector } = require('./src/services/aiInspector.js');
 const { FinancialAgent } = require('./src/services/financialAgent.js');
 const { AutoHunter } = require('./src/services/autoHunter.js');
 const BikesDatabase = require('../telegram-bot/bikes-database-node.js');
-const UnifiedHunter = require('../telegram-bot/unified-hunter.js');
+const UnifiedHunter = require('./scripts/unified-hunter.js');
 const { AIDispatcher } = require('./src/services/aiDispatcher.js');
 const ValuationService = require('./src/services/ValuationService.js');
 const RecommendationService = require('./src/services/RecommendationService.js');
@@ -759,16 +759,9 @@ app.post('/api/admin/hunt', adminAuth, async (req, res) => {
         const { priority } = req.body;
         console.log(`[TMA] Force Hunt triggered. Priority: ${priority}`);
 
-        // Trigger Orchestrator (via direct call if instance available, or HTTP to bot process)
-        // Since we are in backend process, and Orchestrator is in bot process, we should call the bot API if it exists,
-        // OR instantiate a temporary orchestrator here (as done in /api/admin/labs/hunt-trigger).
-
-        // We reuse the existing logic
-        const AutonomousOrchestrator = require('../telegram-bot/AutonomousOrchestrator');
-        const orchestrator = new AutonomousOrchestrator();
-
+        // Use canonical UnifiedHunter from backend/scripts
         // Fire and forget
-        orchestrator.replenishCatalog(15).catch(console.error);
+        UnifiedHunter.run({ limit: 15, mode: priority || 'smart' }).catch(console.error);
 
         res.json({ success: true });
     } catch (e) {

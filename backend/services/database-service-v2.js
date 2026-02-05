@@ -15,11 +15,70 @@ class DatabaseServiceV2 {
     console.log(`   Database: ${this.dbPath}`);
   }
 
+  normalizeCategory(value) {
+    if (value === undefined || value === null) return null;
+    const raw = String(value).trim();
+    if (!raw) return null;
+    const v = raw.toLowerCase();
+    if (v.includes('mountain') || v.includes('mtb')) return 'mtb';
+    if (v.includes('road') || v.includes('rennrad')) return 'road';
+    if (v.includes('gravel')) return 'gravel';
+    if (v.includes('e-bike') || v.includes('ebike') || v.includes('pedelec') || v.includes('emtb')) return 'emtb';
+    if (v.includes('kid') || v.includes('child') || v.includes('kinder') || v.includes('youth')) return 'kids';
+    return 'other';
+  }
+
+  /**
+   * Safe Join Helper
+   */
+  safeJoin(arr, delimiter = '; ') {
+    if (Array.isArray(arr)) return arr.join(delimiter);
+    if (typeof arr === 'string') return arr;
+    return '';
+  }
+
+  /**
+   * Safe Join Helper
+   */
+  safeJoin(arr, delimiter = '; ') {
+    if (Array.isArray(arr)) return arr.join(delimiter);
+    if (typeof arr === 'string') return arr;
+    return '';
+  }
+
   /**
    * Сохранить велосипед из Unified Format
    */
   insertBike(unifiedData) {
-    const u = unifiedData;
+    const u = unifiedData || {};
+    u.basic_info = u.basic_info || {};
+    u.pricing = u.pricing || {};
+    u.condition = u.condition || {};
+    u.seller = u.seller || {};
+    u.logistics = u.logistics || {};
+    u.media = u.media || {};
+    u.ranking = u.ranking || {};
+    u.specs = u.specs || {};
+    u.features = u.features || {};
+    u.inspection = u.inspection || {};
+    u.meta = u.meta || {};
+
+    u.basic_info.category = this.normalizeCategory(u.basic_info.category);
+    u.condition.issues = Array.isArray(u.condition.issues)
+      ? u.condition.issues
+      : (u.condition.issues ? [String(u.condition.issues)] : []);
+    u.media.gallery = Array.isArray(u.media.gallery)
+      ? u.media.gallery
+      : (u.media.gallery ? [u.media.gallery] : []);
+    if (!u.media.main_image && u.media.gallery.length > 0) {
+      u.media.main_image = u.media.gallery[0];
+    }
+
+    // Safety checks for JSON/Arrays
+    const safeJson = (val) => {
+      try { return JSON.stringify(val || {}); }
+      catch { return '{}'; }
+    };
 
     console.log(`\n💾 Saving bike to database...`);
     console.log(`   Name: ${u.basic_info.name}`);
@@ -117,7 +176,7 @@ class DatabaseServiceV2 {
         u.condition.receipt_available ? 1 : 0,
         u.condition.crash_history ? 1 : 0,
         u.condition.frame_damage ? 1 : 0,
-        u.condition.issues.join('; ') || null,
+        this.safeJoin(u.condition.issues), // SAFE JOIN
 
         // Seller (7)
         u.seller.name,
@@ -139,7 +198,7 @@ class DatabaseServiceV2 {
 
         // Media (3)
         u.media.main_image,
-        JSON.stringify(u.media.gallery),
+        this.safeJoin(u.media.gallery), // SAFE JOIN
         u.media.photo_quality,
 
         // Ranking (7)
@@ -227,8 +286,11 @@ class DatabaseServiceV2 {
    * @param {Object} options - Опции 
    */
   async saveBikesToDB(bikes, options = {}) {
+    const bikeList = Array.isArray(bikes) ? bikes : (bikes ? [bikes] : []);
+    const storeImages = options.storeImages !== false;
+
     const summary = {
-      total: bikes.length,
+      total: bikeList.length,
       inserted: 0,
       duplicates: 0,
       failed: 0,
@@ -237,9 +299,9 @@ class DatabaseServiceV2 {
       results: []
     };
 
-    console.log(`\n📦 Batch saving ${bikes.length} bikes...`);
+    console.log(`\n📦 Batch saving ${bikeList.length} bikes...`);
 
-    for (const bike of bikes) {
+    for (const bike of bikeList) {
       try {
         // Check existence logic
         const sourceAdId = bike.meta?.source_ad_id;
@@ -256,11 +318,10 @@ class DatabaseServiceV2 {
         summary.inserted++;
         summary.results.push({ success: true, id });
 
-        // Photo stats are mocked here since V2 assumes photos are processed elsewhere or in JSON
-        // If we need real photo counting, we'd check media.gallery length
-        if (bike.media?.gallery?.length) {
-          summary.photosTotal += bike.media.gallery.length;
-          summary.photosDownloaded += bike.media.gallery.length; // Assuming they are URLs we "have"
+        if (storeImages) {
+          const imageStats = this.insertBikeImages(id, bike);
+          summary.photosTotal += imageStats.total;
+          summary.photosDownloaded += imageStats.downloaded;
         }
 
       } catch (err) {
@@ -271,6 +332,38 @@ class DatabaseServiceV2 {
     }
 
     return summary;
+  }
+
+  insertBikeImages(bikeId, bike) {
+    const gallery = Array.isArray(bike?.media?.gallery) ? bike.media.gallery : [];
+    const main = bike?.media?.main_image || gallery[0] || null;
+    const urls = Array.from(new Set([...(main ? [main] : []), ...gallery].filter(Boolean)));
+    if (urls.length === 0) return { total: 0, downloaded: 0 };
+
+    const stmt = this.db.prepare(`
+      INSERT OR IGNORE INTO bike_images (
+        bike_id, image_url, local_path, position, is_main, image_order, is_downloaded, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    `);
+
+    urls.forEach((url, index) => {
+      const isMain = main ? (url === main ? 1 : 0) : (index === 0 ? 1 : 0);
+      stmt.run(bikeId, url, url, index, isMain, index, 0);
+    });
+
+    if (main) {
+      try {
+        this.db.prepare(`
+          UPDATE bikes 
+          SET main_image = ? 
+          WHERE id = ? AND (main_image IS NULL OR main_image = '')
+        `).run(main, bikeId);
+      } catch (e) {
+        console.warn(`[DatabaseServiceV2] Failed to set main_image: ${e.message}`);
+      }
+    }
+
+    return { total: urls.length, downloaded: 0 };
   }
 
   /**
@@ -299,13 +392,60 @@ class DatabaseServiceV2 {
    * Удалить тестовый велосипед (для очистки)
    */
   deleteTestBike(sourceAdId, sourcePlatform) {
-    const stmt = this.db.prepare(`
-      DELETE FROM bikes 
-      WHERE source_ad_id = ? AND source_platform = ?
-    `);
+    if (!sourceAdId) return false;
 
-    const result = stmt.run(sourceAdId, sourcePlatform);
-    return result.changes > 0;
+    const ids = this.db.prepare(`
+      SELECT id FROM bikes
+      WHERE source_ad_id = ? AND source_platform = ?
+    `).all(sourceAdId, sourcePlatform || null).map((row) => row.id);
+
+    if (ids.length === 0 && sourceAdId) {
+      // Fallback: try by source_ad_id only (legacy rows without source_platform)
+      const fallback = this.db.prepare(`
+        SELECT id FROM bikes WHERE source_ad_id = ?
+      `).all(sourceAdId).map((row) => row.id);
+      ids.push(...fallback);
+    }
+
+    if (ids.length === 0) return false;
+
+    const dependentTables = [
+      'bike_images',
+      'bike_specs',
+      'bike_condition_assessments',
+      'bike_evaluations',
+      'rank_diagnostics',
+      'price_history',
+      'bike_behavior_metrics',
+      'bike_behavior_metrics_daily',
+      'metric_events',
+      'bike_analytics',
+      'user_favorites',
+      'shopping_cart',
+      'shop_order_items',
+      'order_items',
+      'orders',
+      'recent_deliveries'
+    ];
+
+    const deleteTx = this.db.transaction((bikeId) => {
+      for (const table of dependentTables) {
+        try {
+          this.db.prepare(`DELETE FROM ${table} WHERE bike_id = ?`).run(bikeId);
+        } catch (e) {
+          // Ignore if table/column doesn't exist in this DB variant
+        }
+      }
+      this.db.prepare('DELETE FROM bikes WHERE id = ?').run(bikeId);
+    });
+
+    let deleted = false;
+    for (const id of ids) {
+      deleteTx(id);
+      deleted = true;
+    }
+
+    return deleted;
   }
 
   /**

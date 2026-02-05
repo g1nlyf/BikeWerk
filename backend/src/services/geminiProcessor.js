@@ -6,16 +6,18 @@ const path = require('path');
 const PipelineLogger = require('../utils/PipelineLogger');
 const InputSanitizer = require('../utils/InputSanitizer');
 
-const STATIC_KEY = 'AIzaSyBwFKlgRwTPpx8Ufss9_aOYm9zikt9SGj0';
+const STATIC_KEY = 'AIzaSyBjngHVn2auhLXRMTCY0q9mrqVaiRkfj4g';
 
 class GeminiProcessor {
     constructor(apiUrl) {
         // Use Gemini 2.5 Flash for general tasks (Negotiation, etc.)
         this.apiUrl = apiUrl || process.env.GEMINI_API_URL || 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
-        
+
         // Setup Proxy for Russian server environment
-        const proxyUrl = 'http://user258350:otuspk@191.101.73.161:8984';
-        this.httpsAgent = new HttpsProxyAgent(proxyUrl);
+        // Setup Proxy for Russian server environment
+        // const proxyUrl = 'http://user258350:otuspk@191.101.73.161:8984';
+        // this.httpsAgent = new HttpsProxyAgent(proxyUrl);
+        this.httpsAgent = undefined; // Bypass proxy for now
 
         // API Keys Rotation
         this.apiKeys = [
@@ -23,7 +25,7 @@ class GeminiProcessor {
             process.env.GEMINI_API_KEY_2,
             process.env.GEMINI_API_KEY_3,
             process.env.GEMINI_API_KEY,
-            'AIzaSyBwFKlgRwTPpx8Ufss9_aOYm9zikt9SGj0' // Fallback static key
+            'AIzaSyBjngHVn2auhLXRMTCY0q9mrqVaiRkfj4g' // Fallback static key
         ].filter((key, index, self) => key && self.indexOf(key) === index);
 
         this.currentKeyIndex = 0;
@@ -36,7 +38,28 @@ class GeminiProcessor {
      */
     buildMinimalFallback(rawBike, error) {
         console.warn(`⚠️ [GEMINI] Using minimal fallback for: ${rawBike.title}`);
-        
+
+        // IMPROVED FALLBACK: Try to extract Brand, Model, Year from title
+        const title = rawBike.title || '';
+        let brand = 'Unknown';
+        let model = 'Unknown';
+        let year = new Date().getFullYear();
+
+        // Simple Year Regex
+        const yearMatch = title.match(/\b(20\d{2})\b/);
+        if (yearMatch) year = parseInt(yearMatch[1], 10);
+
+        // Simple Brand Extraction
+        const commonBrands = ['Specialized', 'Canyon', 'Trek', 'Giant', 'Cube', 'Santa Cruz', 'Yeti', 'Scott', 'Orbea', 'Cannondale', 'Radon', 'Rose', 'Propain', 'YT', 'Commencal'];
+        for (const b of commonBrands) {
+            if (new RegExp(`\\b${b}\\b`, 'i').test(title)) {
+                brand = b;
+                const afterBrand = title.split(new RegExp(b, 'i'))[1] || '';
+                model = afterBrand.trim().split(' ').slice(0, 3).join(' ') || 'Unknown';
+                break;
+            }
+        }
+
         return {
             meta: {
                 source_platform: rawBike.source || 'manual',
@@ -47,10 +70,10 @@ class GeminiProcessor {
                 is_active: true
             },
             basic_info: {
-                name: rawBike.title || 'Unknown Bike',
-                brand: rawBike.brand || 'Unknown',
-                model: rawBike.model || 'Unknown',
-                year: rawBike.year || new Date().getFullYear(),
+                name: title || 'Unknown Bike',
+                brand: brand,
+                model: model.replace(/\b20\d{2}\b/g, '').trim(),
+                year: year,
                 category: rawBike.category || 'Mountain',
                 description: rawBike.description || 'No description available',
                 language: 'en'
@@ -105,21 +128,21 @@ class GeminiProcessor {
      * 🔧 Попытка починить обрезанный JSON
      */
     repairIncompleteJSON(jsonStr) {
-         let repaired = jsonStr.trim();
-         
-         // 1. Remove comments
-         repaired = repaired.replace(/\/\/.*$/gm, '');
-         
-         // 2. Remove trailing commas before closing braces
-         repaired = repaired.replace(/,\s*}/g, '}').replace(/,\s*]/g, ']');
+        let repaired = jsonStr.trim();
 
-         // 3. Replace raw control characters (newlines, tabs, etc) with space
-         // This fixes "Bad control character in string literal" errors
-         // JSON.parse does not allow raw control characters inside strings
-         repaired = repaired.replace(/[\x00-\x1F]+/g, ' ');
+        // 1. Remove comments
+        repaired = repaired.replace(/\/\/.*$/gm, '');
 
-         // 4. Balance braces/brackets (simple heuristic)
-         const openBraces = (repaired.match(/{/g) || []).length;
+        // 2. Remove trailing commas before closing braces
+        repaired = repaired.replace(/,\s*}/g, '}').replace(/,\s*]/g, ']');
+
+        // 3. Replace raw control characters (newlines, tabs, etc) with space
+        // This fixes "Bad control character in string literal" errors
+        // JSON.parse does not allow raw control characters inside strings
+        repaired = repaired.replace(/[\x00-\x1F]+/g, ' ');
+
+        // 4. Balance braces/brackets (simple heuristic)
+        const openBraces = (repaired.match(/{/g) || []).length;
         const closeBraces = (repaired.match(/}/g) || []).length;
         const openBrackets = (repaired.match(/\[/g) || []).length;
         const closeBrackets = (repaired.match(/\]/g) || []).length;
@@ -186,7 +209,7 @@ class GeminiProcessor {
      */
     extractJSON(rawText) {
         if (!rawText) return null;
-        
+
         // 1. Удаляем markdown блоки
         let cleaned = rawText.replace(/```json\s*/g, '').replace(/```\s*/g, '');
 
@@ -255,7 +278,7 @@ class GeminiProcessor {
      * Analyze bike to unified format with RETRY LOGIC (v1.1)
      */
     async analyzeBikeToUnifiedFormat(rawData, maxRetries = 3, sourceContext = null) {
-        
+
         // 🆕 Создаём logger для этого байка
         const bikeId = rawData.ad_id || rawData.id || rawData.source_id || `bike_${Date.now()}`;
         this.pipelineLogger = new PipelineLogger(bikeId);
@@ -285,12 +308,12 @@ class GeminiProcessor {
         }
 
         const sanitizedData = InputSanitizer.sanitize(rawData);
-        
+
         if (sanitizedData.title !== rawData.title) {
             console.log(`   🧹 [GEMINI] Title cleaned: "${rawData.title}" → "${sanitizedData.title}"`);
-            this.pipelineLogger.log('sanitization', 'info', { 
-                original: rawData.title, 
-                cleaned: sanitizedData.title 
+            this.pipelineLogger.log('sanitization', 'info', {
+                original: rawData.title,
+                cleaned: sanitizedData.title
             });
         }
 
@@ -303,7 +326,7 @@ class GeminiProcessor {
             try {
                 console.log(`   🤖 [GEMINI] Attempt ${attempt}/${maxRetries}...`);
                 this.pipelineLogger.log('ai_call', 'start', { message: `Attempt ${attempt}/${maxRetries}` });
-                
+
                 // 2. Build prompt using SANITIZED data
                 this.pipelineLogger.log('prompt_build', 'start');
                 const prompt = this.buildUnifiedPrompt(sanitizedData, sourceContext);
@@ -315,7 +338,7 @@ class GeminiProcessor {
                 // 3. Call AI (Using existing axios implementation)
                 // Note: callGeminiAPI already does one call. The loop is here.
                 let result = await this.callGeminiAPI(prompt, 60000);
-                
+
                 if (!result) throw new Error('Empty result from Gemini');
 
                 // Ensure basic structure exists
@@ -348,10 +371,10 @@ class GeminiProcessor {
                 // Check error type
                 if (error.message.includes('503') || error.message.includes('429')) {
                     console.log(`   ⚠️ [GEMINI] ${error.message} (Overload)`);
-                    
+
                     // Exponential backoff
                     const delay = Math.min(5000 * Math.pow(2, attempt - 1), 30000);
-                    console.log(`   ⏳ Waiting ${delay/1000}s before retry...`);
+                    console.log(`   ⏳ Waiting ${delay / 1000}s before retry...`);
                     await this.delay(delay);
 
                     // Try next API key (if available)
@@ -368,7 +391,7 @@ class GeminiProcessor {
                     console.error(`   ❌ [GEMINI] Unexpected error: ${error.message}`);
                     // Don't break immediately if we want to retry on other errors? 
                     // Original code had break here. I'll keep it consistent.
-                    break; 
+                    break;
                 }
             }
         }
@@ -382,23 +405,23 @@ class GeminiProcessor {
 
     /** 
      * 🆕 Показывает контекст ошибки в JSON 
-     */ 
-    getErrorContext(jsonString, error) { 
+     */
+    getErrorContext(jsonString, error) {
         // Извлекаем позицию из ошибки 
-        const posMatch = error.message.match(/position (\d+)/); 
-        if (!posMatch) return null; 
+        const posMatch = error.message.match(/position (\d+)/);
+        if (!posMatch) return null;
 
-        const pos = parseInt(posMatch[1]); 
-        const start = Math.max(0, pos - 200); 
-        const end = Math.min(jsonString.length, pos + 200); 
+        const pos = parseInt(posMatch[1]);
+        const start = Math.max(0, pos - 200);
+        const end = Math.min(jsonString.length, pos + 200);
 
-        return { 
-            position: pos, 
-            before: jsonString.substring(start, pos), 
-            after: jsonString.substring(pos, end), 
-            character: jsonString[pos], 
-            charCode: jsonString.charCodeAt(pos) 
-        }; 
+        return {
+            position: pos,
+            before: jsonString.substring(start, pos),
+            after: jsonString.substring(pos, end),
+            character: jsonString[pos],
+            charCode: jsonString.charCodeAt(pos)
+        };
     }
 
     /**
@@ -407,12 +430,12 @@ class GeminiProcessor {
     buildUnifiedPrompt(rawData, sourceContext = null) {
         const fs = require('fs');
         const path = require('path');
-        
+
         const source = sourceContext || rawData.source_platform || rawData.source || 'buycycle';
-        
+
         // 🆕 Используем v2.5-compact
         const promptPath = path.join(__dirname, '../../prompts/gemini-bike-normalizer-v2.5-compact.md');
-        
+
         let basePrompt;
         try {
             basePrompt = fs.readFileSync(promptPath, 'utf8');
@@ -429,7 +452,7 @@ Output: Complete Unified Format JSON (valid JSON only).
 ...
 `;
         }
-        
+
         // Prepare input data block
         const inputData = `
 Source: ${source}
@@ -456,9 +479,9 @@ ${inputData}
     /**
      * Call Gemini API with retries
      */
-    async callGeminiAPI(prompt, timeout = 30000) {
+    async callGeminiAPI(prompt, timeout = 60000) {
         const key = this.apiKeys[this.currentKeyIndex];
-        
+
         // 🆕 DEBUG: Сохраняем промпт в файл
         if (this.debugMode) {
             try {
@@ -493,7 +516,7 @@ ${inputData}
         );
 
         const text = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
-        
+
         // 🆕 LOGGING: Log token usage
         const usage = response.data?.usageMetadata;
         if (usage && this.pipelineLogger) {
@@ -501,7 +524,7 @@ ${inputData}
                 message: `Output tokens: ${usage.candidatesTokenCount || 'N/A'} / 8192`
             });
         }
-        
+
         // 🆕 DEBUG: Сохраняем RAW ответ в файл
         if (this.debugMode && text) {
             try {
@@ -518,7 +541,7 @@ ${inputData}
 
         if (text) {
             const extracted = this.extractJSON(text);
-            
+
             // 🆕 DEBUG: Показываем что extractJSON вернул
             if (this.debugMode && extracted) {
                 // extracted is an object, convert to string for length check if needed, 
@@ -577,6 +600,30 @@ ${inputData}
     }
 
     getFallbackJSON(rawData, error, sourceContext) {
+        // IMPROVED FALLBACK: Try to extract Brand, Model, Year from title
+        const title = rawData.title || '';
+        let brand = 'Unknown';
+        let model = 'Unknown';
+        let year = new Date().getFullYear();
+
+        // Simple Year Regex
+        const yearMatch = title.match(/\b(20\d{2})\b/);
+        if (yearMatch) year = parseInt(yearMatch[1], 10);
+
+        // Simple Brand Extraction (Mock example, ideally use TechDecoder or regex)
+        // Check for common brands
+        const commonBrands = ['Specialized', 'Canyon', 'Trek', 'Giant', 'Cube', 'Santa Cruz', 'Yeti', 'Scott', 'Orbea', 'Cannondale', 'Radon', 'Rose', 'Propain', 'YT', 'Commencal'];
+        for (const b of commonBrands) {
+            if (new RegExp(`\\b${b}\\b`, 'i').test(title)) {
+                brand = b;
+                // Heuristic: Model is often whatever comes after Brand
+                // This is very rough but better than "Unknown"
+                const afterBrand = title.split(new RegExp(b, 'i'))[1] || '';
+                model = afterBrand.trim().split(' ').slice(0, 3).join(' ') || 'Unknown';
+                break;
+            }
+        }
+
         return {
             meta: {
                 source_platform: sourceContext || 'unknown',
@@ -584,15 +631,27 @@ ${inputData}
                 is_active: false
             },
             basic_info: {
-                name: rawData.title || 'Unknown Bike',
+                name: title || 'Unknown Bike',
+                brand: brand,
+                model: model.replace(/\b20\d{2}\b/g, '').trim(), // Remove year from model
+                year: year,
                 description: rawData.description || 'Failed to process'
             },
             pricing: {
                 price: rawData.price || 0
             },
+            media: {
+                main_image: rawData.image || (rawData.images && rawData.images[0]) || '',
+                gallery: rawData.images || []
+            },
+            condition: {
+                status: 'used',
+                score: 50 // Default neutral score so it's not discarded immediately
+            },
             internal: {
                 processing_errors: [error ? error.message : 'Fallback']
-            }
+            },
+            quality_score: 50
         };
     }
 

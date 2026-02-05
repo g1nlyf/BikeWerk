@@ -116,63 +116,61 @@ function buildFiltersFromGaps(gaps) {
     return filters;
 }
 
+const DeepPipelineProcessor = require('../src/services/DeepPipelineProcessor');
+
 async function collectFromKleinanzeigen(target, filters, limit, logCollector) {
     const term = `${target.brand} ${target.model}`;
+    // Use the Parser from DeepPipeline or Collector? 
+    // DeepPipeline has fetchMarketData but it's for internal use.
+    // We can stick to KleinanzeigenCollector.searchBikes for the initial list.
     const rawItems = await KleinanzeigenCollector.searchBikes(term, {
         minPrice: filters.minPrice,
         maxPrice: filters.maxPrice,
         limit
     });
     logKleinanzeigen(`Найдено объявлений: ${rawItems.length}`);
-    const normalized = [];
-    let failed = 0;
-    for (const item of rawItems) {
-        let rawBike;
-        try {
-            // DEEP SCRAPE
-            logCollector(`🔍 Deep Scraping: ${item.url}`);
-            const richData = await KleinanzeigenCollector.scrapeListing(item.url);
 
-            if (!richData) {
-                logCollector(`⚠️ Scraping failed for ${item.url}, skipping.`);
-                continue;
+    let processed = 0;
+    let failed = 0;
+
+    for (const item of rawItems) {
+        try {
+            logCollector(`🚀 Deep Pipeline: ${item.url}`);
+
+            // Delegate entirely to DeepPipelineProcessor
+            // It handles scraping, AI analysis, validation, and DB saving.
+            const success = await DeepPipelineProcessor.processListing(item.url);
+
+            if (success) {
+                processed++;
+                logCollector(`✅ Processed & Saved: ${item.title}`);
+            } else {
+                failed++; // Could be killed by shield, filtered, or error
+                logCollector(`⏭️ Skipped/Failed: ${item.title}`);
             }
 
-            rawBike = {
-                title: richData.title,
-                price: richData.price,
-                description: richData.description,
-                url: richData.url,
-                image: richData.gallery[0] || item.image,
-                gallery: richData.gallery,
-                attributes: richData.attributes,
-                brand: target.brand,
-                model: target.model,
-                source: 'kleinanzeigen',
-                external_id: item.external_id || item.id
-            };
-        } catch (scrapeErr) {
-            logCollector(`❌ Deep Scrape Error: ${scrapeErr.message}`);
-            continue;
-        }
+            // Respect rate limits / politeness
+            await new Promise(r => setTimeout(r, 5000));
 
-        try {
-            logCollector(`Нормализация Kleinanzeigen: ${rawBike.title}`);
-            const unified = await normalizeWithRetry(rawBike, 'kleinanzeigen', { useGemini: true, timeoutMs: 45000 });
-            normalized.push(unified);
-            const name = unified?.basic_info?.name || `${unified?.basic_info?.brand || target.brand} ${unified?.basic_info?.model || target.model}`.trim();
-            const quality = unified?.quality_score ?? 'n/a';
-            logNormalizer(`Нормализовано: ${name} (quality: ${quality})`);
         } catch (e) {
-            failed += 1;
-            logCollector(`Ошибка нормализации Kleinanzeigen: ${e.message}`);
+            failed++;
+            logCollector(`❌ Pipeline Error for ${item.url}: ${e.message}`);
         }
     }
-    return { normalized, failed, scraped: rawItems.length };
+
+    // Return empty normalized array to avoid UnifiedHunter trying to save them again
+    // We update stats directly here
+    return { normalized: [], failed, scraped: rawItems.length, deepProcessed: processed };
 }
 
 async function collectFromBuycycle(target, filters, limit, logCollector) {
-    const raw = await BuycycleCollector.collectForTarget({ ...target, limit, ...filters });
+    // We map everything to the expected 'sizes' key
+    const effectiveFilters = {
+        ...filters,
+        sizes: filters.targetSizes || filters.sizes || []
+    };
+
+    const raw = await BuycycleCollector.collectForTarget({ ...target, limit, ...effectiveFilters });
     logBuycycle(`Найдено кандидатов: ${raw.length}`);
     const normalized = [];
     let failed = 0;
@@ -232,7 +230,7 @@ class UnifiedHunter {
         const start = Date.now();
         const dbService = new DatabaseServiceV2();
         // SmartModelSelector expects a service with .query(), which V2 now has
-        const selector = new SmartModelSelector(new CatalogGapAnalyzer(), dbService);
+        const selector = new SmartModelSelector(CatalogGapAnalyzer, dbService);
 
         log('🚀 Unified Hunter initialized (V2 Database Service)');
         log(`🎯 Mode: ${mode.toUpperCase()} | Limit: ${limit}`);
