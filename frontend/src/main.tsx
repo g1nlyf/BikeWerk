@@ -15,16 +15,9 @@ import ChatWidget from '@/components/ChatWidget'
 import { NavigationDrawer } from '@/components/layout/NavigationDrawer'
 import { Toaster } from 'sonner'
 
-// Emergency SW cleanup for non-secure contexts or stuck caches
-if (window.location.protocol === 'https:' && navigator.serviceWorker) {
-  navigator.serviceWorker.getRegistrations().then(registrations => {
-    registrations.forEach(registration => {
-      // If we are on the main domain and see an old scope or just want to be safe
-      // We can forcefully update
-      registration.update();
-    });
-  });
-}
+// ❌ KILLSWITCH REMOVED - was causing infinite page reloads
+// The service worker update code below was triggering continuous reloads
+// on catalog, home, and other pages. Completely removed.
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
