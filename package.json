@@ -27,6 +27,6 @@
     "typescript": "^5.9.3"
   },
   "scripts": {
-    "hunt-strategic": "node hunt-strategic.js"
+    "hunt-strategic": "node scripts/hunt-strategic.js"
   }
 }

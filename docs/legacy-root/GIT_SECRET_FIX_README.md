@@ -12,7 +12,7 @@ GitHub блокирует push из-за обнаруженного секрет
 
 1. **Запустите скрипт:**
    ```powershell
-   .\fix-git-push.ps1
+   .\scripts\git\fix-git-push.ps1
    ```
 
 2. **Или вручную:**

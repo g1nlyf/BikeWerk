@@ -271,7 +271,7 @@ dataFlow.forEach(step => {
 console.log('\n' + '='.repeat(80));
 console.log('📄 GENERATING REPORT...\n');
 
-const reportPath = path.join(__dirname, '../../hunter-architecture-report.json');
+const reportPath = path.join(__dirname, '../../docs/reports/hunter-architecture-report.json');
 fs.writeFileSync(reportPath, JSON.stringify(results, null, 2));
 
 console.log(`✅ Report saved to: ${reportPath}`);

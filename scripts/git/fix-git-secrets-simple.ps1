@@ -50,7 +50,7 @@ Write-Host "   2. Нажмите 'Allow secret' (секрет уже удале�
 Write-Host "   3. Затем выполните: git push origin main" -ForegroundColor White
 Write-Host ""
 Write-Host "ВАРИАНТ 2: Переписать историю (удалит секрет полностью)" -ForegroundColor Cyan
-Write-Host "   Запустите: .\fix-git-secrets-auto.ps1" -ForegroundColor White
+Write-Host "   Запустите: .\\scripts\\git\\fix-git-secrets-auto.ps1" -ForegroundColor White
 Write-Host ""
 Write-Host "ВАРИАНТ 3: Создать новую ветку без истории" -ForegroundColor Cyan
 Write-Host "   git checkout --orphan clean-main" -ForegroundColor White
@@ -75,7 +75,7 @@ if ($choice -eq "1") {
 } elseif ($choice -eq "2") {
     Write-Host ""
     Write-Host "🔄 Запуск автоматического скрипта..." -ForegroundColor Cyan
-    .\fix-git-secrets-auto.ps1
+    & (Join-Path $PSScriptRoot 'fix-git-secrets-auto.ps1')
 } elseif ($choice -eq "3") {
     Write-Host ""
     Write-Host "⚠️  ВНИМАНИЕ: Это создаст новую ветку без истории!" -ForegroundColor Red

@@ -1,5 +1,5 @@
 # Push to GitHub excluding the 'frontend' directory
-# Usage: .\push-backend-only.ps1 "Your commit message"
+# Usage: .\scripts\git\push-backend-only.ps1 "Your commit message"
 
 $commitMessage = $args[0]
 if (-not $commitMessage) {

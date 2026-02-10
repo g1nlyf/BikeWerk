@@ -22,7 +22,8 @@ async function testParserToGemini() {
       throw new Error('GEMINI_API_KEY not found! Set it in .env file');
     }
     
-    console.log(`🔑 API Key: ${process.env.GEMINI_API_KEY.substring(0, 10)}...`);
+    // Never print API key (even partial) to logs/CI output.
+    console.log('🔑 API Key: [REDACTED]');
     console.log('');
     
     // ============================================

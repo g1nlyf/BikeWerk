@@ -51,7 +51,7 @@ Write-Host "   2. Нажмите 'Allow secret' (секрет уже удале�
 Write-Host "   3. Вернитесь сюда и нажмите Enter для push" -ForegroundColor White
 Write-Host ""
 Write-Host "ВАРИАНТ 2: Переписать историю (полностью удалит секрет)" -ForegroundColor Cyan
-Write-Host "   Запустите: .\fix-git-secrets-auto.ps1" -ForegroundColor White
+Write-Host "   Запустите: .\\scripts\\git\\fix-git-secrets-auto.ps1" -ForegroundColor White
 Write-Host ""
 
 $choice = Read-Host "Выберите вариант (1/2) или нажмите Enter для варианта 1"
@@ -78,7 +78,7 @@ if ($choice -eq "1") {
 } else {
     Write-Host ""
     Write-Host "🔄 Запуск автоматического скрипта для переписывания истории..." -ForegroundColor Cyan
-    .\fix-git-secrets-auto.ps1
+    & (Join-Path $PSScriptRoot 'fix-git-secrets-auto.ps1')
 }
 
 Write-Host ""

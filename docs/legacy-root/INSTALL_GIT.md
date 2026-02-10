@@ -60,7 +60,7 @@ choco install git
 4. Вернитесь к инициализации проекта:
    ```powershell
    cd c:\Users\hacke\CascadeProjects\Finals1\eubike
-   .\init-git.ps1
+   .\scripts\git\init-git.ps1
    ```
 
 ## Если Git уже установлен, но не найден
