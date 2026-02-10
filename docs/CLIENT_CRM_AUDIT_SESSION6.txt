@@ -1,0 +1,95 @@
+CRM TEST REPORT SESSION 6
+Tester: Agent (Simulating Client Dmitry & Manager Alexey)
+Date: 2026-02-08
+Target File: ./docs/CLIENT_CRM_AUDIT_SESSION6.txt
+
+---
+
+## 1. CLIENT JOURNEY (DMITRY)
+
+### 1️⃣ Homepage & First Impressions
+**Actions:**
+- Browsed homepage. Checked navigation, trust elements, and design.
+
+**Report:**
+✅ **Good Points:**
+- **Visuals:** Modern, clean design. "Bike from Europe in 2 clicks" value prop is clear.
+- **Performance:** Initial load is fast.
+- **Trust:** Footer looks professional (though links need verification).
+
+⚠️ **Scare Factors (UX/Trust Issues):**
+1.  **Broken Calculator**: The "Delivery Calculator" is stuck on "Waiting for data..." (Likely port 8082 unreachable). A broken core tool immediately kills trust.
+2.  **Product Links 403**: Clicking "Details" on featured bikes often leads to a "Product not found" error (likely API permission/403 issue).
+3.  **Generic Content**: "How we started" sections feel like placeholder text.
+
+### 2️⃣ Booking Flow (Alternative Path)
+**Actions:**
+-   Since Catalog Search was broken, navigated via "Show buyback conditions" / Direct URL.
+-   Found booking form at `/booking-checkout/3`.
+
+**Report:**
+✅ **Good Points:**
+-   **Form Simplicity**: Only essential fields (Name, Phone, City, Comment).
+-   **Immediate Feedback**: Success message appeared instantly.
+-   **Credentials**: System auto-generated login (Phone) and Password, which is great for new users.
+
+⚠️ **Issues:**
+-   **Hidden Path**: I had to dig to find a working booking form because the main product pages were erroring out. A real client might have left.
+
+### 3️⃣ Submission Data
+-   **Order ID**: `ORD-944035`
+-   **Customer**: Dmitry (+7 999 123-45-67)
+-   **Bike**: YT Capra Shred (ID: 3)
+-   **Status**: Submitted successfully.
+
+---
+
+## 2. BACKEND DATA VERIFICATION
+*Attempted verification via script, but proceeding with CRM UI verification.*
+
+---
+
+## 3. CRM MANAGER FLOW (ALEXEY)
+
+### 1️⃣ Dashboard & Order Visibility
+**Actions:**
+-   Logged in as `crm.manager@local`.
+-   Checked Dashboard for new order.
+
+**Report:**
+✅ **Success:**
+-   Dashboard loaded correctly.
+-   Metric "Total Orders" reflects the system state.
+
+### 2️⃣ Order Processing (ORD-944035)
+**Actions:**
+-   Found Order `ORD-944035` for Dmitry.
+-   Verified Details: Name (Dmitry), Phone (+7 999 123-45-67), Bike (YT Capra Shred), Amount (~2069 EUR).
+-   **Action**: Assigned to "CRM Manager" (Alexey).
+-   **Action**: Changed Status to "Reserve Paid".
+
+**Report:**
+✅ **Data Integrity:**
+-   The data submitted by the client (Dmitry) matches EXACTLY what the Manager sees. No data loss.
+
+⚠️ **Critical Issues (Backend):**
+-   **errors during update**: When saving the status/manager, the browser console reported **400 Bad Request** and **503 Service Unavailable**.
+-   **UI Optimistic Update**: The UI *showed* the changes (Status: Reserve Paid), but given the errors, there is a high risk these changes **DID NOT PERSIST** to the database.
+
+---
+
+## 4. FINAL VERIFICATION & VERDICT
+
+### 4.1 Data Persistence Check
+-   **Status**: The UI shows "Reserve Paid", but the backend threw 400/503.
+-   **Risk**: High probability of data inconsistency.
+
+### 4.2 Final Verdict
+-   **Frontend Conversion**: **Medium**. The calculator and broken links are conversion killers, but the booking form itself is smooth.
+-   **Backend Stability**: **Low**. 400/503 errors during basic CRM operations are unacceptable for production.
+-   **End-to-End Flow**: **Functional but Fragile**. The client can submit, and the manager can *see* it, but processing it is buggy.
+
+**Recommendations:**
+1.  **Fix Calculator Backend**: Ensure port 8082 service is running and accessible.
+2.  **Investigate CRM API Errors**: The 400/503 on `PUT /api/orders` need immediate debugging.
+3.  **Fix Product Details 403**: Ensure public access to bike details is correctly configured in Supabase policies.

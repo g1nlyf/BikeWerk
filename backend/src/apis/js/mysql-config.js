@@ -347,8 +347,8 @@ class DatabaseManager {
                 }
             }
         } else {
-            // Default to .../backend/Databases/eubike.db
-            finalPath = path.resolve(backendRoot, 'Databases/eubike.db');
+            // Canonical runtime DB path
+            finalPath = path.resolve(backendRoot, 'database/eubike.db');
         }
 
         this.dbPath = finalPath;

@@ -1,9 +1,16 @@
 const { createClient } = require('@supabase/supabase-js');
 const path = require('path');
 
-// Hardcode path to .env in backend/
-const SUPABASE_URL = 'https://lclalsznmrjgqsgaqtps.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxjbGFsc3pubXJqZ3FzZ2FxdHBzIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MDk3ODkwOCwiZXhwIjoyMDc2NTU0OTA4fQ.NIGp4ueVE74uwmhFn1AH8yzhtVmm7SCRmDz2-2cBHqA';
+// Use env vars; never hardcode credentials.
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_KEY ||
+    process.env.SUPABASE_ANON_KEY;
+
+if (!SUPABASE_URL || !SUPABASE_KEY) {
+    throw new Error('Missing SUPABASE_URL and/or SUPABASE_* key env vars.');
+}
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 

@@ -4,7 +4,7 @@ export const API_BASE = import.meta.env.PROD
   : ((import.meta.env?.VITE_API_URL as string) || '/api')
 
 // Формирует абсолютный URL для изображений, если пришёл относительный путь
-export function resolveImageUrl(path: any): string | null {
+export function resolveImageUrl(path: unknown): string | null {
   if (path == null) return null
   if (typeof path !== 'string') {
     if (Array.isArray(path)) {
@@ -15,32 +15,34 @@ export function resolveImageUrl(path: any): string | null {
       path = String(path)
     }
   }
-  const p = (path || '').trim();
-  if (!p || p.includes('[object Promise]')) return null;
-  const baseNoApi = API_BASE.replace('/api', '');
 
-  // 1. ImageKit URL - возвращаем как есть (прямой доступ к CDN)
-  if (p.includes('ik.imagekit.io')) {
-    return p;
-  }
+  const p = (path || '').trim()
+  if (!p || p.includes('[object Promise]')) return null
+  const baseNoApi = API_BASE.replace('/api', '')
 
-  // 2. Внешние URL (Buycycle, Kleinanzeigen) - возвращаем как есть
-  // Удален прокси, так как современные CDN и источники обычно поддерживают CORS или мы их уже проксируем через ImageKit
   if (/^https?:\/\//i.test(p)) {
-    // Исключение: localhost (legacy dev env)
-    if (p.includes('localhost')) {
-      try {
-        const u = new URL(p);
-        return `${baseNoApi}${u.pathname}`;
-      } catch { }
+    try {
+      const u = new URL(p)
+      const host = u.hostname.toLowerCase()
+
+      // Keep ImageKit direct for CDN performance.
+      if (host === 'ik.imagekit.io' || host.endsWith('.imagekit.io')) return p
+
+      // Legacy localhost paths should stay local in dev.
+      if (host === 'localhost' || host === '127.0.0.1') {
+        return `${baseNoApi}${u.pathname}${u.search}`
+      }
+
+      // Backend proxy accepts https only.
+      if (u.protocol === 'http:') u.protocol = 'https:'
+      return `${baseNoApi}/api/image-proxy?url=${encodeURIComponent(u.toString())}`
+    } catch {
+      return p
     }
-    return p;
   }
 
-  // 3. Legacy local paths (для старых данных, которые еще не в ImageKit)
-  // Приклеиваем к корню бэкенда (без /api)
-  const normalized = p.startsWith('/') ? p : `/${p}`;
-  return `${baseNoApi}${normalized}`;
+  const normalized = p.startsWith('/') ? p : `/${p}`
+  return `${baseNoApi}${normalized}`
 }
 
 function getToken(): string | null {
@@ -53,7 +55,7 @@ function getToken(): string | null {
 
 function getTelegramInitData(): string | null {
   try {
-    // @ts-ignore
+    // @ts-expect-error Telegram WebApp is injected at runtime.
     return window.Telegram?.WebApp?.initData || null;
   } catch {
     return null;
@@ -95,6 +97,17 @@ export async function apiPut(path: string, body: unknown, init?: RequestInit) {
   const token = getToken()
   const res = await fetch(`${API_BASE}${path}`, {
     method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...(init?.headers || {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify(body),
+    ...init,
+  })
+  try { return await res.json() } catch { return { success: false, status: res.status } }
+}
+
+export async function apiPatch(path: string, body: unknown, init?: RequestInit) {
+  const token = getToken()
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...(init?.headers || {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: JSON.stringify(body),
     ...init,
@@ -178,8 +191,19 @@ export const auth = {
     return apiGet('/auth/me')
   },
 
+  async completeProfile(email: string, password: string) {
+    const data = await apiPost('/auth/complete-profile', { email, password })
+    if (data?.token) localStorage.setItem('authToken', data.token)
+    if (data?.user) localStorage.setItem('currentUser', JSON.stringify(data.user))
+    return data
+  },
+
   async logout() {
-    try { await apiPost('/auth/logout', {}) } catch { }
+    try {
+      await apiPost('/auth/logout', {})
+    } catch {
+      // Ignore logout request failures and clear local auth state anyway.
+    }
     localStorage.removeItem('authToken')
     localStorage.removeItem('currentUser')
     return { success: true }
@@ -302,7 +326,7 @@ export const crmApi = {
   async createMessage(payload: { subject: string; body?: string; bike_id?: string | number; contact_method?: string; contact_value?: string; name?: string }) {
     return apiPost('/v1/crm/messages', payload);
   },
-  async createBooking(payload: { bike_id: string | number; customer: { name: string; email?: string; phone?: string; telegram_id?: string }; bike_details: any }) {
+  async createBooking(payload: { bike_id: string | number; customer: { name: string; email?: string; phone?: string; telegram_id?: string }; bike_details: unknown }) {
     return apiPost('/v1/booking', payload);
   }
 }
@@ -312,13 +336,16 @@ export const crmFrontApi = {
     const params = new URLSearchParams()
     if (q) params.set('q', q)
     if (limit != null) params.set('limit', String(limit))
-    return apiGet(`/v1/crm/orders/search?${params.toString()}`)
+    return apiGet(`/v1/orders/search?${params.toString()}`)
   },
   async getOrderDetails(orderId: string) {
-    return apiGet(`/v1/crm/orders/${encodeURIComponent(orderId)}`)
+    return apiGet(`/v1/orders/${encodeURIComponent(orderId)}`)
   },
   async getOrderByToken(token: string) {
-    return apiGet(`/orders/track/${encodeURIComponent(token)}`)
+    return apiGet(`/v1/orders/track/${encodeURIComponent(token)}`)
+  },
+  async reserve(orderId: string) {
+    return apiPost(`/v1/orders/${encodeURIComponent(orderId)}/reserve`, {})
   }
 }
 
@@ -333,3 +360,5 @@ export const userTrackingsApi = {
     return apiDelete(`/user/trackings/${id}`)
   }
 }
+
+

@@ -14,7 +14,9 @@ router.post('/', async (req, res) => {
             exchange_rate,
             final_price_eur,
             delivery_method,
-            shipping_option // Fallback alias
+            shipping_option, // Fallback alias
+            addons,
+            booking_form
         } = req.body;
 
         if (!bike_id || !customer || !bike_details) {
@@ -29,7 +31,9 @@ router.post('/', async (req, res) => {
             booking_amount_rub,
             exchange_rate,
             final_price_eur,
-            delivery_method: delivery_method || shipping_option // Pass it through
+            delivery_method: delivery_method || shipping_option, // Pass it through
+            addons,
+            booking_form
         });
 
         res.json(result);

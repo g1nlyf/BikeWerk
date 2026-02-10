@@ -1,0 +1,51 @@
+[2026-02-07 15:09:32] START crm autofix run (post-interruption state check)
+[2026-02-07 15:09:32] Created docs/CRM_fixplan.md with checklist + targets + verification loop
+[2026-02-07 15:14:40] Loaded skills: backend-integration-test, frontend-build-lint, frontend-e2e-smoke
+[2026-02-07 15:14:40] Inspected CRM frontend/backend routes and identified target files for task/status/search/dashboard/customer/order-detail fixes
+[2026-02-07 15:15:48] Ran backend npm test -> FAIL (missing module ../../scrapers/kleinanzeigen-collector); captured at backend/test-outputs/latest.txt
+[2026-02-07 15:15:48] Ran frontend npm run lint -> FAIL with many pre-existing unrelated lint errors (see frontend/test-results/lint-build.log)
+[2026-02-07 15:15:48] Ran frontend npm run build -> PASS (warnings only) (see frontend/test-results/build.log)
+[2026-02-07 15:28:18] Cluster 1 code changes applied (backend CRM routes + frontend CRM pages/components)
+[2026-02-07 15:28:18] Verification: node --check backend/server.js PASS
+[2026-02-07 15:28:18] Verification: frontend build PASS (frontend/test-results/build-after-cluster1.log)
+[2026-02-07 15:28:18] Verification: focused CRM eslint PASS (frontend/test-results/crm-eslint-after-cluster1.log)
+[2026-02-07 15:38:42] Ran Playwright smoke (@smoke). Failed: page.getByDisplayValue is not a function at frontend/tests/crm-smoke.spec.ts:118.
+[2026-02-07 15:39:27] Patched smoke locator compatibility in frontend/tests/crm-smoke.spec.ts and reran Playwright smoke: PASSED (1/1).
+[2026-02-07 15:40:58] Reran verification loop: backend npm test FAIL (pre-existing missing module, see backend/test-outputs/latest.txt); frontend lint FAIL (pre-existing non-CRM issues, see frontend/test-results/lint-after-final-loop.log); frontend build PASS (frontend/test-results/build-after-final-loop.log); focused CRM eslint PASS (frontend/test-results/crm-eslint-final.log); Playwright smoke PASS (frontend/tests/crm-smoke.spec.ts).
+[2026-02-07 15:41:17] Sanity check: node --check backend/server.js PASS.
+[2026-02-07 16:41:45] Added docs/Booking_CRM_Audit.md (booking?CRM integration audit).
+[2026-02-07 17:06:40] Session5: Hardened lead update endpoint in backend/server.js (shared PATCH/PUT handler, status enum validation, id format validation, 400/404/503 semantics, safe Supabase connectivity handling).
+[2026-02-07 17:06:40] Session5: Improved image resilience (safe static /images + /src/images serving, hardened /api/image-proxy with https-only, SSRF checks, content-type checks, CORP/CORS headers).
+[2026-02-07 17:06:40] Session5: Updated frontend image handling in resolveImageUrl, OrderCard, KanbanBoard, OrderDetail to prefer snapshot data and show archived-bike fallback label.
+[2026-02-07 17:06:40] Session5: Normalized booking snapshot persistence in BookingService (bike snapshot enrichment, lead snapshot payload fallback, normalized bike_id/bike_url/external ref/images).
+[2026-02-07 17:06:40] Session5: Updated dashboard stats logic (pending manager includes leads/orders, conversion uses success states and returns N/A when total_orders < 5).
+[2026-02-07 17:06:40] Session5: Prepared migration package docs/supabase_migrations/crm_linkage.sql and dry-run backfill script backend/scripts/backfill_cached_images.js (ImageKit-targeted).
+[2026-02-07 17:06:40] Verification: frontend ESLint (changed CRM files) PASS -> frontend/test-results/crm-eslint-session5.log
+[2026-02-07 17:06:40] Verification: frontend build PASS -> frontend/test-results/build-session5.log
+[2026-02-07 17:06:40] Verification: backend npm test FAIL (pre-existing missing module ../../scrapers/kleinanzeigen-collector) -> backend/test-outputs/latest.txt
+[2026-02-07 17:06:40] Verification: lead endpoint verifier PASS (400/404/503 + optional 200 skipped without writes) -> backend/test-outputs/verify-crm-leads-endpoint.log
+[2026-02-07 17:06:40] Verification: Playwright CRM @smoke PASS (includes leads status update and blocked-image console guard) -> frontend/test-results/crm-smoke-session5.log
+[2026-02-07 17:07:26] Verification: lead endpoint verifier PASS with ALLOW_WRITE=true (200/400/404/503 coverage) -> backend/test-outputs/verify-crm-leads-endpoint-write.log
+[2026-02-07 17:07:53] Verification: full frontend lint FAIL due pre-existing repo-wide issues -> frontend/test-results/lint-session5-full.log
+[2026-02-07 17:09:30] Session5: Added missing manifest icon files frontend/public/android-chrome-192x192.png and frontend/public/android-chrome-512x512.png to eliminate console 404 noise.
+[2026-02-07 17:10:55] Verification rerun: Playwright smoke PASS after manifest icon fix -> frontend/test-results/crm-smoke-session5-after-icons.log
+[2026-02-07 17:10:55] Verification rerun: focused frontend ESLint PASS -> frontend/test-results/crm-eslint-session5-final.log; frontend build PASS -> frontend/test-results/build-session5-final.log
+[2026-02-07 17:10:55] Verification rerun: backend npm test remains FAIL due pre-existing missing module -> backend/test-outputs/latest.txt
+[2026-02-07 17:11:59] Stopped temporary dev servers on ports 8082 and 5175 after verification run.
+[2026-02-07 17:12:27] Final sanity checks: node --check backend/server.js PASS; node --check backend/src/services/BookingService.js PASS.
+[2026-02-07 17:18:10] Session5+: Reconciled Supabase schema snapshot (docs/supabase_schema_snapshot_public.json) with code assumptions (readable text ids + enum statuses).
+[2026-02-07 17:18:10] Session5+: Added finalization audit doc docs/Booking_CRM_Finalization_Audit.md (canonical bike ref, schema truth, ImageKit-only plan, remaining work).
+[2026-02-07 17:18:10] Session5+: Added Supabase schema export how-to docs/SUPABASE_SCHEMA_HOWTO.md and confirmed scripts/supabase_schema_dump.js outputs SQL Editor queries (no secrets).
+[2026-02-07 17:23:40] Secret hygiene: removed hardcoded Supabase JWT keys from repo scripts/configs; all Supabase credentials now env-only (no JWT literals remain).
+[2026-02-07 21:05:52] Session follow-up: resolved CRM order detail route shadowing by removing duplicate /api/v1/crm/orders/:orderId handler from backend/src/routes/v1/modules/crm.ts.
+[2026-02-07 21:05:52] Fixed local CRM order search SQL: removed o.bike_name filter usage where column is absent in SQLite; search now uses snapshot/customer fields.
+[2026-02-07 21:05:52] Fixed order detail price reload race in frontend/src/pages/crm/orders/OrderDetailPage.tsx by hydrating priceDraft from loaded order payload.
+[2026-02-07 21:05:52] Fixed local shipments persistence in backend/server.js (SQLite schema-compatible insert/update using provider, no carrier column).
+[2026-02-07 21:05:52] Added CRM route fallback behavior in backend/src/routes/v1/modules/crm.ts for shipments/transactions/notify when Supabase is unavailable (next() to consolidated server handlers).
+[2026-02-07 21:05:52] Fixed customer detail lookup fallback in backend/server.js to local DB when Supabase branch misses customer; removed SQLite dependency on missing total_price_rub column.
+[2026-02-07 21:05:52] Reduced local status-event noise: fallback insert without change_notes when legacy order_status_events schema lacks that column.
+[2026-02-07 21:05:52] Verification: frontend npm run build PASS; Playwright @smoke PASS; backend npm test still FAIL on pre-existing integration issues (missing bikes table in test DB + valuation assertion).
+[2026-02-07 21:07:44] Verification: leads endpoint script PASS (400 invalid id, 404 missing row, 503 outage simulation) -> backend/scripts/verify-crm-leads-endpoint.js
+[2026-02-07 21:11:50] Hardened booking auxiliary flows: OrderDispatcher now gracefully skips when Supabase client is unavailable; BookingService now guards parseBikeSnapshot optionality.
+[2026-02-07 21:11:50] Final verification rerun: Playwright @smoke PASS on fresh backend process.
+[2026-02-07 21:12:16] Final backend npm test rerun: FAIL with same pre-existing integration failures (missing bikes table in integration DB; valuation tolerance assertion).

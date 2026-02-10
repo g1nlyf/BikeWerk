@@ -15,6 +15,17 @@ class BuycyclePreprocessor {
         const product = this.resolveProduct(nextData) || {};
 
         const title = product.title || this.extractTitle($) || rawData.title;
+        const titleBrandModel = this.extractBrandModelFromTitle(title);
+        const extractedBrand = this.extractBrand($);
+        const brand = this.normalizeBrandName(
+            product.brand?.name || product.brand || extractedBrand || rawData.brand || titleBrandModel.brand
+        );
+        const model = product.model?.name
+            || product.model
+            || rawData.model
+            || this.extractModel($, title, brand)
+            || titleBrandModel.model
+            || null;
         const price = this.normalizePrice(product.price?.value ?? product.price?.amount ?? product.price) ?? this.normalizePrice(this.extractPrice($)) ?? rawData.price;
         const originalPrice = this.normalizePrice(product.originalPrice?.value ?? product.originalPrice?.amount ?? product.originalPrice) ?? rawData.original_price;
         const year = product.year || this.extractYearFromText(title) || rawData.year;
@@ -35,6 +46,8 @@ class BuycyclePreprocessor {
 
         return {
             title,
+            brand,
+            model,
             description,
             price,
             original_price: originalPrice,
@@ -53,9 +66,14 @@ class BuycyclePreprocessor {
 
     preprocessObject(rawData) {
         const images = this.mergeImages(rawData.images, [], rawData.image);
+        const titleBrandModel = this.extractBrandModelFromTitle(rawData.title);
+        const brand = this.normalizeBrandName(rawData.brand || titleBrandModel.brand);
+        const model = rawData.model || titleBrandModel.model || null;
         const conditionStatus = this.mapConditionStatus(rawData.condition);
         return {
             title: rawData.title,
+            brand,
+            model,
             description: rawData.description,
             price: this.normalizePrice(rawData.price),
             original_price: this.normalizePrice(rawData.original_price),
@@ -71,6 +89,104 @@ class BuycyclePreprocessor {
             source_ad_id: rawData.external_id || rawData.id,
             seller: rawData.seller || {}
         };
+    }
+
+    extractBrand($) {
+        if (!$) return null;
+        const selectors = [
+            '[data-cnstrc-item-brand]',
+            '[data-testid*="brand"]',
+            '[class*="contentSecondary"]',
+            '[class*="item-brand"]',
+            '[class*="product-brand"]'
+        ];
+        for (const selector of selectors) {
+            const nodes = $(selector);
+            for (let index = 0; index < nodes.length; index += 1) {
+                const text = $(nodes[index]).text().trim();
+                if (this.isLikelyBrand(text)) {
+                    return this.normalizeBrandName(text);
+                }
+            }
+        }
+        return null;
+    }
+
+    extractModel($, title, brand) {
+        if (!title) return null;
+        const cleanTitle = String(title).replace(/\s+/g, ' ').trim();
+        if (brand) {
+            const pattern = new RegExp(`^${this.escapeRegExp(brand)}\\s+`, 'i');
+            const withoutBrand = cleanTitle.replace(pattern, '').trim();
+            if (withoutBrand) return withoutBrand;
+        }
+
+        if ($) {
+            const dataName = $('[data-cnstrc-item-name]').attr('data-cnstrc-item-name');
+            if (dataName) {
+                const parsed = this.extractBrandModelFromTitle(dataName);
+                if (parsed.model) return parsed.model;
+            }
+        }
+        return cleanTitle || null;
+    }
+
+    extractBrandModelFromTitle(title) {
+        const input = String(title || '').replace(/\s+/g, ' ').trim();
+        if (!input) return { brand: null, model: null };
+
+        const knownBrands = [
+            'Santa Cruz', 'Specialized', 'Cannondale', 'Cervelo', 'CervÃ©lo', 'Pinarello',
+            'Colnago', 'Canyon', 'Trek', 'Scott', 'Cube', 'Giant', 'Orbea', 'Yeti',
+            'Propain', 'Commencal', 'Radon', 'Merida', 'Bianchi', 'Rose', 'Focus', 'BMC', 'YT'
+        ].sort((left, right) => right.length - left.length);
+
+        const lower = input.toLowerCase();
+        for (const brand of knownBrands) {
+            const brandLower = brand.toLowerCase();
+            if (lower === brandLower || lower.startsWith(`${brandLower} `)) {
+                const model = input.slice(brand.length).trim() || null;
+                return { brand: this.normalizeBrandName(brand), model };
+            }
+        }
+
+        const parts = input.split(' ');
+        if (parts.length >= 2) {
+            return { brand: this.normalizeBrandName(parts[0]), model: parts.slice(1).join(' ') };
+        }
+
+        return { brand: null, model: input };
+    }
+
+    isLikelyBrand(value) {
+        if (!value) return false;
+        const text = String(value).replace(/\s+/g, ' ').trim();
+        if (!text) return false;
+        if (text.length > 40) return false;
+        if (/\d/.test(text)) return false;
+        if (text.includes('â‚¬') || text.includes('EUR')) return false;
+        return /^[A-Za-z.\- ]+$/.test(text);
+    }
+
+    normalizeBrandName(value) {
+        if (!value) return null;
+        const raw = String(value).replace(/\s+/g, ' ').trim();
+        const normalized = raw.toLowerCase();
+        const map = {
+            'yt industries': 'YT',
+            'yt': 'YT',
+            'santa cruz': 'Santa Cruz',
+            'cervelo': 'CervÃ©lo',
+            'cervÃ©lo': 'CervÃ©lo',
+            'specialized bicycle components': 'Specialized'
+        };
+        if (map[normalized]) return map[normalized];
+        if (raw.length <= 3) return raw.toUpperCase();
+        return raw;
+    }
+
+    escapeRegExp(value) {
+        return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
 
     extractNextData($) {

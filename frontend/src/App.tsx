@@ -1,13 +1,13 @@
 "use client"
 import React, { useState, useEffect, useRef } from "react"
 import { motion, useScroll, useTransform, useInView, useSpring, AnimatePresence } from "framer-motion"
-import { 
-  Bike, 
-  Shield, 
-  TrendingDown, 
-  Clock, 
-  CheckCircle, 
-  Star, 
+import {
+  Bike,
+  Shield,
+  TrendingDown,
+  Clock,
+  CheckCircle,
+  Star,
   ArrowRight,
   Phone,
   Mail,
@@ -78,14 +78,14 @@ function FeatureSteps({
     return () => {
       try {
         carouselApi.off("select", onSelect)
-      } catch {}
+      } catch { }
     }
   }, [carouselApi])
 
   return (
     <div className={cn("p-8 md:p-12", className)}>
       <div className="max-w-7xl mx-auto w-full">
-        <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-10 text-center">
+        <h2 className="text-3xl md:text-5xl lg:text-6xl font-heading font-bold mb-12 text-center tracking-tighter">
           {title}
         </h2>
 
@@ -117,7 +117,7 @@ function FeatureSteps({
                 </motion.div>
 
                 <div className="flex-1">
-                  <h3 className="text-xl md:text-2xl font-semibold">
+                  <h3 className="text-xl md:text-3xl font-heading font-bold mb-1">
                     {feature.title || feature.step}
                   </h3>
                   <p className="text-sm md:text-lg text-muted-foreground">
@@ -129,7 +129,7 @@ function FeatureSteps({
           </div>
 
           {/* Carousel for content with snap points */}
-          <div className={cn("order-1 md:order-2 relative")}> 
+          <div className={cn("order-1 md:order-2 relative")}>
             <Carousel setApi={setCarouselApi} className="w-full">
               <CarouselContent className="">
                 {features.map((feature, index) => (
@@ -217,6 +217,7 @@ function StatCounter({ icon, value, label, suffix, delay }: StatCounterProps) {
 import AdminTMAPage from "./pages/AdminTMAPage";
 
 function BikeImportWebsite() {
+  const [searchQuery, setSearchQuery] = useState("") // Added for FAQ filtering
   const sectionRef = useRef<HTMLElement>(null)
   const statsRef = useRef<HTMLDivElement>(null)
   // удалено: локальная переменная isInView не используется
@@ -418,9 +419,9 @@ function BikeImportWebsite() {
       <Header />
 
       {/* Hero Section */}
-        <section ref={sectionRef} className="relative min-h-[72vh] w-full flex items-center justify-center overflow-hidden bg-gradient-to-br from-background via-background to-primary/5 pt-4 pb-4">
+      <section ref={sectionRef} className="relative min-h-[72vh] w-full flex items-center justify-center overflow-hidden bg-gradient-to-br from-background via-background to-primary/5 pt-4 pb-4">
         <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-primary/10 blur-3xl" />
-        
+
         <motion.div
           className="absolute top-20 left-10 w-64 h-64 rounded-full bg-primary/5 blur-3xl"
           style={{ y: y1 }}
@@ -435,10 +436,10 @@ function BikeImportWebsite() {
             {/* Удалён бейдж с текстом "Профессиональный импорт велосипедов" по запросу */}
 
             <motion.div custom={1} variants={fadeUpVariants} initial="hidden" animate="visible">
-              <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold mb-5 tracking-tight">
-                <span className="text-black">Велосипеды из Европы</span>
+              <h1 className="text-5xl sm:text-6xl md:text-8xl font-heading font-extrabold mb-6 tracking-tight leading-[0.9] text-gradient">
+                Велосипеды из Европы
                 <br />
-                <span className="text-black">с полным сопровождением</span>
+                с полным сопровождением
               </h1>
             </motion.div>
 
@@ -448,15 +449,15 @@ function BikeImportWebsite() {
               </p>
             </motion.div>
 
-            <motion.div 
-              custom={3} 
-              variants={fadeUpVariants} 
-              initial="hidden" 
+            <motion.div
+              custom={3}
+              variants={fadeUpVariants}
+              initial="hidden"
               animate="visible"
               className="flex flex-col sm:flex-row gap-3 justify-center mb-8"
             >
-              <InteractiveHoverButton 
-                text="В каталог" 
+              <InteractiveHoverButton
+                text="В каталог"
                 className="w-auto px-6 py-3"
                 onClick={() => { window.location.href = '/catalog'; }}
               />
@@ -476,7 +477,7 @@ function BikeImportWebsite() {
             >
               <div className="bg-card/50 backdrop-blur-sm p-3 rounded-lg border">
                 <div className="text-3xl font-bold text-primary mb-1">
-                  <CountUp to={438} duration={2} />
+                  <CountUp to={438} duration={2} onStart={() => { }} onEnd={() => { }} />
                 </div>
                 <div className="text-sm text-muted-foreground">велосипедов доставлено</div>
               </div>
@@ -488,7 +489,7 @@ function BikeImportWebsite() {
               </div>
               <div className="bg-card/50 backdrop-blur-sm p-3 rounded-lg border">
                 <div className="text-3xl font-bold text-primary mb-1">
-                  <CountUp to={2021} duration={2} />
+                  <CountUp to={2021} duration={2} onStart={() => { }} onEnd={() => { }} />
                 </div>
                 <div className="text-sm text-muted-foreground">год основания</div>
               </div>
@@ -623,7 +624,7 @@ function BikeImportWebsite() {
       {/* Convenience Max */}
       <ConvenienceMaxSection />
 
-      
+
 
       {/* Catalog Teaser */}
       <section id="catalog-teaser" className="py-12 sm:py-18 md:py-24 bg-background mb-16">
@@ -1047,7 +1048,7 @@ export default function App() {
       <HunterLogger />
       <div className="flex flex-col min-h-screen">
         <Header />
-        
+
         {/* Hero Section */}
         <section className="relative pt-20 overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-background to-background" />
@@ -1079,12 +1080,12 @@ export default function App() {
                   </span>
                 </h1>
                 <p className="text-xl text-muted-foreground mb-8 max-w-lg">
-                  Доставим любой велосипед из магазинов Германии и Австрии. 
+                  Доставим любой велосипед из магазинов Германии и Австрии.
                   Прозрачный расчет, страховка груза и полное сопровождение.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-4">
-                  <InteractiveHoverButton 
-                    text="Рассчитать стоимость" 
+                  <InteractiveHoverButton
+                    text="Рассчитать стоимость"
                     className="w-full sm:w-auto"
                     onClick={() => document.getElementById('calculator')?.scrollIntoView({ behavior: 'smooth' })}
                   />
@@ -1093,7 +1094,7 @@ export default function App() {
                     Написать менеджеру
                   </Button>
                 </div>
-                
+
                 <div className="mt-12 flex items-center gap-8 text-sm text-muted-foreground">
                   <div className="flex items-center gap-2">
                     <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
@@ -1123,14 +1124,14 @@ export default function App() {
                 className="relative"
               >
                 <div className="relative z-10 bg-gradient-to-tr from-primary/20 to-transparent rounded-[3rem] p-8">
-                  <img 
+                  <img
                     src="https://images.unsplash.com/photo-1576435728678-35d016018c97?q=80&w=2940&auto=format&fit=crop"
                     alt="Premium Bike"
                     className="rounded-[2rem] shadow-2xl rotate-3 hover:rotate-0 transition-transform duration-500"
                   />
-                  
+
                   {/* Floating Cards */}
-                  <motion.div 
+                  <motion.div
                     initial={{ y: 20, opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}
                     transition={{ delay: 0.8 }}
@@ -1145,7 +1146,7 @@ export default function App() {
                     </div>
                   </motion.div>
 
-                  <motion.div 
+                  <motion.div
                     initial={{ y: -20, opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}
                     transition={{ delay: 1 }}
@@ -1160,7 +1161,7 @@ export default function App() {
                     </div>
                   </motion.div>
                 </div>
-                
+
                 {/* Background Blobs */}
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120%] h-[120%] bg-primary/5 blur-3xl -z-10 rounded-full" />
               </motion.div>
@@ -1179,7 +1180,7 @@ export default function App() {
 
         {/* Feature Steps Section */}
         <section id="how-it-works" className="py-20 bg-muted/30">
-          <FeatureSteps 
+          <FeatureSteps
             features={[
               {
                 step: "01",

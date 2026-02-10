@@ -7,11 +7,23 @@ html {
   scroll-behavior: smooth;
 }
 
+::selection {
+  background-color: hsl(var(--secondary) / 0.3);
+  color: hsl(var(--foreground));
+}
+
+/* Base transitions */
+* {
+  @apply transition-colors duration-200;
+}
+
 /* Переменные темы, совместимые с конфигом tailwind (hsl(var(--...))) */
 :root {
   /* Фон и основной текст: белый + глубокий тёмно‑синий */
-  --background: 0 0% 100%; /* белый */
-  --foreground: 222 47% 12%; /* navy-900 для основного текста */
+  --background: 0 0% 100%;
+  /* белый */
+  --foreground: 222 47% 12%;
+  /* navy-900 для основного текста */
 
   --card: 0 0% 100%;
   --card-foreground: 222.2 47.4% 11.2%;
@@ -27,7 +39,8 @@ html {
   --secondary: 20 90% 48%;
   --secondary-foreground: 0 0% 100%;
 
-  --muted: 210 40% 96%; /* светлые нейтральные */
+  --muted: 210 40% 96%;
+  /* светлые нейтральные */
   --muted-foreground: 215 17% 47%;
 
   /* accent — мягкие подсветки/фон для hover */
@@ -43,14 +56,16 @@ html {
   --ring: 20 90% 52%;
 
   /* Брендовый тёмно‑синий для заголовков, ссылок, outline */
-  --brand: 210 46% 16%; /* ~#132D4E */
+  --brand: 210 46% 16%;
+  /* ~#132D4E */
   --brand-foreground: 210 40% 98%;
 
   --radius: 0.5rem;
 }
 
 .dark {
-  --background: 222 84% 5%; /* глубокий тёмный navy */
+  --background: 222 84% 5%;
+  /* глубокий тёмный navy */
   --foreground: 210 40% 96%;
 
   --card: 222.2 84% 4.9%;
@@ -88,6 +103,7 @@ html {
   from {
     height: 0;
   }
+
   to {
     height: var(--radix-accordion-content-height);
   }
@@ -97,6 +113,7 @@ html {
   from {
     height: var(--radix-accordion-content-height);
   }
+
   to {
     height: 0;
   }
@@ -106,10 +123,20 @@ html {
   * {
     border-color: theme(colors.border);
   }
+
   body {
     background-color: theme(colors.background);
     color: theme(colors.foreground);
     overflow-x: hidden;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-heading tracking-tight;
   }
 }
 
@@ -125,10 +152,12 @@ html {
     box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.4);
     border-color: rgba(251, 191, 36, 0.4);
   }
+
   50% {
     box-shadow: 0 0 15px 2px rgba(251, 191, 36, 0.6);
     border-color: rgba(251, 191, 36, 0.8);
   }
+
   100% {
     box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.4);
     border-color: rgba(251, 191, 36, 0.4);
@@ -136,20 +165,37 @@ html {
 }
 
 @layer utilities {
-  .font-manrope {
-    font-family: 'Manrope', ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
   }
-  .font-dm-sans {
-    font-family: 'DM Sans', ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
   }
-  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-  .no-scrollbar::-webkit-scrollbar { display: none; }
 }
 
 /* Mobile viewport optimization based on height and aspect ratio */
-@media (max-height: 1024px), (max-aspect-ratio: 1024/1183) {
-  .mobile-safe { padding-left: 12px !important; padding-right: 12px !important; }
-  .hero-picture img { width: 100%; height: auto; object-fit: cover; }
-  header .h-16 { height: 56px; }
-  .container, .mx-auto { padding-left: 12px; padding-right: 12px; }
+@media (max-height: 1024px),
+(max-aspect-ratio: 1024/1183) {
+  .mobile-safe {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+
+  .hero-picture img {
+    width: 100%;
+    height: auto;
+    object-fit: cover;
+  }
+
+  header .h-16 {
+    height: 56px;
+  }
+
+  .container,
+  .mx-auto {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
 }

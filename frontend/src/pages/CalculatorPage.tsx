@@ -11,7 +11,6 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Slider } from "@/components/ui/slider";
-import { BookingOverlay } from "@/components/checkout/BookingOverlay";
 import { cn } from "@/lib/utils";
 import CountUp from "@/components/count-up";
 import { motion, AnimatePresence } from "framer-motion";
@@ -942,29 +941,7 @@ export default function CalculatorPage() {
           </DialogContent>
         </Dialog>
 
-        <BookingOverlay
-          open={checkoutOpen}
-          onOpenChange={setCheckoutOpen}
-          mode="single"
-          items={[{
-             id: `calc-${Date.now()}`,
-             name: info?.title || (mode === 'manual' ? `Байк за ${effectivePriceEUR}€` : "Найденный велосипед"),
-             price: effectivePriceEUR,
-             image: info?.image,
-             details: {
-               brand: info?.brand,
-               model: info?.model,
-               year: info?.characteristics?.Baujahr ? Number(info.characteristics.Baujahr) : undefined,
-             },
-             link: mode === "link" ? (extractUrl(rawText) || rawText) : undefined
-          }]}
-          onSuccess={() => {
-             // Optional: redirect to success page or show message
-             // BookingOverlay handles its own success state (shows success checkmark)
-             // But maybe we want to close it after some time?
-             // For now, let it be.
-          }}
-        />
+        
 
         <AnimatePresence>
           {successMessage && (

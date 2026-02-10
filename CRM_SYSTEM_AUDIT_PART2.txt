@@ -1,0 +1,727 @@
+═══════════════════════════════════════════════════════════════════════════════
+  ПОЛНЫЙ АУДИТ CRM-СИСТЕМЫ BIKEWERK - ЧАСТЬ 2
+  База данных, Сервисы, Бизнес-логика
+═══════════════════════════════════════════════════════════════════════════════
+
+ЧАСТЬ 3: БАЗА ДАННЫХ (SUPABASE + SQLITE)
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 3.1 АРХИТЕКТУРА БД                                                          │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+ДВОЙНАЯ СИСТЕМА:
+1. SUPABASE (PostgreSQL) - основное хранилище
+   - Таблицы CRM (customers, leads, orders, payments, shipments и т.д.)
+   - Используется для всех операций через crm-api.js
+   
+2. LOCAL SQLITE - локальная копия
+   - Таблица users (аутентификация)
+   - Синхронизация с Supabase
+   - Используется для быстрого доступа
+
+МИГРАЦИЯ ID:
+✓ Все таблицы имеют двойной ID:
+  - old_uuid_id (UUID) - legacy
+  - id (TEXT) - новый readable ID (ORD-20260206-001, CUST-001 и т.д.)
+✓ Foreign keys используют новый id (TEXT)
+✓ Обратная совместимость сохранена
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 3.2 ОСНОВНЫЕ ТАБЛИЦЫ                                                        │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+1. CUSTOMERS (Клиенты)
+═══════════════════════════════════════════════════════════════════════════════
+
+ФАЙЛ СХЕМЫ: SQL SCHEMA, строки 21-43
+
+КОЛОНКИ:
+- id TEXT PRIMARY KEY (CUST-001, CUST-002...)
+- old_uuid_id UUID
+- full_name TEXT NOT NULL
+- phone TEXT
+- email TEXT
+- preferred_channel ENUM ('telegram', 'whatsapp', 'email', 'phone')
+- contact_value TEXT (фактический контакт)
+- country TEXT
+- created_at TIMESTAMP
+
+ИНДЕКСЫ:
+- idx_customers_created (created_at)
+
+⚠️  ОТСУТСТВУЕТ:
+- city (город доставки) - сохраняется только в booking_form
+- address (адрес доставки)
+- telegram_id (отдельное поле)
+
+СВЯЗИ:
+- leads.customer_id → customers.id
+- orders.customer_id → customers.id
+
+
+═══════════════════════════════════════════════════════════════════════════════
+2. LEADS (Лиды/Заявки)
+═══════════════════════════════════════════════════════════════════════════════
+
+ФАЙЛ СХЕМЫ: SQL SCHEMA, строки 99-125
+
+КОЛОНКИ:
+- id TEXT PRIMARY KEY (LEAD-001...)
+- old_uuid_id UUID
+- customer_id TEXT → customers.id
+- source TEXT NOT NULL (website, telegram, phone и т.д.)
+- bike_url TEXT
+- bike_snapshot JSONB (снимок данных о байке)
+- customer_comment TEXT
+- estimated_budget_eur INTEGER
+- status ENUM ('new', 'contacted', 'qualified', 'converted', 'lost')
+- created_at TIMESTAMP
+
+ИНДЕКСЫ:
+- idx_leads_status_created (status, created_at)
+
+СТАТУСЫ:
+- new: новая заявка
+- contacted: менеджер связался
+- qualified: квалифицирован
+- converted: конвертирован в заказ
+- lost: потерян
+
+
+═══════════════════════════════════════════════════════════════════════════════
+3. ORDERS (Заказы)
+═══════════════════════════════════════════════════════════════════════════════
+
+ФАЙЛ СХЕМЫ: SQL SCHEMA, строки 207-283
+
+КОЛОНКИ:
+- id TEXT PRIMARY KEY (ORD-20260206-001...)
+- old_uuid_id UUID
+- order_code TEXT UNIQUE NOT NULL (ORD-001, ORD-002...)
+- customer_id TEXT → customers.id
+- lead_id TEXT → leads.id
+- bike_id TEXT (ссылка на bikes, если есть)
+- bike_url TEXT
+- bike_name TEXT
+- bike_snapshot JSONB (полная копия данных о байке)
+- listing_price_eur NUMERIC(12,2)
+- negotiated_price_eur NUMERIC(12,2)
+- final_price_eur NUMERIC(12,2)
+- booking_amount_eur NUMERIC(12,2)
+- commission_eur NUMERIC(12,2)
+- total_price_rub NUMERIC(12,2)
+- booking_amount_rub NUMERIC(12,2)
+- exchange_rate NUMERIC
+- delivery_method TEXT
+- status ENUM (см. ниже)
+- assigned_manager UUID → users.id
+- initial_quality TEXT
+- final_quality TEXT
+- is_refundable BOOLEAN DEFAULT false
+- magic_link_token TEXT (для отслеживания без логина)
+- manager_notes TEXT
+- created_at TIMESTAMP
+
+ИНДЕКСЫ:
+- idx_orders_status_created (status, created_at)
+- idx_orders_order_code (order_code)
+- idx_orders_total_price_rub (total_price_rub)
+
+СТАТУСЫ (order_status_enum):
+- awaiting_payment: ожидание оплаты
+- awaiting_deposit: ожидание задатка
+- deposit_paid: задаток оплачен
+- pending_manager: ожидание менеджера (НОВЫЙ СТАТУС)
+- under_inspection: на проверке
+- ready_for_shipment: готов к отправке
+- in_transit: в пути
+- delivered: доставлен
+- closed: закрыт
+- cancelled: отменен
+- refunded: возврат
+
+BIKE_SNAPSHOT СТРУКТУРА:
+{
+  basic_info: {...},
+  specs: {...},
+  media: {...},
+  seller: {...},
+  pricing: {...},
+  booking_meta: {
+    total_price_rub: number,
+    booking_amount_rub: number,
+    exchange_rate: number,
+    final_price_eur: number,
+    delivery_method: string,
+    addons: [{id, qty}],
+    booking_form: {
+      city: string,
+      contact_method: string,
+      contact_value: string,
+      comment: string,
+      delivery_option: string,
+      addons_selection: {...}
+    }
+  }
+}
+
+
+═══════════════════════════════════════════════════════════════════════════════
+4. PAYMENTS (Платежи)
+═══════════════════════════════════════════════════════════════════════════════
+
+ФАЙЛ СХЕМЫ: SQL SCHEMA, строки 299-329
+
+КОЛОНКИ:
+- id UUID PRIMARY KEY
+- order_id UUID (ссылка на orders.old_uuid_id)
+- direction ENUM ('incoming', 'outgoing')
+- role ENUM ('client_payment', 'seller_payment', 'refund', 'commission')
+- method ENUM ('online_cashbox', 'bank_transfer', 'cash', 'crypto')
+- amount NUMERIC(12,2) NOT NULL
+- currency ENUM ('EUR', 'RUB', 'USD')
+- status ENUM ('planned', 'pending', 'completed', 'failed', 'cancelled')
+- external_reference TEXT (ID из платежной системы)
+- related_payment_id UUID (для связанных платежей, например возврат)
+- created_at TIMESTAMP
+
+ИНДЕКСЫ:
+- idx_payments_order (order_id)
+- idx_payments_status (status)
+
+CONSTRAINTS:
+- chk_amount_positive: amount >= 0
+
+⚠️  ПРОБЛЕМА: order_id использует UUID, а не новый TEXT id
+⚠️  ПРОБЛЕМА: Нужна миграция для совместимости
+
+
+═══════════════════════════════════════════════════════════════════════════════
+5. SHIPMENTS (Доставка)
+═══════════════════════════════════════════════════════════════════════════════
+
+ФАЙЛ СХЕМЫ: SQL SCHEMA, строки 341-370
+
+КОЛОНКИ:
+- id TEXT PRIMARY KEY
+- old_uuid_id UUID
+- order_id TEXT → orders.id (НОВЫЙ FK)
+- provider ENUM ('rusbid', 'dhl', 'ems', 'cdek', 'other')
+- tracking_number TEXT
+- warehouse_received BOOLEAN DEFAULT false
+- warehouse_photos_received BOOLEAN DEFAULT false
+- client_received BOOLEAN DEFAULT false
+- estimated_delivery_date TIMESTAMP
+- actual_delivery_date TIMESTAMP
+- ruspost_status JSONB (статус от API почты)
+- created_at TIMESTAMP
+
+RUSPOST_STATUS СТРУКТУРА:
+{
+  customs_declaration: string (сгенерировано Gemini AI),
+  status: string,
+  last_update: timestamp,
+  tracking_events: [...]
+}
+
+
+═══════════════════════════════════════════════════════════════════════════════
+6. INSPECTIONS (Проверки)
+═══════════════════════════════════════════════════════════════════════════════
+
+ФАЙЛ СХЕМЫ: SQL SCHEMA, строки 69-91
+
+КОЛОНКИ:
+- id UUID PRIMARY KEY
+- order_id TEXT → orders.id
+- stage TEXT NOT NULL ('initial', 'warehouse', 'final')
+- photos TEXT[] (массив URL фото)
+- defects_found JSONB
+- ai_verdict TEXT
+- manager_notes TEXT
+- created_at TIMESTAMP
+
+ИНДЕКСЫ:
+- idx_inspections_order_id (order_id)
+
+DEFECTS_FOUND СТРУКТУРА:
+{
+  checklist: [
+    {
+      question: string,
+      answer: string,
+      status: "checked" | "pending",
+      comment: string,
+      photos: [...]
+    }
+  ],
+  overall_score: number,
+  expert_comment: string
+}
+
+
+═══════════════════════════════════════════════════════════════════════════════
+7. TASKS (Задачи)
+═══════════════════════════════════════════════════════════════════════════════
+
+ФАЙЛ СХЕМЫ: SQL SCHEMA (не показано полностью)
+
+КОЛОНКИ:
+- id UUID PRIMARY KEY
+- order_id UUID (ссылка на orders.old_uuid_id)
+- title TEXT NOT NULL
+- description TEXT
+- priority ENUM ('low', 'medium', 'high', 'urgent')
+- status ENUM ('pending', 'in_progress', 'completed', 'cancelled')
+- ai_generated BOOLEAN DEFAULT false
+- created_at TIMESTAMP
+- completed_at TIMESTAMP
+
+ТИПЫ ЗАДАЧ:
+- Client Inquiry (вопрос от клиента)
+- AI Generated Task (автоматические задачи)
+- Final Review (финальная проверка)
+- Manual Task (ручные задачи менеджера)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+8. NEGOTIATIONS (Переговоры)
+═══════════════════════════════════════════════════════════════════════════════
+
+ФАЙЛ СХЕМЫ: SQL SCHEMA, строки 151-173
+
+КОЛОНКИ:
+- id UUID PRIMARY KEY
+- order_id TEXT → orders.id
+- seller_platform TEXT (buycycle, kleinanzeigen и т.д.)
+- start_price NUMERIC(12,2)
+- final_price NUMERIC(12,2)
+- success BOOLEAN
+- chat_transcript TEXT (полная переписка)
+- created_at TIMESTAMP
+
+ИНДЕКСЫ:
+- idx_negotiations_order_id (order_id)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+9. DOCUMENTS (Документы)
+═══════════════════════════════════════════════════════════════════════════════
+
+ФАЙЛ СХЕМЫ: SQL SCHEMA, строки 49-63
+
+КОЛОНКИ:
+- id UUID PRIMARY KEY
+- order_id UUID
+- type ENUM ('invoice', 'receipt', 'contract', 'customs', 'other')
+- file_url TEXT NOT NULL
+- uploaded_at TIMESTAMP
+
+ИНДЕКСЫ:
+- idx_documents_order (order_id)
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 3.3 ВСПОМОГАТЕЛЬНЫЕ ТАБЛИЦЫ                                                 │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+AUDIT_LOG (строки 1-19):
+- id UUID
+- actor_id TEXT
+- action TEXT
+- entity TEXT
+- entity_id TEXT
+- payload JSONB
+- created_at TIMESTAMP
+
+ORDER_STATUS_EVENTS (строки 181-203):
+- id TEXT (EVT-001...)
+- order_id TEXT → orders.id
+- old_status TEXT
+- new_status TEXT
+- changed_by UUID → users.id
+- created_at TIMESTAMP
+
+MANAGER_SUBSCRIBERS (строки 133-147):
+- id UUID
+- telegram_id BIGINT UNIQUE
+- username TEXT
+- created_at TIMESTAMP
+
+REVIEWS (не показано в схеме, но используется в коде):
+- id UUID
+- order_id TEXT
+- customer_id TEXT
+- rating INTEGER (1-5)
+- comment TEXT
+- sentiment_score NUMERIC
+- sentiment_label TEXT
+- created_at TIMESTAMP
+
+COUPONS (не показано в схеме, но используется в коде):
+- id UUID
+- code TEXT UNIQUE
+- discount_amount NUMERIC
+- customer_id TEXT
+- expires_at TIMESTAMP
+- used_at TIMESTAMP
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 3.4 ENUMS (ПЕРЕЧИСЛЕНИЯ)                                                    │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+preferred_channel_enum:
+- telegram
+- whatsapp
+- email
+- phone
+
+lead_status_enum:
+- new
+- contacted
+- qualified
+- converted
+- lost
+
+order_status_enum:
+- awaiting_payment
+- awaiting_deposit
+- deposit_paid
+- pending_manager
+- under_inspection
+- ready_for_shipment
+- in_transit
+- delivered
+- closed
+- cancelled
+- refunded
+
+payment_direction_enum:
+- incoming (от клиента)
+- outgoing (продавцу, возврат)
+
+payment_role_enum:
+- client_payment
+- seller_payment
+- refund
+- commission
+
+payment_method_enum:
+- online_cashbox
+- bank_transfer
+- cash
+- crypto
+
+payment_status_enum:
+- planned
+- pending
+- completed
+- failed
+- cancelled
+
+currency_enum:
+- EUR
+- RUB
+- USD
+
+shipment_provider_enum:
+- rusbid
+- dhl
+- ems
+- cdek
+- other
+
+document_type_enum:
+- invoice
+- receipt
+- contract
+- customs
+- other
+
+
+═══════════════════════════════════════════════════════════════════════════════
+ЧАСТЬ 4: СЕРВИСЫ (БИЗНЕС-ЛОГИКА)
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 4.1 ОСНОВНЫЕ СЕРВИСЫ                                                        │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+ФАЙЛОВАЯ СТРУКТУРА:
+backend/src/services/
+├── BookingService.js (389 строк) - Создание брони
+├── PriceCalculatorService.js (114 строк) - Расчет цен
+├── EmailService.js - Отправка email
+├── geminiProcessor.js - AI обработка
+├── ManagerBotService.js (1056 строк) - Telegram бот для менеджеров
+├── supabase.js - Интеграция с Supabase
+└── ... (другие сервисы)
+
+backend/scripts/
+├── crm-api.js (2535 строк) - Основной CRM API
+├── crm-smoke-tests.js - Тесты CRM
+└── verify-financial-ledger.js - Проверка финансов
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 4.2 BOOKING SERVICE (BookingService.js)                                    │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+ФАЙЛ: backend/src/services/BookingService.js (389 строк)
+
+ОСНОВНОЙ МЕТОД: createBooking(payload)
+
+ВХОДНЫЕ ДАННЫЕ:
+{
+  bike_id: string,
+  customer: {
+    name: string,
+    email?: string,
+    phone?: string,
+    telegram_id?: string,
+    contact_method: string,
+    contact_value: string,
+    city: string
+  },
+  bike_details: object,
+  total_price_rub: number,
+  booking_amount_rub: number,
+  exchange_rate: number,
+  final_price_eur: number,
+  delivery_method: string,
+  addons: [{id, qty}],
+  booking_form: object
+}
+
+ЛОГИКА (пошагово):
+
+1. ВАЛИДАЦИЯ (строки 20-37):
+   - Проверка обязательных полей
+   - Проверка формата данных
+
+2. ИЗВЛЕЧЕНИЕ КОНТАКТА (строки 38-48):
+   - Определение типа контакта (email/phone/telegram)
+   - Извлечение contact_value
+   - Извлечение city из booking_form
+
+3. СОЗДАНИЕ/ПОИСК КЛИЕНТА (строки 50-66):
+   - Вызов _upsertCustomer
+   - Создание в Supabase customers
+   - Возврат customer_id
+
+4. СОЗДАНИЕ ЛИДА (строки 68-93):
+   - Вызов _createLead
+   - Сохранение в Supabase leads
+   - Статус: 'new'
+   - Возврат lead_id
+
+5. ГЕНЕРАЦИЯ ORDER_CODE (строки 95-103):
+   - Формат: ORD-YYYYMMDD-NNN
+   - Уникальность проверяется
+
+6. ПОДГОТОВКА BIKE_SNAPSHOT (строки 105-141):
+   - Копирование bike_details
+   - Добавление booking_meta с финансами
+   - Сохранение addons и booking_form
+
+7. СОЗДАНИЕ ЗАКАЗА (строки 143-153):
+   - Вызов _createOrder
+   - Сохранение в Supabase orders
+   - Статус: 'pending_manager'
+   - Возврат order_id
+
+8. СОЗДАНИЕ ЛОКАЛЬНОГО ПОЛЬЗОВАТЕЛЯ (строки 155-165):
+   - Вызов _ensureLocalUser
+   - Создание в SQLite users
+   - Пароль: 12345678 (bcrypt)
+   - Флаги: must_change_password=1
+
+9. ГЕНЕРАЦИЯ JWT ТОКЕНА (строки 167-175):
+   - Вызов _generateToken
+   - Payload: {id, email, role}
+   - Expiry: 7 дней
+
+10. УВЕДОМЛЕНИЕ МЕНЕДЖЕРА (строки 177-185):
+    - Telegram через ManagerBotService
+    - Сообщение о новой брони
+
+11. ЗАПУСК AI INSPECTION (строки 187-195):
+    - Асинхронный вызов geminiProcessor
+    - Анализ фото и описания
+
+12. ВОЗВРАТ РЕЗУЛЬТАТА (строки 197-210):
+    - order_code
+    - order_id
+    - magic_link_token
+    - auth: {token, user, temp_password}
+
+
+ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ:
+
+_upsertCustomer(name, contact, contactValue, preferredChannel) (строки 175-225):
+- Поиск существующего клиента по email/phone
+- Создание нового, если не найден
+- Обновление contact_value и preferred_channel
+- ⚠️  НЕ СОХРАНЯЕТ city в таблицу customers
+
+_createLead(customerId, bikeUrl, bikeSnapshot, customerComment, estimatedBudget) (строки 227-250):
+- Создание записи в leads
+- Статус: 'new'
+- Источник: 'website'
+
+_createOrder(customerId, leadId, orderCode, bikeSnapshot, finalPriceEur, bookingAmountEur, commissionEur, totalPriceRub, bookingAmountRub, exchangeRate, deliveryMethod, bikeId, bikeName) (строки 252-310):
+- Создание записи в orders
+- Генерация magic_link_token (UUID)
+- Сохранение всех финансовых данных
+- Статус: 'pending_manager'
+
+_ensureLocalUser(name, email, phone, telegramId) (строки 312-360):
+- Поиск пользователя в SQLite users
+- Создание нового, если не найден
+- Хеширование пароля через bcrypt
+- Установка флагов must_change_password, must_set_email
+- Возврат user object
+
+_generateToken(user) (строки 362-375):
+- Создание JWT через jsonwebtoken
+- Secret: process.env.JWT_SECRET
+- Expiry: 7d
+- Payload: {id, email, role}
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 4.3 PRICE CALCULATOR SERVICE (PriceCalculatorService.js)                   │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+ФАЙЛ: backend/src/services/PriceCalculatorService.js (114 строк)
+
+КОНСТАНТЫ:
+- EUR_RUB_RATE: 105 (обновляется через API)
+- SHIPPING_RATES: {Cargo: 170, EMS: 220, Premium: 650} EUR
+- MARGIN_BRACKETS: [{limit: 1500, value: 250}, {limit: 3500, value: 400}, {limit: 6000, value: 600}]
+- MARGIN_PERCENT_ABOVE_6000: 0.10 (10%)
+- PAYMENT_COMMISSION_RATE: 0.07 (7%)
+- WAREHOUSE_FEE: 80 EUR
+- INSURANCE_RATE: 0.04 (4%)
+- BOOKING_RATE: 0.02 (2%)
+
+МЕТОД: calculate(bikePriceEur, shippingOption, insuranceIncluded)
+
+ЛОГИКА РАСЧЕТА:
+
+1. МАРЖА (M_agent):
+   - Если цена < 1500 EUR → 250 EUR
+   - Если цена < 3500 EUR → 400 EUR
+   - Если цена < 6000 EUR → 600 EUR
+   - Если цена >= 6000 EUR → 10% от цены
+
+2. КОМИССИЯ ПЛАТЕЖА (F_transfer):
+   - (P_bike + S_option) * 0.07
+
+3. СКЛАДСКОЙ СБОР (F_warehouse):
+   - Фиксированный: 80 EUR
+
+4. СЕРВИСНЫЙ СБОР (F_service):
+   - M_agent - F_warehouse
+
+5. СТРАХОВКА (Insurance):
+   - Если включена: P_bike * 0.04
+   - Иначе: 0
+
+6. ИТОГО (EUR):
+   - P_bike + S_option + Insurance + F_transfer + F_warehouse + F_service
+
+7. КОНВЕРТАЦИЯ В RUB:
+   - Total_EUR * EUR_RUB_RATE (округление вверх)
+
+8. РЕЗЕРВИРОВАНИЕ:
+   - Total_RUB * 0.02 (округление вверх)
+
+ВОЗВРАТ:
+{
+  total_price_rub: number,
+  booking_amount_rub: number,
+  details: {
+    bike_price_eur: number,
+    shipping_cost_eur: number,
+    insurance_cost_eur: number,
+    payment_commission_eur: number,
+    warehouse_fee_eur: number,
+    service_fee_eur: number,
+    margin_total_eur: number,
+    exchange_rate: number,
+    shipping_method: string,
+    final_price_eur: number
+  }
+}
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 4.4 CRM API (crm-api.js)                                                    │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+ФАЙЛ: backend/scripts/crm-api.js (2535 строк)
+
+ОСНОВНОЙ КЛАСС: CRMSystem
+
+МЕТОДЫ (40+):
+
+CUSTOMERS:
+- createCustomer(data)
+- getCustomer(id)
+- updateCustomer(id, data)
+- listCustomers(filters)
+
+LEADS:
+- createLead(data)
+- getLead(id)
+- updateLead(id, data)
+- convertLeadToOrder(leadId)
+
+ORDERS:
+- createOrder(data)
+- getOrder(id)
+- updateOrder(id, data)
+- listOrders(filters)
+- advanceOrderStatus(orderId, newStatus, userId)
+- cancelOrder(orderId, reason)
+
+PAYMENTS:
+- createPayment(data)
+- getPayment(id)
+- updatePayment(id, data)
+- listPayments(orderId)
+
+SHIPMENTS:
+- createShipment(data)
+- getShipment(id)
+- updateShipment(id, data)
+
+TASKS:
+- createTask(data)
+- getTask(id)
+- updateTask(id, data)
+- listTasks(orderId)
+
+NEGOTIATIONS:
+- createNegotiation(data)
+- getNegotiation(id)
+- updateNegotiation(id, data)
+
+INSPECTIONS:
+- createInspection(data)
+- getInspection(id)
+- updateInspection(id, data)
+
+UTILITIES:
+- generateOrderCode()
+- generateReadableId(prefix)
+- generateUUID()
+- callRpc(functionName, params)
+
+
+КОНЕЦ ЧАСТИ 2. ПРОДОЛЖЕНИЕ В CRM_SYSTEM_AUDIT_PART3.txt

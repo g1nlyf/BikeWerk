@@ -1,4 +1,4 @@
-const fs = require('fs');
+﻿const fs = require('fs');
 const fsp = require('fs').promises;
 const path = require('path');
 const os = require('os');
@@ -30,7 +30,7 @@ class PhotoManager {
     }
 
     static _filterValidUrls(urls) {
-        return urls.filter(url => {
+        return urls.filter((url) => {
             const lower = String(url).toLowerCase();
             if (!lower) return false;
             if (!lower.startsWith('http')) return false;
@@ -61,6 +61,7 @@ class PhotoManager {
         let attempts = 0;
         let lastError = null;
         const totalAttempts = (this.retryCount ?? 0) + 1;
+
         while (attempts < totalAttempts) {
             attempts += 1;
             try {
@@ -84,15 +85,11 @@ class PhotoManager {
                 const ext = (optimized.format || validation.format || this.inferExt(url, downloaded.contentType) || 'jpg').replace('jpeg', 'jpg');
                 const fileName = `photo_${index + 1}.${ext}`;
                 const folder = `/bikes/id${bikeId}`;
-                
+
                 const uploadStarted = Date.now();
-                const uploaded = await this.imagekitService.uploadImage(
-                    optimized.buffer,
-                    fileName,
-                    folder
-                );
+                const uploaded = await this.imagekitService.uploadImage(optimized.buffer, fileName, folder);
                 const uploadTimeMs = Date.now() - uploadStarted;
-                
+
                 await this.safeRemove(downloaded.tempPath);
 
                 const optimizationRatio = originalSizeBytes && optimizedSizeBytes
@@ -101,13 +98,14 @@ class PhotoManager {
 
                 return {
                     image_url: url,
-                    local_path: uploaded.url, // ImageKit URL
+                    local_path: uploaded.url,
                     is_downloaded: 1,
                     download_attempts: attempts,
                     download_failed: 0,
                     width: optimized.width ?? null,
                     height: optimized.height ?? null,
                     file_id: uploaded.fileId,
+                    storage: uploaded.storage || 'imagekit',
                     download_time_ms: downloadTimeMs,
                     upload_time_ms: uploadTimeMs,
                     optimize_time_ms: optimizeTimeMs,
@@ -119,20 +117,40 @@ class PhotoManager {
             } catch (e) {
                 lastError = e;
                 const is404 = String(e.message || '').includes('404');
-                // If 404, no need to retry
                 if (is404) {
-                    console.log(`   ❌ Photo permanently unavailable (404): ${url}`);
+                    console.log(`Photo permanently unavailable (404): ${url}`);
                     break;
                 }
-                console.error(`   ⚠️ Download/Upload failed (attempt ${attempts}): ${e.message}`);
-                continue;
+                console.error(`Download/Upload failed (attempt ${attempts}): ${e.message}`);
             }
         }
 
-        // Fallback logic
+        const localFallback = await this.persistLocalFallback(url, bikeId, index);
+        if (localFallback) {
+            return {
+                image_url: url,
+                local_path: localFallback.url,
+                is_downloaded: 1,
+                download_attempts: attempts,
+                download_failed: 0,
+                width: localFallback.width,
+                height: localFallback.height,
+                file_id: null,
+                storage: 'local',
+                error: String(lastError?.message || lastError || 'imagekit_failed_local_fallback_used'),
+                download_time_ms: null,
+                upload_time_ms: null,
+                optimize_time_ms: null,
+                original_size_bytes: null,
+                optimized_size_bytes: localFallback.size,
+                optimization_ratio: null,
+                format: localFallback.format
+            };
+        }
+
         return {
             image_url: url,
-            local_path: url, // Fallback to original URL
+            local_path: url,
             is_downloaded: 0,
             download_attempts: attempts,
             download_failed: 1,
@@ -149,8 +167,36 @@ class PhotoManager {
         };
     }
 
+    async persistLocalFallback(url, bikeId, index) {
+        try {
+            const downloaded = await this.fetchToTemp(url);
+            if (!downloaded || !downloaded.buffer) return null;
+
+            const validation = this.validateImage(downloaded.buffer, downloaded.contentType);
+            if (!validation.ok) return null;
+
+            const optimized = await this.optimizeImage(downloaded.buffer);
+            const ext = (optimized.format || validation.format || this.inferExt(url, downloaded.contentType) || 'jpg').replace('jpeg', 'jpg');
+            const fileName = `photo_${index + 1}.${ext}`;
+
+            const bikeDir = path.join(this.baseDir, `id${bikeId}`);
+            await fsp.mkdir(bikeDir, { recursive: true });
+            const targetPath = path.join(bikeDir, fileName);
+            await fsp.writeFile(targetPath, optimized.buffer);
+
+            return {
+                url: `/images/bikes/id${bikeId}/${fileName}`,
+                width: optimized.width ?? null,
+                height: optimized.height ?? null,
+                size: optimized.buffer?.length ?? null,
+                format: ext
+            };
+        } catch {
+            return null;
+        }
+    }
+
     async fetchToTemp(url) {
-        // We no longer need temp file on disk for processing, but keeping buffer logic
         const response = await axios({
             url,
             method: 'GET',
@@ -159,7 +205,7 @@ class PhotoManager {
             httpsAgent: this.proxyAgent,
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8'
+                Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8'
             }
         });
         const buffer = Buffer.from(response.data);
@@ -170,9 +216,8 @@ class PhotoManager {
         if (!buffer || buffer.length < this.minBytes) {
             return { ok: false, reason: 'too_small' };
         }
-        // Normalize content-type (remove params like charset)
         const ct = String(contentType || '').toLowerCase().split(';')[0].trim();
-        
+
         if (ct.includes('image/svg') || this.bufferLooksLikeSvg(buffer)) {
             return { ok: false, reason: 'svg_blocked' };
         }

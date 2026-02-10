@@ -5,6 +5,9 @@
  */
 const path = require('path');
 
-const DB_PATH = path.resolve(__dirname, '../database/eubike.db');
+const envPath = process.env.DB_PATH;
+const DB_PATH = envPath
+  ? (path.isAbsolute(envPath) ? envPath : path.resolve(process.cwd(), envPath))
+  : path.resolve(__dirname, '../database/eubike.db');
 
 module.exports = { DB_PATH };

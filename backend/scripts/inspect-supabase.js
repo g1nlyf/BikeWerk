@@ -1,27 +1,12 @@
-require('dotenv').config({ path: '../.env' });
-const { createClient } = require('@supabase/supabase-js');
+// Deprecated: this script previously tried to "probe" enum values by inserting invalid rows,
+// which is a DB mutation and should not be used in normal workflows.
+//
+// Use the safe SQL Editor export flow instead:
+// - `node scripts/supabase_schema_dump.js`
+// - Run the "enums (bonus)" query in Supabase SQL Editor
+// - Save results to `docs/supabase_schema_enums.json`
+//
+// This file intentionally does not load any secrets or perform network/DB operations.
 
-const supabase = createClient(
-    process.env.SUPABASE_URL || 'https://lclalsznmrjgqsgaqtps.supabase.co',
-    process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxjbGFsc3pubXJqZ3FzZ2FxdHBzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA5Nzg5MDgsImV4cCI6MjA3NjU1NDkwOH0.nyTQDoddHyrY4_QizmQFLue8EjNqeQaJ0U021Hbc7YI'
-);
-
-async function inspect() {
-    console.log('🔍 Probing Status Enum...');
-    
-    // Attempt to insert with invalid value to see error message which usually lists valid enums
-    const { error } = await supabase
-        .from('orders')
-        .insert({
-            order_code: `TEST-${Date.now()}`,
-            status: 'INVALID_ENUM_PROBE' 
-        });
-
-    if (error) {
-        console.log('Error Message:', error.message);
-    } else {
-        console.log('Unexpected success (should have failed)');
-    }
-}
-
-inspect();
+console.log('inspect-supabase.js is deprecated.');
+console.log('Use: node scripts/supabase_schema_dump.js (from repo root).');

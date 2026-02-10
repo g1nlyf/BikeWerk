@@ -1,0 +1,149 @@
+import React from "react";
+import BikeflipHeaderPX from "@/components/layout/BikeflipHeaderPX";
+import { SEOHead } from "@/components/SEO/SEOHead";
+import { Input } from "@/components/ui/input";
+import { catalogApi, resolveImageUrl } from "@/api";
+import { BikeCard as CatalogBikeCard } from "@/components/catalog/BikeCard";
+import { calculateMarketingBreakdown, refreshRates } from "@/lib/pricing";
+
+type BikeData = React.ComponentProps<typeof CatalogBikeCard>["bike"];
+
+const DISCIPLINES = [
+  { value: "", label: "Все дисциплины" },
+  { value: "mountain", label: "Горные" },
+  { value: "road", label: "Шоссейные" },
+  { value: "gravel", label: "Грэвел" },
+  { value: "city", label: "Городские" },
+];
+
+export default function CatalogPage() {
+  const [search, setSearch] = React.useState("");
+  const [discipline, setDiscipline] = React.useState("");
+  const [sort, setSort] = React.useState<"rank" | "added">("rank");
+  const [loading, setLoading] = React.useState(false);
+  const [bikes, setBikes] = React.useState<BikeData[]>([]);
+
+  React.useEffect(() => {
+    let active = true;
+    const load = async () => {
+      setLoading(true);
+      try {
+        await refreshRates();
+        const data = await catalogApi.list({
+          sort,
+          discipline: discipline || undefined,
+          limit: 60,
+        });
+        if (!active) return;
+        const items = Array.isArray(data?.bikes) ? data.bikes : [];
+        const mapped: BikeData[] = items.map((b: any) => {
+          const price = Number(b.price || b.price_eur || 0);
+          const { totalEur, totalRub } = calculateMarketingBreakdown(price);
+          return {
+            id: String(b.id),
+            name: String(b.name || `${b.brand || ""} ${b.model || ""}`.trim() || "Bike"),
+            brand: b.brand || "",
+            model: b.model || b.name || "",
+            year: Number(b.year || 0),
+            type: b.category || b.discipline || "other",
+            status: b.is_new ? "new" : (b.condition_status === "used" ? "used" : "available"),
+            priceEU: Math.round(price),
+            priceWithDelivery: Math.round(totalEur),
+            priceRUB: Math.round(totalRub),
+            savings: Math.max(0, Number((b.original_price || 0) - price)),
+            image: resolveImageUrl(
+              b.main_image ||
+              (Array.isArray(b.images) && (typeof b.images[0] === "string" ? b.images[0] : b.images[0]?.image_url)) ||
+              ""
+            ) || "",
+            description: b.description || "",
+            tags: Array.isArray(b.features) ? b.features : [],
+            isReserviert: Boolean(b.is_reserviert),
+            hotness_score: Number(b.hotness_score || 0) || undefined,
+            is_hot: Boolean(b.is_hot),
+            shipping_option: b.shipping_option || undefined,
+            guaranteed_pickup: Boolean(b.guaranteed_pickup),
+          };
+        });
+        setBikes(mapped);
+      } catch {
+        if (!active) return;
+        setBikes([]);
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    load();
+    return () => {
+      active = false;
+    };
+  }, [discipline, sort]);
+
+  const filtered = React.useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return bikes;
+    return bikes.filter((bike) => {
+      const haystack = [bike.name, bike.brand, bike.model, bike.type, bike.description].join(" ").toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [bikes, search]);
+
+  return (
+    <div className="min-h-screen bg-[#f4f4f5] text-[#18181b]">
+      <SEOHead title="Каталог BikeWerk" />
+      <BikeflipHeaderPX />
+
+      <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Каталог велосипедов</h1>
+            <p className="text-sm text-zinc-600 mt-1">Актуальные позиции из Европы с расчетом цены и доставки</p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Поиск по бренду, модели или описанию"
+              className="h-11 rounded-xl bg-white border-zinc-200 min-w-[240px]"
+            />
+            <select
+              value={discipline}
+              onChange={(e) => setDiscipline(e.target.value)}
+              className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm"
+            >
+              {DISCIPLINES.map((item) => (
+                <option key={item.value || "all"} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value === "added" ? "added" : "rank")}
+              className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm"
+            >
+              <option value="rank">Сначала лучшие</option>
+              <option value="added">Сначала новые</option>
+            </select>
+          </div>
+        </div>
+
+        {loading && (
+          <div className="text-sm text-zinc-500">Загрузка каталога...</div>
+        )}
+
+        {!loading && filtered.length === 0 && (
+          <div className="rounded-2xl border border-zinc-200 bg-white p-6 text-center text-zinc-600">
+            По текущим фильтрам ничего не найдено.
+          </div>
+        )}
+
+        <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+          {filtered.map((bike) => (
+            <CatalogBikeCard key={bike.id} bike={bike} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}

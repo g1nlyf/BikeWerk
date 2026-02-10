@@ -45,7 +45,7 @@ const RUSSIA = [
 const FOCUS_CONFIG = {
   width: 800,
   height: 800,
-  onRender: () => {},
+  onRender: () => { },
   devicePixelRatio: 2,
   // Поворот так, чтобы центр был на Дальнем Востоке России (примерно 130–140°E)
   // Увеличиваем наклон, чтобы взгляд был чуть «сверху» (~ +10°)
@@ -106,19 +106,19 @@ export function BestDeliveryTimeSection({ className }: BestDeliveryTimeSectionPr
                   <Globe className="w-full h-full" config={(isMobile ? mobileConfig : FOCUS_CONFIG) as any} />
                 </div>
               </div>
-              </div>
+            </div>
           </div>
 
           {/* Левая колонка — текст */}
           <div className="order-1 md:order-1 flex flex-col justify-center">
             <Badge className="w-fit mb-4 bg-primary/10 text-primary border-primary/20 px-3 py-1 text-sm">Скорость и надёжность</Badge>
-            <h2 className="text-4xl md:text-5xl lg:text-6xl font-extrabold tracking-tight mb-6">
+            <h2 className="text-4xl md:text-5xl lg:text-7xl font-heading font-extrabold tracking-tighter mb-6 leading-[1.0]">
               Лучшее* время доставки!
             </h2>
             <p className="text-muted-foreground text-lg md:text-xl mb-8 max-w-xl leading-relaxed">
               Благодаря прямым маршрутам доставки и отработанной логистике, перевозка грузов из стран ЕС в Россию занимает минимум времени. Логистика выстроена так, чтобы предоставить максимум надежности на каждом этапе.
             </p>
-            
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
               <Card className="border-muted bg-muted/20">
                 <CardContent className="p-5 flex items-start gap-4">
@@ -143,11 +143,11 @@ export function BestDeliveryTimeSection({ className }: BestDeliveryTimeSectionPr
                 </CardContent>
               </Card>
             </div>
-            
+
             <p className="text-xs text-muted-foreground">
               * согласно внутреннему исследованию логистического департамента
             </p>
-            
+
           </div>
         </div>
       </div>

@@ -1,0 +1,760 @@
+{
+  "schema": "public",
+  "generated_at": "2026-02-07T18:12:39.184528Z",
+  "tables": {
+    "audit_log": {
+      "columns": [
+        {
+          "name": "id",
+          "definition": "uuid not null default gen_random_uuid ()"
+        },
+        {
+          "name": "actor_id",
+          "definition": "text null"
+        },
+        {
+          "name": "action",
+          "definition": "text null"
+        },
+        {
+          "name": "entity",
+          "definition": "text null"
+        },
+        {
+          "name": "entity_id",
+          "definition": "text null"
+        },
+        {
+          "name": "payload",
+          "definition": "jsonb null"
+        },
+        {
+          "name": "created_at",
+          "definition": "timestamp with time zone null default now()"
+        }
+      ],
+      "constraints_raw": [
+        "constraint audit_log_pkey primary key (id)"
+      ]
+    },
+    "customers": {
+      "columns": [
+        {
+          "name": "old_uuid_id",
+          "definition": "uuid not null default gen_random_uuid ()"
+        },
+        {
+          "name": "full_name",
+          "definition": "text not null"
+        },
+        {
+          "name": "phone",
+          "definition": "text null"
+        },
+        {
+          "name": "email",
+          "definition": "text null"
+        },
+        {
+          "name": "preferred_channel",
+          "definition": "public.preferred_channel_enum null default 'telegram'::preferred_channel_enum"
+        },
+        {
+          "name": "country",
+          "definition": "text null"
+        },
+        {
+          "name": "created_at",
+          "definition": "timestamp with time zone not null default now()"
+        },
+        {
+          "name": "id",
+          "definition": "text not null default generate_readable_id ('CUST'::text)"
+        },
+        {
+          "name": "contact_value",
+          "definition": "text null"
+        }
+      ],
+      "constraints_raw": [
+        "constraint customers_pkey primary key (id)"
+      ]
+    },
+    "documents": {
+      "columns": [
+        {
+          "name": "id",
+          "definition": "uuid not null default gen_random_uuid ()"
+        },
+        {
+          "name": "order_id",
+          "definition": "text null"
+        },
+        {
+          "name": "type",
+          "definition": "public.document_type_enum not null"
+        },
+        {
+          "name": "file_url",
+          "definition": "text not null"
+        },
+        {
+          "name": "uploaded_at",
+          "definition": "timestamp with time zone not null default now()"
+        }
+      ],
+      "constraints_raw": [
+        "constraint documents_pkey primary key (id)"
+      ]
+    },
+    "inspections": {
+      "columns": [
+        {
+          "name": "id",
+          "definition": "uuid not null default gen_random_uuid ()"
+        },
+        {
+          "name": "order_id",
+          "definition": "text null"
+        },
+        {
+          "name": "stage",
+          "definition": "text not null"
+        },
+        {
+          "name": "photos",
+          "definition": "text[] null"
+        },
+        {
+          "name": "defects_found",
+          "definition": "jsonb null"
+        },
+        {
+          "name": "ai_verdict",
+          "definition": "text null"
+        },
+        {
+          "name": "manager_notes",
+          "definition": "text null"
+        },
+        {
+          "name": "created_at",
+          "definition": "timestamp with time zone not null default now()"
+        },
+        {
+          "name": "bike_specs_confirmed",
+          "definition": "jsonb null default '{}'::jsonb"
+        },
+        {
+          "name": "inspection_type",
+          "definition": "text null default 'pre_purchase'::text"
+        },
+        {
+          "name": "updated_at",
+          "definition": "timestamp with time zone null default timezone ('utc'::text, now())"
+        },
+        {
+          "name": "checklist",
+          "definition": "jsonb null default '{}'::jsonb"
+        },
+        {
+          "name": "photos_status",
+          "definition": "jsonb null default '{}'::jsonb"
+        },
+        {
+          "name": "next_action_suggestion",
+          "definition": "text null"
+        }
+      ],
+      "constraints_raw": [
+        "constraint inspections_pkey primary key (id)",
+        "constraint inspections_order_id_fkey foreign KEY (order_id) references orders (id)"
+      ]
+    },
+    "leads": {
+      "columns": [
+        {
+          "name": "old_uuid_id",
+          "definition": "uuid not null default gen_random_uuid ()"
+        },
+        {
+          "name": "source",
+          "definition": "text not null"
+        },
+        {
+          "name": "bike_url",
+          "definition": "text null"
+        },
+        {
+          "name": "bike_snapshot",
+          "definition": "jsonb null"
+        },
+        {
+          "name": "customer_comment",
+          "definition": "text null"
+        },
+        {
+          "name": "estimated_budget_eur",
+          "definition": "integer null"
+        },
+        {
+          "name": "status",
+          "definition": "public.lead_status_enum not null default 'new'::lead_status_enum"
+        },
+        {
+          "name": "created_at",
+          "definition": "timestamp with time zone not null default now()"
+        },
+        {
+          "name": "customer_id",
+          "definition": "text null"
+        },
+        {
+          "name": "id",
+          "definition": "text not null default generate_readable_id ('LEAD'::text)"
+        }
+      ],
+      "constraints_raw": [
+        "constraint leads_pkey primary key (id)",
+        "constraint leads_customer_id_fkey foreign KEY (customer_id) references customers (id)"
+      ]
+    },
+    "manager_subscribers": {
+      "columns": [
+        {
+          "name": "id",
+          "definition": "uuid not null default extensions.uuid_generate_v4 ()"
+        },
+        {
+          "name": "telegram_id",
+          "definition": "bigint not null"
+        },
+        {
+          "name": "username",
+          "definition": "text null"
+        },
+        {
+          "name": "created_at",
+          "definition": "timestamp with time zone not null default timezone ('utc'::text, now())"
+        },
+        {
+          "name": "user_id",
+          "definition": "uuid null"
+        }
+      ],
+      "constraints_raw": [
+        "constraint manager_subscribers_pkey primary key (id)",
+        "constraint manager_subscribers_telegram_id_key unique (telegram_id)",
+        "constraint manager_subscribers_user_id_fkey foreign KEY (user_id) references users (id)"
+      ]
+    },
+    "negotiations": {
+      "columns": [
+        {
+          "name": "id",
+          "definition": "uuid not null default gen_random_uuid ()"
+        },
+        {
+          "name": "order_id",
+          "definition": "text null"
+        },
+        {
+          "name": "seller_platform",
+          "definition": "text null"
+        },
+        {
+          "name": "start_price",
+          "definition": "numeric(12, 2) null"
+        },
+        {
+          "name": "final_price",
+          "definition": "numeric(12, 2) null"
+        },
+        {
+          "name": "success",
+          "definition": "boolean null"
+        },
+        {
+          "name": "chat_transcript",
+          "definition": "text null"
+        },
+        {
+          "name": "created_at",
+          "definition": "timestamp with time zone not null default now()"
+        },
+        {
+          "name": "ai_summary",
+          "definition": "text null"
+        },
+        {
+          "name": "discount_offered",
+          "definition": "numeric(12, 2) null"
+        }
+      ],
+      "constraints_raw": [
+        "constraint negotiations_pkey primary key (id)",
+        "constraint negotiations_order_id_fkey foreign KEY (order_id) references orders (id)"
+      ]
+    },
+    "order_status_events": {
+      "columns": [
+        {
+          "name": "old_uuid_id",
+          "definition": "uuid not null default gen_random_uuid ()"
+        },
+        {
+          "name": "old_status",
+          "definition": "text null"
+        },
+        {
+          "name": "new_status",
+          "definition": "text null"
+        },
+        {
+          "name": "changed_by",
+          "definition": "uuid null"
+        },
+        {
+          "name": "created_at",
+          "definition": "timestamp with time zone not null default now()"
+        },
+        {
+          "name": "order_id",
+          "definition": "text null"
+        },
+        {
+          "name": "id",
+          "definition": "text not null default generate_readable_id ('EVT'::text)"
+        }
+      ],
+      "constraints_raw": [
+        "constraint order_status_events_pkey primary key (id)",
+        "constraint order_status_events_changed_by_fkey foreign KEY (changed_by) references users (id) on delete set null",
+        "constraint order_status_events_order_id_fkey foreign KEY (order_id) references orders (id)"
+      ]
+    },
+    "orders": {
+      "columns": [
+        {
+          "name": "old_uuid_id",
+          "definition": "uuid not null default gen_random_uuid ()"
+        },
+        {
+          "name": "order_code",
+          "definition": "text not null"
+        },
+        {
+          "name": "bike_url",
+          "definition": "text null"
+        },
+        {
+          "name": "bike_snapshot",
+          "definition": "jsonb null"
+        },
+        {
+          "name": "final_price_eur",
+          "definition": "numeric(12, 2) null"
+        },
+        {
+          "name": "commission_eur",
+          "definition": "numeric(12, 2) null"
+        },
+        {
+          "name": "status",
+          "definition": "public.order_status_enum not null default 'awaiting_payment'::order_status_enum"
+        },
+        {
+          "name": "assigned_manager",
+          "definition": "uuid null"
+        },
+        {
+          "name": "created_at",
+          "definition": "timestamp with time zone not null default now()"
+        },
+        {
+          "name": "customer_id",
+          "definition": "text null"
+        },
+        {
+          "name": "lead_id",
+          "definition": "text null"
+        },
+        {
+          "name": "id",
+          "definition": "text not null default generate_readable_id ('ORD'::text)"
+        },
+        {
+          "name": "bike_id",
+          "definition": "text null"
+        },
+        {
+          "name": "bike_name",
+          "definition": "text null"
+        },
+        {
+          "name": "listing_price_eur",
+          "definition": "numeric(12, 2) null"
+        },
+        {
+          "name": "booking_amount_eur",
+          "definition": "numeric(12, 2) null"
+        },
+        {
+          "name": "negotiated_price_eur",
+          "definition": "numeric(12, 2) null"
+        },
+        {
+          "name": "initial_quality",
+          "definition": "text null"
+        },
+        {
+          "name": "final_quality",
+          "definition": "text null"
+        },
+        {
+          "name": "is_refundable",
+          "definition": "boolean null default false"
+        },
+        {
+          "name": "magic_link_token",
+          "definition": "text null"
+        },
+        {
+          "name": "total_price_rub",
+          "definition": "numeric(12, 2) null"
+        },
+        {
+          "name": "booking_amount_rub",
+          "definition": "numeric(12, 2) null"
+        },
+        {
+          "name": "delivery_method",
+          "definition": "text null"
+        },
+        {
+          "name": "exchange_rate",
+          "definition": "numeric null"
+        },
+        {
+          "name": "manager_notes",
+          "definition": "text null"
+        },
+        {
+          "name": "or",
+          "definition": "(final_price_eur is null)"
+        }
+      ],
+      "constraints_raw": [
+        "constraint orders_pkey primary key (id)",
+        "constraint orders_order_code_key unique (order_code)",
+        "constraint orders_assigned_manager_fkey foreign KEY (assigned_manager) references users (id) on delete set null",
+        "constraint orders_customer_id_fkey foreign KEY (customer_id) references customers (id)",
+        "constraint orders_lead_id_fkey foreign KEY (lead_id) references leads (id)",
+        "constraint chk_final_price_nonneg check ("
+      ]
+    },
+    "payments": {
+      "columns": [
+        {
+          "name": "id",
+          "definition": "uuid not null default gen_random_uuid ()"
+        },
+        {
+          "name": "order_id",
+          "definition": "text null"
+        },
+        {
+          "name": "direction",
+          "definition": "public.payment_direction_enum not null"
+        },
+        {
+          "name": "role",
+          "definition": "public.payment_role_enum not null"
+        },
+        {
+          "name": "method",
+          "definition": "public.payment_method_enum not null"
+        },
+        {
+          "name": "amount",
+          "definition": "numeric(12, 2) not null"
+        },
+        {
+          "name": "currency",
+          "definition": "public.currency_enum not null"
+        },
+        {
+          "name": "status",
+          "definition": "public.payment_status_enum not null default 'planned'::payment_status_enum"
+        },
+        {
+          "name": "external_reference",
+          "definition": "text null"
+        },
+        {
+          "name": "related_payment_id",
+          "definition": "uuid null"
+        },
+        {
+          "name": "created_at",
+          "definition": "timestamp with time zone not null default now()"
+        }
+      ],
+      "constraints_raw": [
+        "constraint payments_pkey primary key (id)",
+        "constraint payments_related_payment_id_fkey foreign KEY (related_payment_id) references payments (id) on delete set null",
+        "constraint chk_amount_positive check ((amount >= (0)::numeric))"
+      ]
+    },
+    "shipments": {
+      "columns": [
+        {
+          "name": "old_uuid_id",
+          "definition": "uuid not null default gen_random_uuid ()"
+        },
+        {
+          "name": "provider",
+          "definition": "public.shipment_provider_enum not null default 'rusbid'::shipment_provider_enum"
+        },
+        {
+          "name": "tracking_number",
+          "definition": "text null"
+        },
+        {
+          "name": "warehouse_received",
+          "definition": "boolean null default false"
+        },
+        {
+          "name": "warehouse_photos_received",
+          "definition": "boolean null default false"
+        },
+        {
+          "name": "client_received",
+          "definition": "boolean null default false"
+        },
+        {
+          "name": "estimated_delivery_date",
+          "definition": "date null"
+        },
+        {
+          "name": "ruspost_status",
+          "definition": "jsonb null"
+        },
+        {
+          "name": "ruspost_last_update",
+          "definition": "timestamp with time zone null"
+        },
+        {
+          "name": "created_at",
+          "definition": "timestamp with time zone not null default now()"
+        },
+        {
+          "name": "order_id",
+          "definition": "text null"
+        },
+        {
+          "name": "id",
+          "definition": "text not null default generate_readable_id ('SHIP'::text)"
+        },
+        {
+          "name": "detailed_history",
+          "definition": "jsonb null default '[]'::jsonb"
+        },
+        {
+          "name": "current_location",
+          "definition": "text null"
+        }
+      ],
+      "constraints_raw": [
+        "constraint shipments_pkey primary key (id)",
+        "constraint shipments_order_id_fkey foreign KEY (order_id) references orders (id)"
+      ]
+    },
+    "tasks": {
+      "columns": [
+        {
+          "name": "id",
+          "definition": "uuid not null default gen_random_uuid ()"
+        },
+        {
+          "name": "order_id",
+          "definition": "text null"
+        },
+        {
+          "name": "title",
+          "definition": "text not null"
+        },
+        {
+          "name": "description",
+          "definition": "text null"
+        },
+        {
+          "name": "due_at",
+          "definition": "timestamp with time zone null"
+        },
+        {
+          "name": "completed",
+          "definition": "boolean null default false"
+        },
+        {
+          "name": "assigned_to",
+          "definition": "uuid null"
+        },
+        {
+          "name": "created_at",
+          "definition": "timestamp with time zone not null default now()"
+        }
+      ],
+      "constraints_raw": [
+        "constraint tasks_pkey primary key (id)",
+        "constraint tasks_assigned_to_fkey foreign KEY (assigned_to) references users (id) on delete set null"
+      ]
+    },
+    "users": {
+      "columns": [
+        {
+          "name": "id",
+          "definition": "uuid not null default gen_random_uuid ()"
+        },
+        {
+          "name": "name",
+          "definition": "text not null"
+        },
+        {
+          "name": "role",
+          "definition": "public.user_role_enum not null default 'manager'::user_role_enum"
+        },
+        {
+          "name": "active",
+          "definition": "boolean not null default true"
+        },
+        {
+          "name": "created_at",
+          "definition": "timestamp with time zone not null default now()"
+        },
+        {
+          "name": "telegram_id",
+          "definition": "bigint null"
+        }
+      ],
+      "constraints_raw": [
+        "constraint users_pkey primary key (id)"
+      ]
+    }
+  },
+  "indexes": [
+    {
+      "name": "idx_customers_created",
+      "table": "customers",
+      "method": "btree",
+      "columns": "created_at",
+      "unique": false,
+      "statement": "create index IF not exists idx_customers_created on public.customers using btree (created_at) TABLESPACE pg_default"
+    },
+    {
+      "name": "idx_documents_order",
+      "table": "documents",
+      "method": "btree",
+      "columns": "order_id",
+      "unique": false,
+      "statement": "create index IF not exists idx_documents_order on public.documents using btree (order_id) TABLESPACE pg_default"
+    },
+    {
+      "name": "idx_inspections_order_id",
+      "table": "inspections",
+      "method": "btree",
+      "columns": "order_id",
+      "unique": false,
+      "statement": "create index IF not exists idx_inspections_order_id on public.inspections using btree (order_id) TABLESPACE pg_default"
+    },
+    {
+      "name": "idx_leads_status_created",
+      "table": "leads",
+      "method": "btree",
+      "columns": "status, created_at",
+      "unique": false,
+      "statement": "create index IF not exists idx_leads_status_created on public.leads using btree (status, created_at) TABLESPACE pg_default"
+    },
+    {
+      "name": "idx_negotiations_order_id",
+      "table": "negotiations",
+      "method": "btree",
+      "columns": "order_id",
+      "unique": false,
+      "statement": "create index IF not exists idx_negotiations_order_id on public.negotiations using btree (order_id) TABLESPACE pg_default"
+    },
+    {
+      "name": "idx_orders_status_created",
+      "table": "orders",
+      "method": "btree",
+      "columns": "status, created_at",
+      "unique": false,
+      "statement": "create index IF not exists idx_orders_status_created on public.orders using btree (status, created_at) TABLESPACE pg_default"
+    },
+    {
+      "name": "idx_orders_order_code",
+      "table": "orders",
+      "method": "btree",
+      "columns": "order_code",
+      "unique": false,
+      "statement": "create index IF not exists idx_orders_order_code on public.orders using btree (order_code) TABLESPACE pg_default"
+    },
+    {
+      "name": "idx_orders_total_price_rub",
+      "table": "orders",
+      "method": "btree",
+      "columns": "total_price_rub",
+      "unique": false,
+      "statement": "create index IF not exists idx_orders_total_price_rub on public.orders using btree (total_price_rub) TABLESPACE pg_default"
+    },
+    {
+      "name": "idx_payments_order",
+      "table": "payments",
+      "method": "btree",
+      "columns": "order_id",
+      "unique": false,
+      "statement": "create index IF not exists idx_payments_order on public.payments using btree (order_id) TABLESPACE pg_default"
+    },
+    {
+      "name": "idx_payments_status",
+      "table": "payments",
+      "method": "btree",
+      "columns": "status",
+      "unique": false,
+      "statement": "create index IF not exists idx_payments_status on public.payments using btree (status) TABLESPACE pg_default"
+    },
+    {
+      "name": "idx_shipments_tracking",
+      "table": "shipments",
+      "method": "btree",
+      "columns": "tracking_number",
+      "unique": false,
+      "statement": "create index IF not exists idx_shipments_tracking on public.shipments using btree (tracking_number) TABLESPACE pg_default"
+    },
+    {
+      "name": "idx_tasks_order",
+      "table": "tasks",
+      "method": "btree",
+      "columns": "order_id",
+      "unique": false,
+      "statement": "create index IF not exists idx_tasks_order on public.tasks using btree (order_id) TABLESPACE pg_default"
+    },
+    {
+      "name": "idx_users_telegram_id",
+      "table": "users",
+      "method": "btree",
+      "columns": "telegram_id",
+      "unique": true,
+      "statement": "create unique INDEX IF not exists idx_users_telegram_id on public.users using btree (telegram_id) TABLESPACE pg_default"
+    },
+    {
+      "name": "idx_users_active",
+      "table": "users",
+      "method": "btree",
+      "columns": "active",
+      "unique": false,
+      "statement": "create index IF not exists idx_users_active on public.users using btree (active) TABLESPACE pg_default"
+    }
+  ],
+  "source": "User-provided DDL copy from Supabase SQL editor"
+}

@@ -1,4 +1,4 @@
-// Simple SQLite DB check for EUBike
+﻿// Simple SQLite DB check for EUBike
 const { open } = require('sqlite');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
@@ -7,7 +7,7 @@ const path = require('path');
   try {
     const dbPath = (() => {
       const preferred = path.resolve(__dirname, '../database/eubike.db');
-      const legacy = path.resolve(__dirname, '../Databases/eubike.db');
+      const legacy = path.resolve(__dirname, '../database/eubike.db');
       return require('fs').existsSync(preferred) ? preferred : legacy;
     })();
     const db = await open({ filename: dbPath, driver: sqlite3.Database });
@@ -63,3 +63,4 @@ const path = require('path');
     process.exit(1);
   }
 })();
+

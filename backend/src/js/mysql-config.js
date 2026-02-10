@@ -330,9 +330,11 @@ CREATE TABLE IF NOT EXISTS bike_analytics (
 class DatabaseManager {
     constructor() {
         this.db = null;
-        // FIXED: Hardcode to main database to avoid "double backend" issue
-        // c:\Users\hacke\CascadeProjects\Finals1\eubike\backend\database\eubike.db
-        this.dbPath = path.join(__dirname, '../../database/eubike.db');
+        const envPath = process.env.DB_PATH;
+        const backendRoot = path.resolve(__dirname, '../..');
+        this.dbPath = envPath
+            ? (path.isAbsolute(envPath) ? envPath : path.resolve(process.cwd(), envPath))
+            : path.join(backendRoot, 'database/eubike.db');
 
         console.log(`[DatabaseManager] Using DB Path: ${this.dbPath}`);
         this.isNode = typeof window === 'undefined';
@@ -389,9 +391,9 @@ class DatabaseManager {
                             await this.db.run(statement);
                         } catch (error) {
                             const msg = String(error && error.message ? error.message : error || '');
-                            // Gracefully skip metric_events index creation if legacy schema lacks columns
-                            if (/CREATE INDEX IF NOT EXISTS idx_metric_events_/i.test(statement) && /no such column/i.test(msg)) {
-                                console.warn(`⚠️ Skipping metric_events index (schema drift): ${msg}`);
+                            // Gracefully skip index creation if schema is partial (common in isolated test DBs)
+                            if (/^\s*CREATE INDEX/i.test(statement) && /no such column/i.test(msg)) {
+                                console.warn(`?? Skipping index due to schema drift: ${msg}`);
                                 continue;
                             }
                             throw error;

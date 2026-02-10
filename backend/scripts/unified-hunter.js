@@ -253,12 +253,21 @@ class UnifiedHunter {
             inserts: 0,
             duplicates: 0
         };
+        let remainingQuota = Number.isFinite(limit) ? Math.max(0, limit) : 0;
         const collected = [];
         const sourceLabel = options.sources && options.sources.length > 0 ? options.sources.join(', ') : 'auto';
         log(`Старт режима ${mode} (лимит: ${limit}, источник: ${sourceLabel})`);
         logEvent('hunt_start', { mode, limit, targets: targets.length });
 
-        for (const target of targets) {
+        for (let targetIndex = 0; targetIndex < targets.length; targetIndex += 1) {
+            if (remainingQuota <= 0) {
+                log(`Квота исчерпана (${limit}/${limit}). Завершаю цикл целей.`);
+                break;
+            }
+
+            const target = targets[targetIndex];
+            const targetsLeft = Math.max(1, targets.length - targetIndex);
+            const targetLimit = Math.max(1, Math.ceil(remainingQuota / targetsLeft));
             const targetCollected = []; // Local batch for this target
             log(`Старт: ${target.brand} ${target.model}`);
             logEvent('target_start', { brand: target.brand, model: target.model });
@@ -267,18 +276,18 @@ class UnifiedHunter {
             const selector = new SmartModelSelector(CatalogGapAnalyzer, dbService);
             const filters = selector.buildFiltersFromGaps(target);
 
-            log(`Фильтры: minPrice=${filters.minPrice}, maxPrice=${filters.maxPrice}, sizes=${filters.targetSizes?.join(', ') || 'all'}`);
+            log(`Фильтры: minPrice=${filters.minPrice}, maxPrice=${filters.maxPrice}, sizes=${filters.targetSizes?.join(', ') || 'all'}, targetLimit=${targetLimit}, remaining=${remainingQuota}`);
 
             const sources = resolveSources(options.sources, target.gaps, filters);
             summary.sourcesUsed = Array.from(new Set([...summary.sourcesUsed, ...sources]));
             const collectorLog = createLogger(`${target.brand} ${target.model}`);
-            logEvent('collector_start', { brand: target.brand, model: target.model, sources, filters, limit });
+            logEvent('collector_start', { brand: target.brand, model: target.model, sources, filters, limit: targetLimit, remainingQuota });
 
             let runKleinanzeigen = sources.includes('kleinanzeigen');
 
             if (sources.includes('buycycle')) {
                 try {
-                    const result = await collectFromBuycycle(target, filters, limit, collectorLog);
+                    const result = await collectFromBuycycle(target, filters, targetLimit, collectorLog);
                     summary.totalScraped += result.scraped;
                     summary.normalized += result.normalized.length;
                     summary.failedNormalization += result.failed;
@@ -298,21 +307,6 @@ class UnifiedHunter {
                 }
             }
 
-            if (runKleinanzeigen) {
-                try {
-                    const result = await collectFromKleinanzeigen(target, filters, Math.min(limit, 10), collectorLog);
-                    summary.totalScraped += result.scraped;
-                    summary.normalized += result.normalized.length;
-                    summary.failedNormalization += result.failed;
-                    targetCollected.push(...result.normalized);
-                    logEvent('collector_done', { source: 'kleinanzeigen', brand: target.brand, model: target.model, scraped: result.scraped, normalized: result.normalized.length, failed: result.failed });
-                } catch (e) {
-                    summary.failedNormalization += 1;
-                    collectorLog(`Ошибка Kleinanzeigen: ${e.message}`);
-                    logEvent('collector_error', { source: 'kleinanzeigen', brand: target.brand, model: target.model, error: e.message });
-                }
-            }
-
             if (targetCollected.length > 0) {
                 const saveSummary = await dbService.saveBikesToDB(targetCollected);
                 summary.inserts += saveSummary.inserted;
@@ -320,13 +314,39 @@ class UnifiedHunter {
                 summary.failedSaves += saveSummary.failed;
                 summary.photosDownloaded += saveSummary.photosDownloaded;
                 summary.photosTotal += saveSummary.photosTotal;
+                remainingQuota = Math.max(0, remainingQuota - saveSummary.inserted);
                 logEvent('db_save', { inserted: saveSummary.inserted, duplicates: saveSummary.duplicates, failed: saveSummary.failed, photosDownloaded: saveSummary.photosDownloaded, photosTotal: saveSummary.photosTotal });
-
-                // Add to global collection for return
                 collected.push(...targetCollected);
+                targetCollected.length = 0;
+            }
+
+            if (remainingQuota <= 0) {
+                log(`Квота исчерпана после Buycycle для ${target.brand} ${target.model}.`);
+                continue;
+            }
+
+            if (runKleinanzeigen) {
+                try {
+                    const kleinLimit = Math.max(1, Math.min(targetLimit, 10, remainingQuota));
+                    const result = await collectFromKleinanzeigen(target, filters, kleinLimit, collectorLog);
+                    summary.totalScraped += result.scraped;
+                    summary.normalized += result.normalized.length;
+                    summary.failedNormalization += result.failed;
+                    summary.inserts += result.deepProcessed || 0;
+                    remainingQuota = Math.max(0, remainingQuota - (result.deepProcessed || 0));
+                    targetCollected.push(...result.normalized);
+                    logEvent('collector_done', { source: 'kleinanzeigen', brand: target.brand, model: target.model, scraped: result.scraped, normalized: result.normalized.length, failed: result.failed, deepProcessed: result.deepProcessed || 0 });
+                } catch (e) {
+                    summary.failedNormalization += 1;
+                    collectorLog(`Ошибка Kleinanzeigen: ${e.message}`);
+                    logEvent('collector_error', { source: 'kleinanzeigen', brand: target.brand, model: target.model, error: e.message });
+                }
             }
         }
 
+        summary.quotaRequested = limit;
+        summary.quotaConsumed = Math.max(0, limit - remainingQuota);
+        summary.quotaRemaining = remainingQuota;
         summary.elapsed = `${Math.floor((Date.now() - start) / 60000)}m ${Math.floor(((Date.now() - start) % 60000) / 1000)}s`;
         printSummary(summary);
         logEvent('hunt_end', summary);

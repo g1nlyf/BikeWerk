@@ -1,0 +1,64 @@
+Catalog Autofix Rolling Log
+Date: 2026-02-08
+Repo: eubike
+
+[1] Scope + constraints
+- Applied AGENTS.md constraints: no deploy, no PM2, no push, no destructive git.
+- Secret handling: Gemini env values were written only to gitignored .env files.
+
+[2] Backend catalog API
+- Added service: backend/src/services/catalog-v1-service.js
+- Added endpoints in backend/server.js:
+  - GET /api/v1/catalog/bikes
+  - GET /api/v1/catalog/bikes/:id
+- Implemented:
+  - Safe JSON parsing for string/object hybrid columns.
+  - BikeDTO normalization from bikes + unified/spec/features/inspection/logistics json.
+  - Deterministic filtering (AND), sorting, pagination.
+  - Facets + range aggregation from filtered result set.
+  - Booking payload envelope in DTO for frontend booking handoff.
+
+[3] Frontend catalog and PDP
+- Rebuilt frontend/src/pages/CatalogPage.tsx:
+  - Sticky toolbar (search/sort/page size/clear)
+  - URL-synced filters and pagination
+  - Sidebar facets + mobile filter dialog
+  - Save search (localStorage), load/delete
+  - Skeleton loading, empty state, scroll-to-top
+  - Modern BikeWerk style and responsive layout
+- Rebuilt frontend/src/pages/ProductDetailPage.tsx:
+  - Gallery with thumbnail switching and fallback image
+  - Key summary, logistics, highlights, specs
+  - Booking modal + relaxed login note checkbox
+  - Canonical booking payload includes bike_id, external_bike_ref, bike_snapshot
+  - Related bikes block
+
+[4] Frontend API integration
+- Updated frontend/src/api/index.ts:
+  - catalogApi.list now targets /api/v1/catalog/bikes
+  - Added compatibility mapping (items -> bikes alias)
+  - Added catalogApi.getById(id)
+
+[5] Tests added and run
+- Added backend unit-ish test: backend/tests/catalog-v1-service.spec.js
+- Added Playwright smoke: frontend/tests/catalog-smoke.spec.ts
+
+Executed:
+- cd backend && npx mocha tests/catalog-v1-service.spec.js
+  Result: PASS (2 passing)
+- cd frontend && npx eslint src/pages/CatalogPage.tsx src/pages/ProductDetailPage.tsx src/api/index.ts
+  Result: PASS
+- cd frontend && npm run build
+  Result: PASS
+- cd frontend && npx playwright test --project=chromium --grep "@catalog"
+  Result: PASS (2 passed)
+- cd backend && npm test
+  Result: FAIL (existing pre-existing integration failures unrelated to catalog refactor)
+  - no such table: bikes in integration fixture path
+  - valuation assertion mismatch in full-system-test
+- cd frontend && npm run lint
+  Result: FAIL (large pre-existing lint debt across unrelated files)
+
+[6] Notes
+- Existing repo-wide lint/test debt remains outside catalog-focused change set.
+- Catalog smoke and new normalization tests pass.

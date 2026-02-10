@@ -1,8 +1,8 @@
-const sqlite3 = require('sqlite3').verbose();
+﻿const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
 
-const dbPath = path.resolve(__dirname, '../backend/Databases/eubike.db');
+const dbPath = path.resolve(__dirname, '../backend/database/eubike.db');
 const db = new sqlite3.Database(dbPath);
 
 const backendPublicDir = path.resolve(__dirname, '../backend/public');
@@ -58,3 +58,4 @@ function checkImages() {
 }
 
 checkImages();
+

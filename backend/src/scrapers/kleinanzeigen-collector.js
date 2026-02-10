@@ -14,7 +14,7 @@ class KleinanzeigenCollector {
      * @returns {Array} - [{ title, price, url, ad_id, source_platform }]
      */
     static async collectListingsOnly(url, limit = 10) {
-        console.log(`🔎 [KLEINANZEIGEN] Collecting from: ${url}`);
+        console.log(`Ã°Å¸â€Å½ [KLEINANZEIGEN] Collecting from: ${url}`);
         let browser;
         try {
             browser = await puppeteer.launch({
@@ -28,7 +28,7 @@ class KleinanzeigenCollector {
             
             // Check for Captcha
             if ((await page.title()).includes('Robot')) {
-                console.error('   ❌ [KLEINANZEIGEN] Blocked by Anti-Bot');
+                console.error('   Ã¢ÂÅ’ [KLEINANZEIGEN] Blocked by Anti-Bot');
                 return [];
             }
 
@@ -49,7 +49,7 @@ class KleinanzeigenCollector {
                     
                     // Filter "VB" (Verhandlungsbasis) or "Zu verschenken" if strict price needed?
                     // For FMV we want numeric prices. 
-                    // "2.500 € VB" -> 2500
+                    // "2.500 Ã¢â€šÂ¬ VB" -> 2500
                     const price = parseFloat(priceText.replace(/[^0-9,]/g, '').replace(',', '.'));
                     
                     if (!price || isNaN(price)) continue;
@@ -75,11 +75,11 @@ class KleinanzeigenCollector {
                 return results;
             }, limit);
 
-            console.log(`   ✅ [KLEINANZEIGEN] Found ${listings.length} listings`);
+            console.log(`   Ã¢Å“â€¦ [KLEINANZEIGEN] Found ${listings.length} listings`);
             return listings;
 
         } catch (e) {
-            console.error(`   ❌ [KLEINANZEIGEN] Error: ${e.message}`);
+            console.error(`   Ã¢ÂÅ’ [KLEINANZEIGEN] Error: ${e.message}`);
             return [];
         } finally {
             if (browser) await browser.close();
@@ -88,7 +88,7 @@ class KleinanzeigenCollector {
 
     static async searchBikes(term, options = {}) {
         const limit = options.limit || 5;
-        console.log(`🔎 KleinanzeigenCollector: Searching for "${term}" (Limit: ${limit})...`);
+        console.log(`Ã°Å¸â€Å½ KleinanzeigenCollector: Searching for "${term}" (Limit: ${limit})...`);
         
         let browser;
         try {
@@ -112,7 +112,7 @@ class KleinanzeigenCollector {
             }
             url += `/${cleanTerm}/k0c217`;
             
-            console.log(`   🌐 Navigating to: ${url}`);
+            console.log(`   Ã°Å¸Å’Â Navigating to: ${url}`);
             
             // Set User-Agent to look real
             await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
@@ -180,11 +180,11 @@ class KleinanzeigenCollector {
                 });
             });
             
-            console.log(`   ✅ Found ${results.length} listings.`);
+            console.log(`   Ã¢Å“â€¦ Found ${results.length} listings.`);
             return results;
             
         } catch (e) {
-            console.error(`   ❌ Scraping Error: ${e.message}`);
+            console.error(`   Ã¢ÂÅ’ Scraping Error: ${e.message}`);
             return [];
         } finally {
             if (browser) await browser.close();
@@ -192,7 +192,7 @@ class KleinanzeigenCollector {
     }
 
     static async scrapeListing(url) {
-        console.log(`🔎 KleinanzeigenCollector: Scraping detail page ${url}...`);
+        console.log(`Ã°Å¸â€Å½ KleinanzeigenCollector: Scraping detail page ${url}...`);
         let browser;
         try {
             browser = await puppeteer.launch({
@@ -204,30 +204,54 @@ class KleinanzeigenCollector {
             await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
             
             await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-            
+
+            // If Kleinanzeigen redirects away from the detail route, the listing is unavailable/deleted.
+            const finalUrl = page.url();
+            if (finalUrl && !finalUrl.includes('/s-anzeige/')) {
+                console.log(`   ⚠️  [KLEINANZEIGEN] Listing unavailable (redirected): ${url} -> ${finalUrl}`);
+                return null;
+            }
+
             const content = await page.content();
             const $ = cheerio.load(content);
 
-            // 🛡️ CHECK ACTIVE STATUS
-            // Проверяем видимость "Reserviert/Gelöscht"
+            // ðŸ›¡ï¸ Some "deleted" Kleinanzeigen URLs redirect to a search results page.
+            // Those pages do not contain a listing detail (title/price/description).
+            const pageTitle = ($('title').text() || '').toLowerCase();
+            const bodyText = ($('body').text() || '').toLowerCase();
+            const hasListingDetail =
+                $('#viewad-title, h1[itemprop="name"]').length > 0 ||
+                $('#viewad-price').length > 0 ||
+                $('#viewad-description-text').length > 0;
+            const looksLikeSearchResults =
+                !hasListingDetail &&
+                (pageTitle.includes('suche') || pageTitle.includes('ergebnisse')) &&
+                (bodyText.includes('suchauftrag') || /\b\d+\s+ergebnisse\b/.test(bodyText));
+            if (looksLikeSearchResults) {
+                console.log(`   âš ï¸  [KLEINANZEIGEN] Listing unavailable (redirected to search results): ${url}`);
+                return null;
+            }
+
+            // Ã°Å¸â€ºÂ¡Ã¯Â¸Â CHECK ACTIVE STATUS
+            // ÃÅ¸Ã‘â‚¬ÃÂ¾ÃÂ²ÃÂµÃ‘â‚¬Ã‘ÂÃÂµÃÂ¼ ÃÂ²ÃÂ¸ÃÂ´ÃÂ¸ÃÂ¼ÃÂ¾Ã‘ÂÃ‘â€šÃ‘Å’ "Reserviert/GelÃƒÂ¶scht"
             // Note: .not('.is-hidden') might not work perfectly if class is added dynamically, but we have static HTML here.
             // However, Kleinanzeigen puts "Reserviert" in .pvap-reserved-title and usually adds .is-hidden if it's NOT reserved?
             // Actually, if it IS reserved, the badge is visible.
             // Let's check text content of the badge.
             const reservedText = $('.pvap-reserved-title').not('.is-hidden').text().trim();
             const isReserved = reservedText.includes('Reserviert');
-            const isDeleted = reservedText.includes('Gelöscht') || $('body').text().includes('Diese Anzeige ist leider nicht mehr verfügbar');
+            const isDeleted = reservedText.includes('GelÃƒÂ¶scht') || $('body').text().includes('Diese Anzeige ist leider nicht mehr verfÃƒÂ¼gbar');
             
             // Check for contact button/form
             const hasContact = $('#viewad-contact, .contactbox, [data-contact], #viewad-contact-form').length > 0;
 
             if (isReserved || isDeleted) {
                 const status = isReserved ? 'Reserved' : 'Deleted';
-                console.log(`   ⚠️ [KLEINANZEIGEN] Skipping inactive listing (${status}): ${$('#viewad-title').text().trim().substring(0, 50)}...`);
+                console.log(`   Ã¢Å¡Â Ã¯Â¸Â [KLEINANZEIGEN] Skipping inactive listing (${status}): ${$('#viewad-title').text().trim().substring(0, 50)}...`);
                 return null;
             }
 
-            // 🛡️ EXTRACT TITLE (Remove hidden junk)
+            // Ã°Å¸â€ºÂ¡Ã¯Â¸Â EXTRACT TITLE (Remove hidden junk)
             const $titleEl = $('#viewad-title, h1[itemprop="name"]');
             let title = '';
             
@@ -243,7 +267,7 @@ class KleinanzeigenCollector {
                 title = $clone.text().trim();
                 
                 // Fallback cleanup regex
-                title = title.replace(/^(Reserviert|Gelöscht|Verkauft)\s*[•|-]?\s*/i, '');
+                title = title.replace(/^(Reserviert|GelÃƒÂ¶scht|Verkauft)\s*[Ã¢â‚¬Â¢|-]?\s*/i, '');
                 title = title.replace(/\s+/g, ' ').trim();
             } else {
                 // Fallback if ID changes
@@ -305,7 +329,7 @@ class KleinanzeigenCollector {
             };
 
         } catch (e) {
-            console.error(`   ❌ Detail Scraping Error: ${e.message}`);
+            console.error(`   Ã¢ÂÅ’ Detail Scraping Error: ${e.message}`);
             return null;
         } finally {
             if (browser) await browser.close();

@@ -2,7 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import AppRouter from './routes/AppRouter'
-import { BrowserRouter } from 'react-router-dom'
+import { BrowserRouter, useLocation } from 'react-router-dom'
 import { AuthProvider } from '@/lib/auth'
 import { DrawerProvider } from '@/context/DrawerContext'
 import { CartUIProvider } from '@/lib/cart-ui'
@@ -18,6 +18,20 @@ import { Toaster } from 'sonner'
 // ❌ KILLSWITCH REMOVED - was causing infinite page reloads
 // The service worker update code below was triggering continuous reloads
 // on catalog, home, and other pages. Completely removed.
+function AppShell() {
+  const location = useLocation()
+  const isCrm = location.pathname.startsWith('/crm')
+
+  return (
+    <>
+      {!isCrm && <NavigationDrawer />}
+      <AppRouter />
+      {!isCrm && <LeadCaptureModal />}
+      {!isCrm && <ChatWidget />}
+      <Toaster />
+    </>
+  )
+}
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -29,12 +43,8 @@ createRoot(document.getElementById('root')!).render(
               <CartProvider>
                 <LeadSystemProvider>
                   <BrowserRouter>
-                    <NavigationDrawer />
-                    <AppRouter />
+                    <AppShell />
                   </BrowserRouter>
-                  <LeadCaptureModal />
-                  <ChatWidget />
-                  <Toaster />
                 </LeadSystemProvider>
               </CartProvider>
             </CartUIProvider>

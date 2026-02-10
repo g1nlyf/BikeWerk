@@ -1,0 +1,12 @@
+﻿export { default as CRMLayout } from './CRMLayout'
+export { default as CRMLoginPage } from './LoginPage'
+export { default as CRMCompleteProfilePage } from './CompleteProfilePage'
+export { default as DashboardPage } from './DashboardPage'
+export { default as OrdersListPage } from './orders/OrdersListPage'
+export { default as OrderDetailPage } from './orders/OrderDetailPage'
+export { default as CustomersPage } from './customers/CustomersPage'
+export { default as CustomerDetailPage } from './customers/CustomerDetailPage'
+export { default as LeadsPage } from './leads/LeadsPage'
+export { default as TasksPage } from './tasks/TasksPage'
+
+

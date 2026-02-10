@@ -1108,17 +1108,26 @@ class UnifiedHunter {
             // ═══════════════════════════════════════════
             // STAGE 15: DB SAVE
             // ═══════════════════════════════════════════
+            const inferredTaxonomy = this.inferTaxonomy(mergedListing.brand, mergedListing.model, mergedListing.title);
+            const normalizedWheel = this.normalizeWheelDiameterValue(
+                mergedListing.wheelDiameter || mergedListing.wheel_size || rawData.wheelDiameter || techSpecs.wheelSize
+            );
+            const resolvedShipping = this.resolveShippingOption(
+                rawData.deliveryOption || mergedListing.deliveryOption || mergedListing.shipping_option,
+                rawData.source || mergedListing.source_platform || url
+            );
+
             const dbData = {
                 name: mergedListing.title || rawData.title,
                 brand: mergedListing.brand || 'Unknown',
                 model: mergedListing.model || 'Unknown',
                 price: currentPrice,
-                category: mergedListing.category || 'Other',
+                category: mergedListing.category || inferredTaxonomy.category || 'Other',
                 description: mergedListing.description,
                 year: mergedListing.year,
                 frame_material: mergedListing.frameMaterial,
                 size: mergedListing.frameSize,
-                wheel_diameter: mergedListing.wheelDiameter,
+                wheel_diameter: normalizedWheel,
                 condition_status: 'used',
                 is_active: is_active,
                 priority: priority,
@@ -1127,7 +1136,7 @@ class UnifiedHunter {
                 source: 'AutoHunter',
                 location: mergedListing.location,
                 is_negotiable: mergedListing.isNegotiable ? 1 : 0,
-                discipline: mergedListing.discipline,
+                discipline: mergedListing.discipline || inferredTaxonomy.discipline || null,
                 seller_name: mergedListing.sellerName,
                 seller_type: mergedListing.sellerType,
                 seller_member_since: mergedListing.sellerMemberSince,
@@ -1151,8 +1160,8 @@ class UnifiedHunter {
                 is_salvage_gem: salvageValue > currentPrice ? 1 : 0,
                 fmv: fmv,
                 
-                shipping_option: rawData.deliveryOption || 'unknown',
-                guaranteed_pickup: (this.isPickupSafe(mergedListing.location) && rawData.deliveryOption === 'pickup-only') ? 1 : 0
+                shipping_option: resolvedShipping,
+                guaranteed_pickup: (this.isPickupSafe(mergedListing.location) && resolvedShipping === 'pickup-only') ? 1 : 0
             };
 
             const savedBike = await this.bikesDB.addBike(dbData);
@@ -1523,6 +1532,65 @@ class UnifiedHunter {
         const t = String(s || '').replace(/[^0-9,\.]/g, '').replace(/\./g, '').replace(/,(?=\d{2}\b)/g, '.');
         const m = t.match(/(\d+(?:\.\d+)?)/);
         return m ? Math.round(parseFloat(m[1])) : 0;
+    }
+
+    normalizeWheelDiameterValue(value) {
+        if (value === null || value === undefined) return null;
+        const source = String(value).toLowerCase().replace(',', '.');
+        if (source.includes('700c') || /\b28\b/.test(source)) return '700c';
+        if (source.includes('650b') || source.includes('27.5') || /\b27\.?5\b/.test(source)) return '27.5';
+        if (/\b29\b/.test(source)) return '29';
+        if (/\b26\b/.test(source)) return '26';
+        return null;
+    }
+
+    resolveShippingOption(value, sourceHint) {
+        const source = String(sourceHint || '').toLowerCase();
+        if (source.includes('buycycle')) return 'available';
+        const candidate = String(value || '').trim().toLowerCase();
+        if (!candidate || candidate === 'null' || candidate === 'n/a') return 'unknown';
+        return candidate;
+    }
+
+    inferTaxonomy(brand, model, title) {
+        const norm = (v) => String(v || '').toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+        const brandNorm = norm(brand);
+        const modelNorm = norm(model);
+        const titleNorm = norm(title);
+
+        const mapGroup = (group) => {
+            const key = String(group || '').toLowerCase();
+            if (key.includes('dh') || key.includes('downhill')) return { category: 'mtb', discipline: 'downhill' };
+            if (key.includes('enduro')) return { category: 'mtb', discipline: 'enduro' };
+            if (key.includes('trail')) return { category: 'mtb', discipline: 'trail_riding' };
+            if (key.includes('xc')) return { category: 'mtb', discipline: 'cross_country' };
+            if (key.includes('emtb') || key.includes('e mtb')) return { category: 'mtb', discipline: 'emtb' };
+            if (key.includes('gravel')) return { category: 'gravel', discipline: 'gravel' };
+            if (key.includes('road')) return { category: 'road', discipline: 'road' };
+            return { category: null, discipline: null };
+        };
+
+        for (const [group, payload] of Object.entries(BRAND_MODELS || {})) {
+            const brands = Array.isArray(payload?.brands) ? payload.brands : [];
+            const models = Array.isArray(payload?.models) ? payload.models : [];
+            const brandMatched = brands.some((b) => norm(b) === brandNorm);
+            const modelMatched = models.some((m) => {
+                const target = norm(m);
+                return target && (target === modelNorm || (titleNorm && titleNorm.includes(target)));
+            });
+            if (brandMatched && modelMatched) return mapGroup(group);
+        }
+
+        for (const [group, payload] of Object.entries(BRAND_MODELS || {})) {
+            const models = Array.isArray(payload?.models) ? payload.models : [];
+            const modelMatched = models.some((m) => {
+                const target = norm(m);
+                return target && (target === modelNorm || (titleNorm && titleNorm.includes(target)));
+            });
+            if (modelMatched) return mapGroup(group);
+        }
+
+        return { category: null, discipline: null };
     }
 
     async saveToMarketHistory(item, category) {

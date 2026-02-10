@@ -6,7 +6,8 @@ import BikeflipHeaderPX from "@/components/layout/BikeflipHeaderPX"
 import { SEOHead } from "@/components/SEO/SEOHead"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { crmFrontApi, userTrackingsApi, apiPost } from "@/api"
+import { crmFrontApi, userTrackingsApi, apiPost, auth } from "@/api"
+import { getAddonTitle } from "@/data/buyoutOptions"
 import { motion, AnimatePresence } from "framer-motion"
 import { Search, CheckCircle, Truck, Clock, Bell, Package, Copy, Check, Info, ChevronLeft, X, MapPin, MessageCircle, FileText, ChevronRight, CreditCard, User, Calendar, Loader2, ShieldAlert, Globe, Send } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -100,6 +101,7 @@ type OrderItem = {
   bike_name?: string
   final_price_eur?: number
   booking_price?: number
+  booking_amount_rub?: number
   is_refundable?: boolean
   initial_quality_class?: string
   final_quality_class?: string
@@ -109,6 +111,18 @@ type OrderItem = {
   attention_required?: boolean
   seller_response?: any
   assigned_manager?: string | null
+  assigned_manager_name?: string | null
+  queue_hint?: string | null
+  route_from?: string | null
+  route_to?: string | null
+  customer?: {
+      full_name?: string | null
+      phone?: string | null
+      email?: string | null
+      city?: string | null
+      contact_value?: string | null
+      preferred_channel?: string | null
+  } | null
   // Financials
   service_fee_eur?: number
   shipping_cost_eur?: number
@@ -117,6 +131,8 @@ type OrderItem = {
   exchange_rate?: number
   delivery_method?: string
   created_at?: string
+  bike_snapshot?: any
+  reservation_paid_at?: string | null
 }
 
 type OrderDetails = {
@@ -152,9 +168,9 @@ function normalizeId(input: string): string {
 // Status Logic
 const STATUS_CONFIG: Record<string, { label: string; description: string; progress: number; color: string }> = {
     'new': { label: 'Новая заявка', description: 'Мы получили вашу заявку и назначаем менеджера.', progress: 1, color: 'bg-blue-500' },
-    'awaiting_payment': { label: 'Ждем принятия от менеджера', description: 'После того, как один из менеджеров примет ваш заказ, он сможет подтвердить или опровергнуть получение суммы брони.', progress: 1, color: 'bg-yellow-500' },
-    'awaiting_deposit': { label: 'Ожидает задатка', description: 'Ожидаем внесения задатка для начала работы.', progress: 1, color: 'bg-yellow-500' },
-    'deposit_paid': { label: 'Задаток получен', description: 'Менеджер связывается с продавцом и запрашивает информацию.', progress: 2, color: 'bg-blue-500' },
+    'awaiting_payment': { label: 'Ждем принятия менеджером', description: 'Менеджер подтвердит заказ и запустит проверку.', progress: 1, color: 'bg-yellow-500' },
+    'awaiting_deposit': { label: 'Ожидает резервирования', description: 'Рекомендуем оплатить резерв 2%, чтобы закрепить байк.', progress: 1, color: 'bg-yellow-500' },
+    'deposit_paid': { label: 'Резерв оплачен', description: 'Менеджер связывается с продавцом и запрашивает информацию.', progress: 2, color: 'bg-blue-500' },
     'under_inspection': { label: 'Идет проверка', description: 'Эксперт анализирует фото и видео велосипеда.', progress: 2, color: 'bg-purple-500' },
     'quality_confirmed': { label: 'Качество подтверждено', description: 'Велосипед соответствует описанию. Готов к выкупу.', progress: 3, color: 'bg-green-500' },
     'quality_degraded': { label: 'Качество снижено', description: 'Обнаружены нюансы. Мы обсуждаем скидку с продавцом.', progress: 3, color: 'bg-orange-500' },
@@ -165,6 +181,37 @@ const STATUS_CONFIG: Record<string, { label: string; description: string; progre
     'delivered': { label: 'Доставлен', description: 'Заказ успешно доставлен.', progress: 5, color: 'bg-green-500' },
     'cancelled': { label: 'Отменен', description: 'Заказ отменен.', progress: 0, color: 'bg-red-500' },
 };
+
+const FLAT_CHECKLIST_ITEMS = [
+    { key: '1_brand_verified', label: 'Бренд подтвержден' },
+    { key: '2_model_verified', label: 'Модель подтверждена' },
+    { key: '3_year_verified', label: 'Год подтвержден' },
+    { key: '4_frame_size_verified', label: 'Размер рамы подтвержден' },
+    { key: '5_serial_number', label: 'Серийный номер' },
+    { key: '6_frame_condition', label: 'Состояние рамы' },
+    { key: '7_fork_condition', label: 'Состояние вилки' },
+    { key: '8_shock_condition', label: 'Состояние амортизатора' },
+    { key: '9_drivetrain_condition', label: 'Трансмиссия' },
+    { key: '10_brakes_condition', label: 'Тормоза' },
+    { key: '11_wheels_condition', label: 'Колеса' },
+    { key: '12_tires_condition', label: 'Покрышки' },
+    { key: '13_headset_check', label: 'Рулевая' },
+    { key: '14_bottom_bracket_check', label: 'Каретка' },
+    { key: '15_suspension_service_history', label: 'История обслуживания подвески' },
+    { key: '16_brake_pads_percentage', label: 'Износ колодок' },
+    { key: '17_chain_wear', label: 'Износ цепи' },
+    { key: '18_cassette_wear', label: 'Износ кассеты' },
+    { key: '19_rotor_condition', label: 'Состояние роторов' },
+    { key: '20_bearing_play', label: 'Люфт подшипников' },
+    { key: '21_original_owner', label: 'Первый владелец' },
+    { key: '22_proof_of_purchase', label: 'Документы покупки' },
+    { key: '23_warranty_status', label: 'Статус гарантии' },
+    { key: '24_crash_history', label: 'История падений' },
+    { key: '25_reason_for_sale', label: 'Причина продажи' },
+    { key: '26_upgrades_verified', label: 'Апгрейды подтверждены' },
+    { key: '27_test_ride_completed', label: 'Тест‑райд' },
+    { key: '28_final_approval', label: 'Финальное одобрение' },
+];
 
 function getStatusInfo(s?: string | null) {
     const k = String(s || "new").toLowerCase();
@@ -187,6 +234,7 @@ export default function OrderTrackingPage() {
   const [details, setDetails] = React.useState<OrderDetails | null>(null)
   const [saved, setSaved] = React.useState<SavedItem[]>([])
   const [copied, setCopied] = React.useState(false)
+  const [reserving, setReserving] = React.useState(false)
   const [isSearchFocused, setIsSearchFocused] = React.useState(false)
   
   // New States for Interactions
@@ -196,6 +244,15 @@ export default function OrderTrackingPage() {
   const [pendingDeliveryMethod, setPendingDeliveryMethod] = React.useState<string | null>(null);
   const [messageText, setMessageText] = React.useState('');
   const [sendingMessage, setSendingMessage] = React.useState(false);
+  const [reserveDialogOpen, setReserveDialogOpen] = React.useState(false);
+  const [reserveStep, setReserveStep] = React.useState<'confirm' | 'processing' | 'success'>('confirm');
+  const [profileDialogOpen, setProfileDialogOpen] = React.useState(false);
+  const [profileEmail, setProfileEmail] = React.useState('');
+  const [profilePassword, setProfilePassword] = React.useState('');
+  const [profileConfirm, setProfileConfirm] = React.useState('');
+  const [profileError, setProfileError] = React.useState<string | null>(null);
+  const [profileSaving, setProfileSaving] = React.useState(false);
+  const [authHint, setAuthHint] = React.useState<{ login?: string; tempPassword?: string } | null>(null);
 
   // Auto-fetch if token exists or query is set in URL
   React.useEffect(() => {
@@ -205,6 +262,28 @@ export default function OrderTrackingPage() {
         fetchOrder(query);
     }
   }, [token]);
+
+  React.useEffect(() => {
+    try {
+      const raw = localStorage.getItem('currentUser');
+      if (!raw) return;
+      const user = JSON.parse(raw);
+      if (user?.email) setProfileEmail(user.email);
+    } catch { }
+  }, []);
+
+  React.useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem('booking_auth_hint');
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed && (parsed.login || parsed.tempPassword)) {
+        setAuthHint({ login: parsed.login || '', tempPassword: parsed.tempPassword || '' });
+      }
+    } catch {
+      // no-op
+    }
+  }, []);
 
   const fetchOrder = async (q: string, isToken: boolean = false) => {
     if (!q) return
@@ -321,22 +400,103 @@ export default function OrderTrackingPage() {
       }
   }
 
+  const openReserveDialog = () => {
+      setReserveStep('confirm');
+      setReserveDialogOpen(true);
+  }
+
+  const handleReserve = async () => {
+      if (!details?.order?.order_number) return;
+      setReserving(true);
+      setReserveStep('processing');
+      try {
+          await crmFrontApi.reserve(details.order.order_number);
+          await fetchOrder(details.order.order_number);
+          setReserveStep('success');
+      } catch (e) {
+          setReserveStep('confirm');
+          alert('Не удалось провести резервирование');
+      } finally {
+          setReserving(false);
+      }
+  }
+
+  const handleCompleteProfile = async () => {
+      setProfileError(null);
+      if (!profileEmail || !profileEmail.includes('@')) {
+          setProfileError('Введите корректный email');
+          return;
+      }
+      if (!profilePassword || profilePassword.length < 8) {
+          setProfileError('Пароль должен содержать минимум 8 символов');
+          return;
+      }
+      if (profilePassword !== profileConfirm) {
+          setProfileError('Пароли не совпадают');
+          return;
+      }
+      setProfileSaving(true);
+      try {
+          const res: any = await auth.completeProfile(profileEmail.trim(), profilePassword);
+          if (!res?.success) {
+              setProfileError(res?.error || 'Не удалось обновить профиль');
+              return;
+          }
+          try {
+              if (res?.token) localStorage.setItem('authToken', res.token);
+              if (res?.user) localStorage.setItem('currentUser', JSON.stringify(res.user));
+          } catch { }
+          setProfileDialogOpen(false);
+          setProfilePassword('');
+          setProfileConfirm('');
+      } catch (e: any) {
+          setProfileError(e?.message || 'Ошибка сохранения');
+      } finally {
+          setProfileSaving(false);
+      }
+  }
+
   const currentStatus = details?.order?.status
   const statusInfo = getStatusInfo(currentStatus);
   const progress = statusInfo.progress;
-  const isInspecting = currentStatus === 'deposit_paid' || currentStatus === 'under_inspection';
+  const financials = (details as any)?.order?.bike_snapshot?.financials || (details as any)?.order?.bike_snapshot?.booking_meta?.financials || {};
+  const bookingMeta = (details as any)?.order?.bike_snapshot?.booking_meta || {};
+  const totalPriceRub = (details as any)?.order?.total_price_rub ?? financials.total_price_rub ?? null;
+  const bookingAmountRub = (details as any)?.order?.booking_amount_rub ?? financials.booking_amount_rub ?? (totalPriceRub ? Math.ceil(totalPriceRub * 0.02) : null);
+  const reservationPaid = currentStatus === 'deposit_paid' || Boolean((details as any)?.order?.reservation_paid_at || bookingMeta?.reservation_paid_at);
+  const queueLabel = details?.order?.queue_hint || bookingMeta.queue_hint || null;
+  const managerName =
+      details?.order?.assigned_manager_name ||
+      (details?.order?.assigned_manager && !/^\d+$/.test(String(details.order.assigned_manager))
+          ? details.order.assigned_manager
+          : null) ||
+      "Ваш менеджер";
+  const routeFrom = details?.order?.route_from || bookingMeta?.route_from || "Марбург";
+  const routeTo = details?.order?.route_to || details?.order?.customer?.city || bookingMeta?.booking_form?.city || "Город доставки";
+  const showQueue = ['awaiting_deposit', 'deposit_paid', 'under_inspection', 'quality_confirmed', 'quality_degraded', 'confirmed', 'processing', 'shipped', 'delivered']
+      .includes(String(currentStatus || '').toLowerCase());
+  const addonsSelection = bookingMeta.addons_selection || bookingMeta.booking_form?.addons_selection || {};
+  const addonsLines = Array.isArray(bookingMeta.addons)
+        ? bookingMeta.addons.map((a: any) => ({ ...a, title: a.title || getAddonTitle(a.id) }))
+        : Object.entries(addonsSelection || {}).map(([id, qty]) => ({ id, qty, title: getAddonTitle(id) }));
 
   const getChecklistItems = () => {
       const checklist = details?.inspection?.checklist;
+      if (checklist && typeof checklist === 'object') {
+          const hasFlat = FLAT_CHECKLIST_ITEMS.some((item) => Object.prototype.hasOwnProperty.call(checklist, item.key));
+          if (hasFlat) {
+              return FLAT_CHECKLIST_ITEMS.map((item) => {
+                  const entry: any = (checklist as any)[item.key];
+                  const rawStatus = typeof entry === 'object' ? entry?.status : entry;
+                  const rawNote = typeof entry === 'object' ? (entry?.comment ?? entry?.note ?? entry?.value) : (typeof entry === 'string' ? entry : '');
+                  const status = rawStatus === true ? 'checked' : rawStatus === false ? 'failed' : 'pending';
+                  const note = rawNote ? String(rawNote) : 'Нет данных';
+                  return { id: item.key, label: item.label, status, note };
+              });
+          }
+      }
       if (!checklist) {
-          // Fallback / Skeleton if no real data yet
-          return [
-              { id: 'frame_geometry', label: 'Геометрия рамы', status: isInspecting ? 'pending' : 'waiting', note: 'Ожидает проверки' },
-              { id: 'paint', label: 'Состояние ЛКП', status: isInspecting ? 'pending' : 'waiting', note: 'Ожидает проверки' },
-              { id: 'drivetrain', label: 'Трансмиссия', status: isInspecting ? 'pending' : 'waiting', note: 'Ожидает проверки' },
-              { id: 'suspension', label: 'Вилка и аморт', status: isInspecting ? 'pending' : 'waiting', note: 'Ожидает проверки' },
-              { id: 'documents', label: 'Документы', status: isInspecting ? 'pending' : 'waiting', note: 'Ожидает проверки' },
-          ];
+          return [];
       }
 
       const items = [];
@@ -537,6 +697,12 @@ export default function OrderTrackingPage() {
                                         <p className="text-lg text-white/60 leading-relaxed font-medium max-w-lg">
                                             {statusInfo.description}
                                         </p>
+                                        {showQueue && queueLabel && (
+                                            <div className="mt-3 inline-flex items-center gap-2 px-3 py-2 rounded-full bg-white/10 text-sm text-white font-semibold">
+                                                <Clock size={14} />
+                                                {queueLabel}
+                                            </div>
+                                        )}
                                         
                                         {/* AI Insight / Status Description */}
                                         {details?.order?.expert_comment && (
@@ -598,14 +764,8 @@ export default function OrderTrackingPage() {
                                         <Globe className="text-blue-500" size={20} />
                                         <span className="text-white font-bold tracking-wide">GLOBAL TRACKING</span>
                                     </div>
-                                    <h3 className="text-2xl font-bold text-white">Марбург <span className="text-zinc-500">→</span> Москва</h3>
-                                    <p className="text-zinc-500 text-sm mt-1">Дистанция: ~2,300 км</p>
-                                    
-                                    {/* Weather Widget (Genius) */}
-                                    <div className="mt-4 flex items-center gap-2 bg-white/5 backdrop-blur-sm px-3 py-1.5 rounded-lg border border-white/5 w-fit">
-                                        <div className="text-yellow-400">☀</div>
-                                        <div className="text-xs text-white/80 font-medium">Москва: +22°C</div>
-                                    </div>
+                                    <h3 className="text-2xl font-bold text-white">{routeFrom} <span className="text-zinc-500">→</span> {routeTo}</h3>
+                                    <p className="text-zinc-500 text-sm mt-1">Маршрут и сроки уточняются по данным заказа</p>
                                 </div>
 
                                 <div className="absolute inset-0 flex items-center justify-center">
@@ -643,13 +803,18 @@ export default function OrderTrackingPage() {
                                     <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center text-purple-600">
                                         <CheckCircle size={20} />
                                     </div>
-                                    <h3 className="text-xl font-bold text-zinc-900">Live Checklist</h3>
+                                    <h3 className="text-xl font-bold text-zinc-900">Чеклист инспекции</h3>
                                     <span className="ml-auto text-xs font-bold text-purple-600 bg-purple-50 px-3 py-1 rounded-full uppercase tracking-wider">
-                                        AI Verified
+                                        Проверка AI
                                     </span>
                                 </div>
                                 
                                 <div className="space-y-3">
+                                    {checklistItems.length === 0 && (
+                                        <div className="rounded-xl border border-zinc-100 bg-zinc-50 p-4 text-sm text-zinc-500">
+                                            Чеклист еще не заполнен. Менеджер добавит результаты после проверки.
+                                        </div>
+                                    )}
                                     {checklistItems.map((item, i) => (
                                         <Accordion key={i} type="single" collapsible className="bg-zinc-50 rounded-xl border border-zinc-100 overflow-hidden">
                                             <AccordionItem value={`item-${i}`} className="border-0">
@@ -660,9 +825,13 @@ export default function OrderTrackingPage() {
                                                             <div className="flex items-center gap-1.5 text-green-600 text-xs font-bold uppercase">
                                                                 <Check size={14} /> OK
                                                             </div>
+                                                        ) : item.status === 'failed' ? (
+                                                            <div className="flex items-center gap-1.5 text-red-600 text-xs font-bold uppercase">
+                                                                <X size={14} /> Проблема
+                                                            </div>
                                                         ) : (
                                                             <div className="flex items-center gap-1.5 text-zinc-400 text-xs font-bold uppercase">
-                                                                <Loader2 size={14} className="animate-spin" /> Check
+                                                                <Loader2 size={14} className="animate-spin" /> Проверка
                                                             </div>
                                                         )}
                                                     </div>
@@ -670,10 +839,9 @@ export default function OrderTrackingPage() {
                                                 <AccordionContent className="px-4 pb-3 pt-0 text-sm text-zinc-500">
                                                     <div className="flex flex-col gap-2">
                                                         <div className="flex items-start gap-2">
-                                                            <div className={`min-w-[4px] h-4 rounded-full ${item.status === 'checked' ? 'bg-green-500' : 'bg-zinc-300'} mt-0.5`} />
+                                                            <div className={`min-w-[4px] h-4 rounded-full ${item.status === 'checked' ? 'bg-green-500' : item.status === 'failed' ? 'bg-red-500' : 'bg-zinc-300'} mt-0.5`} />
                                                             <span>{item.note}</span>
                                                         </div>
-                                                        {/* Optional: Add seller claim comparison if available in future */}
                                                     </div>
                                                 </AccordionContent>
                                             </AccordionItem>
@@ -686,17 +854,70 @@ export default function OrderTrackingPage() {
 
                         {/* RIGHT COLUMN (Manager & Receipt) */}
                         <div className="lg:col-span-4 space-y-6">
+
+                            {/* Reservation */}
+                            <div className="bg-white rounded-[2rem] p-6 border border-zinc-100 shadow-xl shadow-zinc-200/50">
+                                <div className="flex items-center justify-between mb-3">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-full bg-zinc-900 text-white flex items-center justify-center font-bold">2%</div>
+                                        <div>
+                                            <div className="font-bold text-lg text-zinc-900">Резервирование</div>
+                                            <div className="text-xs text-zinc-500 uppercase tracking-wider">Опционально</div>
+                                        </div>
+                                    </div>
+                                    {reservationPaid ? (
+                                        <span className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold">Оплачено</span>
+                                    ) : null}
+                                </div>
+                                <div className="space-y-2 text-sm">
+                                    <div className="flex justify-between font-semibold text-zinc-900">
+                                        <span>Сумма резерва</span>
+                                        <span>{bookingAmountRub ? bookingAmountRub.toLocaleString('ru-RU') : '...'} ₽</span>
+                                    </div>
+                                    <div className="text-zinc-600 leading-relaxed">
+                                        Резерв закрепляет байк за вами. Возвращается, если класс окажется хуже или продавец откажется.
+                                    </div>
+                                </div>
+                                <Button 
+                                    className="w-full h-11 mt-4 rounded-xl bg-black text-white font-bold disabled:bg-zinc-300"
+                                    disabled={reservationPaid || !bookingAmountRub || reserving}
+                                    onClick={openReserveDialog}
+                                >
+                                    {reservationPaid ? "Резерв оплачен" : reserving ? "Оплачиваем..." : "Оплатить резерв"}
+                                </Button>
+                            </div>
+
+                            {/* Addons */}
+                            <div className="bg-white rounded-[2rem] p-6 border border-zinc-100 shadow-xl shadow-zinc-200/50">
+                                <div className="flex items-center gap-3 mb-3">
+                                    <div className="w-10 h-10 rounded-full bg-zinc-100 flex items-center justify-center text-zinc-700 font-bold">+</div>
+                                    <div>
+                                        <div className="font-bold text-lg text-zinc-900">Доп услуги</div>
+                                        <div className="text-xs text-zinc-500 uppercase tracking-wider">Выбраны при брони</div>
+                                    </div>
+                                </div>
+                                <div className="space-y-2 text-sm">
+                                    {addonsLines && addonsLines.length ? addonsLines.map((a: any) => (
+                                        <div key={a.id} className="flex justify-between">
+                                            <span className="text-zinc-700">{a.title || a.id}</span>
+                                            <span className="text-zinc-900 font-medium">×{a.qty}</span>
+                                        </div>
+                                    )) : (
+                                        <div className="text-zinc-500">Без доп услуг</div>
+                                    )}
+                                </div>
+                            </div>
                             
                             {/* Manager Card */}
                             <div className="bg-white rounded-[2rem] p-6 border border-zinc-100 shadow-xl shadow-zinc-200/50 hidden md:block">
                                 <div className="flex items-center gap-4 mb-6">
                                     <div className="w-16 h-16 rounded-2xl bg-zinc-900 flex items-center justify-center text-white text-2xl font-bold shadow-lg">
-                                        {details?.order?.assigned_manager ? details.order.assigned_manager[0].toUpperCase() : "M"}
+                                        {managerName ? managerName[0].toUpperCase() : "M"}
                                     </div>
                                     <div>
                                         <div className="flex items-center gap-2">
                                             <h3 className="font-bold text-lg text-zinc-900">
-                                                {details?.order?.assigned_manager || "Ваш Менеджер"}
+                                                {managerName}
                                             </h3>
                                             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" title="Online" />
                                         </div>
@@ -720,6 +941,27 @@ export default function OrderTrackingPage() {
                                 </Button>
                             </div>
 
+                            <div className="bg-white rounded-[2rem] p-6 border border-zinc-100 shadow-xl shadow-zinc-200/50">
+                                <div className="font-bold text-zinc-900">Доступ к отслеживанию</div>
+                                <p className="text-sm text-zinc-500 mt-2">
+                                    Отслеживание уже работает без регистрации. Чтобы не потерять доступ на других устройствах, сохраните email и пароль.
+                                </p>
+                                {authHint && (
+                                    <div className="mt-3 rounded-xl bg-zinc-50 border border-zinc-200 p-3 text-xs text-zinc-700 space-y-1">
+                                        <div>Войдите с данными:</div>
+                                        <div>Логин: <span className="font-semibold">{authHint.login || 'ваш контакт'}</span></div>
+                                        <div>Пароль: <span className="font-semibold">{authHint.tempPassword || 'одноразовый пароль из брони'}</span></div>
+                                    </div>
+                                )}
+                                <Button
+                                    variant="outline"
+                                    className="w-full h-11 mt-4 rounded-xl"
+                                    onClick={() => setProfileDialogOpen(true)}
+                                >
+                                    Сохранить доступ
+                                </Button>
+                            </div>
+
                             {/* Documents Vault (Genius) */}
                             <div className="bg-white rounded-[2rem] p-6 border border-zinc-100 shadow-xl shadow-zinc-200/50">
                                 <div className="flex items-center gap-3 mb-4">
@@ -729,29 +971,13 @@ export default function OrderTrackingPage() {
                                     <h3 className="font-bold text-zinc-900">Документы</h3>
                                 </div>
                                 <div className="space-y-2">
-                                    <div className="flex items-center justify-between p-3 rounded-xl hover:bg-zinc-50 transition-colors cursor-pointer group border border-transparent hover:border-zinc-200">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center text-red-600 font-bold text-xs">PDF</div>
-                                            <div>
-                                                <div className="text-sm font-bold text-zinc-900">Инвойс #{details?.order?.order_number}</div>
-                                                <div className="text-xs text-zinc-500">2.4 MB • 12.01.2025</div>
-                                            </div>
+                                    <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+                                        <div className="text-sm font-bold text-zinc-900">Пакет документов по заказу {details?.order?.order_number}</div>
+                                        <div className="text-xs text-zinc-500 mt-1">
+                                            {['processing', 'shipped', 'delivered', 'closed'].includes(String(currentStatus || '').toLowerCase())
+                                                ? 'Документы формируются менеджером и будут доступны по запросу.'
+                                                : 'Документы будут подготовлены после подтверждения и оплаты заказа.'}
                                         </div>
-                                        <Button variant="ghost" size="icon" className="text-zinc-400 group-hover:text-zinc-900">
-                                            <CheckCircle size={18} />
-                                        </Button>
-                                    </div>
-                                    <div className="flex items-center justify-between p-3 rounded-xl hover:bg-zinc-50 transition-colors cursor-pointer group border border-transparent hover:border-zinc-200">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-xs">DOC</div>
-                                            <div>
-                                                <div className="text-sm font-bold text-zinc-900">Договор поставки</div>
-                                                <div className="text-xs text-zinc-500">1.1 MB • 12.01.2025</div>
-                                            </div>
-                                        </div>
-                                        <Button variant="ghost" size="icon" className="text-zinc-400 group-hover:text-zinc-900">
-                                            <CheckCircle size={18} />
-                                        </Button>
                                     </div>
                                 </div>
                             </div>
@@ -771,34 +997,34 @@ export default function OrderTrackingPage() {
                                         <div className="space-y-3">
                                             <div className="flex justify-between text-sm">
                                                 <span className="text-zinc-500">Стоимость байка</span>
-                                                <span className="font-medium text-zinc-900">{details?.order?.final_price_eur ? (details.order.final_price_eur * 0.85).toFixed(0) : '...'} €</span>
+                                                <span className="font-medium text-zinc-900">{financials?.bike_price_eur ?? '...'} €</span>
                                             </div>
                                             <div className="flex justify-between text-sm">
                                                 <span className="text-zinc-500 flex items-center gap-1">
                                                     <Truck size={12} /> Доставка
                                                 </span>
-                                                <span className="font-medium text-zinc-900">{details?.order?.shipping_cost_eur || 170} €</span>
+                                                <span className="font-medium text-zinc-900">{financials?.shipping_cost_eur ?? '...'} €</span>
                                             </div>
                                             <div className="flex justify-between text-sm">
                                                 <span className="text-zinc-500 flex items-center gap-1">
                                                     <ShieldAlert size={12} /> Комиссия сервиса
                                                 </span>
-                                                <span className="font-medium text-zinc-900">{details?.order?.service_fee_eur || 80} €</span>
+                                                <span className="font-medium text-zinc-900">{financials?.service_fee_eur ?? '...'} €</span>
                                             </div>
                                             <div className="flex justify-between text-sm">
                                                 <span className="text-zinc-500 flex items-center gap-1">
                                                     <CreditCard size={12} /> Комиссия перевода
                                                 </span>
-                                                <span className="font-medium text-zinc-900">{details?.order?.payment_commission_eur || 0} €</span>
+                                                <span className="font-medium text-zinc-900">{financials?.payment_commission_eur ?? 0} €</span>
                                             </div>
                                             <div className="h-px bg-zinc-200 my-2" />
                                             <div className="flex justify-between text-base font-bold">
                                                 <span className="text-zinc-900">Итого</span>
-                                                <span className="text-zinc-900">{details?.order?.final_price_eur || '...'} €</span>
+                                                <span className="text-zinc-900">{financials?.final_price_eur ?? details?.order?.final_price_eur ?? '...'} €</span>
                                             </div>
                                             <div className="flex justify-between text-xs text-zinc-400">
-                                                <span>В рублях (курс {details?.order?.exchange_rate || 105})</span>
-                                                <span>{details?.order?.total_price_rub?.toLocaleString() || '...'} ₽</span>
+                                                <span>В рублях (курс {financials?.exchange_rate ?? details?.order?.exchange_rate ?? 105})</span>
+                                                <span>{(totalPriceRub || details?.order?.total_price_rub || 0).toLocaleString('ru-RU') || '...'} ₽</span>
                                             </div>
                                         </div>
                                     </AccordionContent>
@@ -909,6 +1135,96 @@ export default function OrderTrackingPage() {
                     </Button>
                     <Button className="flex-1 rounded-xl h-12 bg-black text-white hover:bg-black/90" onClick={handleDeliveryConfirm}>
                         Подтвердить
+                    </Button>
+                </div>
+            </DialogContent>
+        </Dialog>
+
+        <Dialog open={reserveDialogOpen} onOpenChange={(open) => {
+            if (!open && reserving) return;
+            if (!open) setReserveStep('confirm');
+            setReserveDialogOpen(open);
+        }}>
+            <DialogContent className="sm:max-w-[420px] rounded-[16px] p-6">
+                <DialogHeader>
+                    <DialogTitle className="text-xl font-bold">Оплата резерва</DialogTitle>
+                </DialogHeader>
+                {reserveStep === 'success' ? (
+                    <div className="space-y-4 pt-2">
+                        <div className="rounded-xl bg-emerald-50 text-emerald-700 p-4 text-sm font-medium">
+                            Резерв успешно оплачен. Байк закреплен за вами в очереди.
+                        </div>
+                        <Button className="w-full h-12 rounded-[8px] bg-black text-white" onClick={() => setReserveDialogOpen(false)}>
+                            Закрыть
+                        </Button>
+                    </div>
+                ) : (
+                    <div className="space-y-4 pt-2">
+                        <div className="rounded-xl bg-zinc-50 p-4 text-sm text-zinc-700 space-y-2">
+                            <div className="flex justify-between font-semibold text-zinc-900">
+                                <span>Сумма резерва</span>
+                                <span>{bookingAmountRub ? bookingAmountRub.toLocaleString('ru-RU') : '...'} ₽</span>
+                            </div>
+                            <p className="text-xs text-zinc-500">Резерв 2% фиксирует приоритет и вычитается из стоимости выкупа.</p>
+                            <p className="text-xs text-zinc-500">Возвращается, если класс хуже ожиданий или сделка срывается по вине продавца.</p>
+                        </div>
+                        <Button
+                            className="w-full h-12 rounded-[8px] bg-black text-white"
+                            disabled={reserving || !bookingAmountRub}
+                            onClick={handleReserve}
+                        >
+                            {reserving || reserveStep === 'processing' ? "Оплачиваем..." : "Оплатить"}
+                        </Button>
+                    </div>
+                )}
+            </DialogContent>
+        </Dialog>
+
+        <Dialog open={profileDialogOpen} onOpenChange={setProfileDialogOpen}>
+            <DialogContent className="sm:max-w-[420px] rounded-[16px] p-6">
+                <DialogHeader>
+                    <DialogTitle className="text-xl font-bold">Подтвердите доступ</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-3 pt-2">
+                    <p className="text-sm text-zinc-500">
+                        Мы создали для вас аккаунт с одноразовым паролем. Укажите email и задайте новый пароль, чтобы не потерять доступ.
+                    </p>
+                    <div>
+                        <label className="text-xs uppercase tracking-wide text-zinc-500">Email</label>
+                        <Input
+                            value={profileEmail}
+                            onChange={(e) => setProfileEmail(e.target.value)}
+                            className="mt-2 h-12 rounded-[12px] bg-[#f4f4f5] border-none"
+                            placeholder="you@example.com"
+                        />
+                    </div>
+                    <div>
+                        <label className="text-xs uppercase tracking-wide text-zinc-500">Новый пароль</label>
+                        <Input
+                            type="password"
+                            value={profilePassword}
+                            onChange={(e) => setProfilePassword(e.target.value)}
+                            className="mt-2 h-12 rounded-[12px] bg-[#f4f4f5] border-none"
+                            placeholder="Минимум 8 символов"
+                        />
+                    </div>
+                    <div>
+                        <label className="text-xs uppercase tracking-wide text-zinc-500">Подтверждение пароля</label>
+                        <Input
+                            type="password"
+                            value={profileConfirm}
+                            onChange={(e) => setProfileConfirm(e.target.value)}
+                            className="mt-2 h-12 rounded-[12px] bg-[#f4f4f5] border-none"
+                            placeholder="Повторите пароль"
+                        />
+                    </div>
+                    {profileError && <div className="text-sm text-red-600">{profileError}</div>}
+                    <Button
+                        className="w-full h-12 rounded-[8px] bg-black text-white"
+                        disabled={profileSaving}
+                        onClick={handleCompleteProfile}
+                    >
+                        {profileSaving ? "Сохраняем..." : "Сохранить"}
                     </Button>
                 </div>
             </DialogContent>

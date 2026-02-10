@@ -6,8 +6,12 @@ class BuycycleParser {
         this.userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
     }
 
+    static _browserPromise = null;
+    static _puppeteerExtra = null;
+    static _stealthAttached = false;
+
     async parseListing(url) {
-        console.log(`🔍 Parsing Buycycle listing: ${url}`);
+        console.log(`ðŸ” Parsing Buycycle listing: ${url}`);
         try {
             const html = await this._fetch(url);
             const $ = cheerio.load(html);
@@ -40,7 +44,7 @@ class BuycycleParser {
                     const fullUrl = href.startsWith('http') ? href : `https://buycycle.com${href}`;
                     const title = $(el).text().trim();
                     // Try to find price in children
-                    const priceText = $(el).find('*').filter((_, c) => $(c).text().includes('€')).last().text();
+                    const priceText = $(el).find('*').filter((_, c) => $(c).text().includes('â‚¬')).last().text();
                     const price = this._parsePrice(priceText);
                     
                     if (price > 0) {
@@ -53,17 +57,17 @@ class BuycycleParser {
                 });
             }
 
-            console.log(`✅ Found ${candidates.length} candidates.`);
+            console.log(`âœ… Found ${candidates.length} candidates.`);
             return candidates;
 
         } catch (e) {
-            console.error(`❌ Buycycle Listing Error: ${e.message}`);
+            console.error(`âŒ Buycycle Listing Error: ${e.message}`);
             return [];
         }
     }
 
     async parseDetail(url) {
-        console.log(`🕵️ Parsing Buycycle detail: ${url}`);
+        console.log(`ðŸ•µï¸ Parsing Buycycle detail: ${url}`);
         try {
             const html = await this._fetch(url);
             const $ = cheerio.load(html);
@@ -110,7 +114,7 @@ class BuycycleParser {
             // Strategy 3: Visual Scraping (CSS)
             if (!bikeData.title) {
                 bikeData.title = $('h1').first().text().trim();
-                bikeData.price = this._parsePrice($('body').text().match(/€\s*[\d.,]+/)?.[0]);
+                bikeData.price = this._parsePrice($('body').text().match(/â‚¬\s*[\d.,]+/)?.[0]);
                 // ... more selectors would be needed here based on actual HTML structure
             }
 
@@ -122,7 +126,7 @@ class BuycycleParser {
             return bikeData;
 
         } catch (e) {
-            console.error(`❌ Buycycle Detail Error: ${e.message}`);
+            console.error(`âŒ Buycycle Detail Error: ${e.message}`);
             return null;
         }
     }
@@ -166,16 +170,74 @@ class BuycycleParser {
     }
 
     async _fetch(url) {
-        const response = await axios.get(url, {
-            headers: {
-                'User-Agent': this.userAgent,
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language': 'de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7',
-                'Referer': 'https://www.google.com/'
-            },
-            timeout: 10000
-        });
-        return response.data;
+        try {
+            const response = await axios.get(url, {
+                headers: {
+                    'User-Agent': this.userAgent,
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language': 'de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7',
+                    'Referer': 'https://www.google.com/'
+                },
+                timeout: 15000
+            });
+            return response.data;
+        } catch (err) {
+            const status = err?.response?.status;
+            // Buycycle often blocks plain HTTP clients; fall back to a real browser when needed.
+            if (status === 403 || status === 429 || status === 503) {
+                return await this._fetchWithPuppeteer(url);
+            }
+            throw err;
+        }
+    }
+
+    _getPuppeteerExtra() {
+        if (!BuycycleParser._puppeteerExtra) {
+            // Lazy-load so this file stays lightweight in paths that never touch Buycycle.
+            // eslint-disable-next-line global-require
+            const puppeteerExtra = require('puppeteer-extra');
+            // eslint-disable-next-line global-require
+            const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+            BuycycleParser._puppeteerExtra = puppeteerExtra;
+            if (!BuycycleParser._stealthAttached) {
+                puppeteerExtra.use(StealthPlugin());
+                BuycycleParser._stealthAttached = true;
+            }
+        }
+        return BuycycleParser._puppeteerExtra;
+    }
+
+    async _getBrowser() {
+        if (!BuycycleParser._browserPromise) {
+            const puppeteerExtra = this._getPuppeteerExtra();
+            BuycycleParser._browserPromise = puppeteerExtra.launch({
+                headless: "new",
+                args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+            });
+
+            const cleanup = async () => {
+                try {
+                    const browser = await BuycycleParser._browserPromise;
+                    await browser.close();
+                } catch { }
+            };
+            process.once('exit', cleanup);
+            process.once('SIGINT', async () => { await cleanup(); process.exit(0); });
+        }
+        return await BuycycleParser._browserPromise;
+    }
+
+    async _fetchWithPuppeteer(url) {
+        const browser = await this._getBrowser();
+        const page = await browser.newPage();
+        try {
+            await page.setViewport({ width: 1440, height: 900 });
+            await page.setUserAgent(this.userAgent);
+            await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+            return await page.content();
+        } finally {
+            try { await page.close(); } catch { }
+        }
     }
 }
 

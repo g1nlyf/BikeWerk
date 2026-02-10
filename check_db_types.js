@@ -1,9 +1,9 @@
-const sqlite3 = require('sqlite3').verbose();
+﻿const sqlite3 = require('sqlite3').verbose();
 const { open } = require('sqlite');
 const path = require('path');
 
 async function main() {
-  const dbPath = path.resolve(__dirname, 'backend/Databases/eubike.db');
+  const dbPath = path.resolve(__dirname, 'backend/database/eubike.db');
   console.log('Opening DB at:', dbPath);
   const db = await open({ filename: dbPath, driver: sqlite3.Database });
 
@@ -39,3 +39,4 @@ async function main() {
 }
 
 main().catch(console.error);
+

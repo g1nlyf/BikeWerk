@@ -1,6 +1,7 @@
 const path = require('path');
 const fs = require('fs');
 const Database = require('better-sqlite3');
+const { DB_PATH } = require('../../config/db-path');
 const BuycyclePreprocessor = require('./BuycyclePreprocessor');
 const KleinanzeigenPreprocessor = require('./KleinanzeigenPreprocessor');
 const ManualPreprocessor = require('./ManualPreprocessor');
@@ -18,9 +19,10 @@ class UnifiedNormalizer {
         };
         this.gemini = GeminiProcessor;
         this.mapper = new GeminiToDatabaseMapper();
-        this.dbPath = path.resolve(__dirname, '../../database/eubike.db');
+        this.dbPath = DB_PATH;
         this.dbManager = new DatabaseManager();
         this.fmvAnalyzer = new FMVAnalyzer(this.dbManager);
+        this.taxonomy = this.buildTaxonomyIndex();
     }
 
     async normalize(rawData = {}, source = null, options = {}) {
@@ -127,7 +129,14 @@ class UnifiedNormalizer {
         result.meta.is_active = result.meta.is_active !== false;
 
         this.applyBrandCorrections(result);
+        this.applyBrandModelFallback(result, preprocessed);
         this.applyYearFallback(result, preprocessed);
+        this.applyTaxonomyFallback(result, preprocessed);
+        this.applyWheelSizeNormalization(result, preprocessed);
+        this.applyConditionNormalization(result);
+        this.applySellerNormalization(result, preprocessed);
+        this.applySourceAdIdFallback(result, preprocessed);
+        this.applyShippingDefaults(result, source);
         this.applyImages(result, preprocessed);
         this.applyQualityScore(result);
         this.applyCompletenessScore(result);
@@ -149,6 +158,293 @@ class UnifiedNormalizer {
         if (preprocessed.general_info) result.features.raw_specs.general_info = preprocessed.general_info;
 
         return result;
+    }
+
+    buildTaxonomyIndex() {
+        const index = {
+            byBrandAndModel: new Map(),
+            byModel: new Map()
+        };
+
+        const addEntry = (brand, model, category, discipline, subCategory) => {
+            if (!model) return;
+            const normalizedBrand = this.normalizeToken(brand);
+            const normalizedModel = this.normalizeToken(model);
+            if (!normalizedModel) return;
+
+            const payload = {
+                category: category || null,
+                discipline: discipline || null,
+                sub_category: subCategory || null
+            };
+
+            if (normalizedBrand) {
+                index.byBrandAndModel.set(`${normalizedBrand}::${normalizedModel}`, payload);
+            }
+            if (!index.byModel.has(normalizedModel)) {
+                index.byModel.set(normalizedModel, payload);
+            }
+        };
+
+        try {
+            const whitelistPath = path.resolve(__dirname, '../../config/fmv-whitelist.json');
+            if (fs.existsSync(whitelistPath)) {
+                const whitelist = JSON.parse(fs.readFileSync(whitelistPath, 'utf8'));
+                const brands = Array.isArray(whitelist?.brands) ? whitelist.brands : [];
+                for (const brandItem of brands) {
+                    const brandName = brandItem?.brand || null;
+                    const models = Array.isArray(brandItem?.models) ? brandItem.models : [];
+                    for (const modelItem of models) {
+                        const mapped = this.mapCategoryFromLabel(modelItem?.category);
+                        addEntry(brandName, modelItem?.model, mapped.category, mapped.discipline, mapped.sub_category);
+                    }
+                }
+            }
+        } catch (e) {
+            console.error(`   âš ï¸ Taxonomy whitelist load failed: ${e.message}`);
+        }
+
+        try {
+            const projectRoot = path.resolve(__dirname, '../../..');
+            const brandConstantsPath = path.resolve(projectRoot, 'telegram-bot/BrandConstants.js');
+            if (fs.existsSync(brandConstantsPath)) {
+                // eslint-disable-next-line global-require, import/no-dynamic-require
+                const { BRAND_MODELS } = require(brandConstantsPath);
+                if (BRAND_MODELS && typeof BRAND_MODELS === 'object') {
+                    for (const [groupLabel, group] of Object.entries(BRAND_MODELS)) {
+                        const mapped = this.mapCategoryFromLabel(groupLabel);
+                        const groupBrands = Array.isArray(group?.brands) ? group.brands : [];
+                        const groupModels = Array.isArray(group?.models) ? group.models : [];
+                        for (const model of groupModels) {
+                            if (groupBrands.length > 0) {
+                                for (const brand of groupBrands) {
+                                    addEntry(brand, model, mapped.category, mapped.discipline, mapped.sub_category);
+                                }
+                            } else {
+                                addEntry(null, model, mapped.category, mapped.discipline, mapped.sub_category);
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            console.error(`   âš ï¸ Brand constants taxonomy load failed: ${e.message}`);
+        }
+
+        return index;
+    }
+
+    mapCategoryFromLabel(label) {
+        const source = this.normalizeToken(label);
+        if (!source) return { category: null, discipline: null, sub_category: null };
+        if (source.includes('dh') || source.includes('downhill')) return { category: 'mtb', discipline: 'downhill', sub_category: 'downhill' };
+        if (source.includes('enduro')) return { category: 'mtb', discipline: 'enduro', sub_category: 'enduro' };
+        if (source.includes('trail')) return { category: 'mtb', discipline: 'trail_riding', sub_category: 'trail' };
+        if (source.includes('xc') || source.includes('cross country')) return { category: 'mtb', discipline: 'cross_country', sub_category: 'cross_country' };
+        if (source.includes('emtb') || source.includes('e mtb')) return { category: 'mtb', discipline: 'emtb', sub_category: 'emtb' };
+        if (source.includes('gravel')) {
+            if (source.includes('race')) return { category: 'gravel', discipline: 'gravel', sub_category: 'race' };
+            if (source.includes('bikepacking')) return { category: 'gravel', discipline: 'gravel', sub_category: 'bikepacking' };
+            return { category: 'gravel', discipline: 'gravel', sub_category: 'all_road' };
+        }
+        if (source.includes('road')) {
+            if (source.includes('aero')) return { category: 'road', discipline: 'road', sub_category: 'aero' };
+            if (source.includes('endurance')) return { category: 'road', discipline: 'road', sub_category: 'endurance' };
+            if (source.includes('climbing')) return { category: 'road', discipline: 'road', sub_category: 'climbing' };
+            if (source.includes('tt') || source.includes('triathlon')) return { category: 'road', discipline: 'road', sub_category: 'tt' };
+            return { category: 'road', discipline: 'road', sub_category: 'road' };
+        }
+        return { category: null, discipline: null, sub_category: null };
+    }
+
+    normalizeToken(value) {
+        if (!value && value !== 0) return '';
+        return String(value)
+            .toLowerCase()
+            .replace(/[_-]+/g, ' ')
+            .replace(/[^\p{L}\p{N} ]+/gu, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
+    isMissingValue(value) {
+        if (value === null || value === undefined) return true;
+        const text = String(value).trim().toLowerCase();
+        return text === '' || text === 'unknown' || text === 'other' || text === 'n/a' || text === 'null';
+    }
+
+    applyBrandModelFallback(result, preprocessed) {
+        result.basic_info = result.basic_info || {};
+        const currentBrand = result.basic_info.brand;
+        const currentModel = result.basic_info.model;
+        if (this.isMissingValue(currentBrand)) {
+            result.basic_info.brand = preprocessed.brand || result.basic_info.brand || null;
+        }
+        if (this.isMissingValue(currentModel)) {
+            result.basic_info.model = preprocessed.model || result.basic_info.model || null;
+        }
+    }
+
+    applyTaxonomyFallback(result, preprocessed) {
+        result.basic_info = result.basic_info || {};
+
+        const brand = result.basic_info.brand || preprocessed.brand || null;
+        const model = result.basic_info.model || preprocessed.model || null;
+        const title = result.basic_info.name || preprocessed.title || '';
+        const normalizedBrand = this.normalizeToken(brand);
+        const normalizedModel = this.normalizeToken(model);
+        const normalizedTitle = this.normalizeToken(title);
+
+        let mapped = null;
+        if (normalizedBrand && normalizedModel) {
+            mapped = this.taxonomy.byBrandAndModel.get(`${normalizedBrand}::${normalizedModel}`) || null;
+        }
+
+        if (!mapped && normalizedModel) {
+            mapped = this.taxonomy.byModel.get(normalizedModel) || null;
+        }
+
+        if (!mapped && normalizedTitle) {
+            for (const [modelKey, payload] of this.taxonomy.byModel.entries()) {
+                if (normalizedTitle.includes(modelKey)) {
+                    mapped = payload;
+                    break;
+                }
+            }
+        }
+
+        if (!mapped) return;
+        const shouldOverwriteCategory =
+            this.isMissingValue(result.basic_info.category)
+            || ['other', 'unknown'].includes(String(result.basic_info.category || '').toLowerCase());
+        const shouldOverwriteDiscipline =
+            this.isMissingValue(result.basic_info.discipline)
+            || ['other', 'unknown'].includes(String(result.basic_info.discipline || '').toLowerCase());
+        const shouldOverwriteSubCategory =
+            this.isMissingValue(result.basic_info.sub_category)
+            || ['other', 'unknown'].includes(String(result.basic_info.sub_category || '').toLowerCase());
+
+        if (shouldOverwriteCategory && !this.isMissingValue(mapped.category)) {
+            result.basic_info.category = mapped.category;
+        }
+        if (shouldOverwriteDiscipline && !this.isMissingValue(mapped.discipline)) {
+            result.basic_info.discipline = mapped.discipline;
+        }
+        if (shouldOverwriteSubCategory && !this.isMissingValue(mapped.sub_category)) {
+            result.basic_info.sub_category = mapped.sub_category;
+        }
+    }
+
+    normalizeWheelSizeValue(value) {
+        if (value === null || value === undefined) return null;
+        const text = String(value).toLowerCase().replace(',', '.').replace(/["']/g, '');
+        if (text.includes('mullet') || text.includes('mallet') || text.includes('mixed') || /\bmx\b/.test(text)) return 'mullet';
+        if (text.includes('700c') || /\b28\b/.test(text)) return '700c';
+        if (text.includes('650b') || text.includes('27.5') || /\b27\.?5\b/.test(text)) return '27.5';
+        if (/\b29\b/.test(text)) return '29';
+        if (/\b26\b/.test(text)) return '26';
+        return null;
+    }
+
+    applyWheelSizeNormalization(result, preprocessed) {
+        result.specs = result.specs || {};
+        const candidates = [];
+        candidates.push(result.specs.wheel_size);
+        candidates.push(preprocessed.wheel_size);
+        candidates.push(preprocessed.wheelDiameter);
+        candidates.push(preprocessed.wheel_diameter);
+        if (preprocessed.general_info && typeof preprocessed.general_info === 'object') {
+            for (const value of Object.values(preprocessed.general_info)) candidates.push(value);
+        }
+        if (preprocessed.components && typeof preprocessed.components === 'object') {
+            for (const value of Object.values(preprocessed.components)) candidates.push(value);
+        }
+        candidates.push(result.basic_info?.name);
+        candidates.push(preprocessed.title);
+
+        for (const value of candidates) {
+            const normalized = this.normalizeWheelSizeValue(value);
+            if (normalized) {
+                result.specs.wheel_size = normalized;
+                result.specs.wheel_diameter = normalized;
+                return;
+            }
+        }
+    }
+
+    applyConditionNormalization(result) {
+        result.condition = result.condition || {};
+        const raw = Number(result.condition.score);
+        if (Number.isFinite(raw)) {
+            const scaled = raw <= 10 ? raw * 10 : raw;
+            const score = Math.max(0, Math.min(100, Math.round(scaled)));
+            result.condition.score = score;
+            if (!result.condition.grade) {
+                if (score >= 95) result.condition.grade = 'A+';
+                else if (score >= 80) result.condition.grade = 'A';
+                else if (score >= 41) result.condition.grade = 'B';
+                else result.condition.grade = 'C';
+            }
+            if (!result.condition.class) {
+                if (score >= 95) result.condition.class = 'excellent';
+                else if (score >= 80) result.condition.class = 'very_good';
+                else if (score >= 41) result.condition.class = 'good';
+                else if (score >= 21) result.condition.class = 'fair';
+                else result.condition.class = 'poor';
+            }
+        }
+    }
+
+    applySellerNormalization(result, preprocessed) {
+        result.seller = result.seller || {};
+        const candidate = String(result.seller.type || preprocessed?.seller_type || preprocessed?.seller?.type || '').toLowerCase();
+        if (!candidate) {
+            result.seller.type = 'private';
+            return;
+        }
+        if (candidate.includes('privat') || candidate.includes('private')) {
+            result.seller.type = 'private';
+            return;
+        }
+        if (
+            candidate.includes('gewerblich') ||
+            candidate.includes('dealer') ||
+            candidate.includes('shop') ||
+            candidate.includes('commercial') ||
+            candidate.includes('händler') ||
+            candidate.includes('handler') ||
+            candidate.includes('pro')
+        ) {
+            result.seller.type = 'pro';
+            return;
+        }
+        result.seller.type = 'private';
+    }
+
+    applySourceAdIdFallback(result, preprocessed) {
+        result.meta = result.meta || {};
+        const current = String(result.meta.source_ad_id || '').trim();
+        if (current && current !== 'null' && current !== 'undefined') return;
+        const sourceUrl = String(result.meta.source_url || preprocessed?.url || '');
+        const klein = sourceUrl.match(/\/(\d+)-\d+-\d+\/?$/);
+        if (klein) {
+            result.meta.source_ad_id = klein[1];
+            return;
+        }
+        const buycycle = sourceUrl.match(/-(\d{3,})\/?$/);
+        if (buycycle) {
+            result.meta.source_ad_id = buycycle[1];
+        }
+    }
+
+    applyShippingDefaults(result, source) {
+        result.logistics = result.logistics || {};
+        const normalizedSource = this.normalizeToken(source || result.meta?.source_platform || '');
+        if (normalizedSource === 'buycycle') {
+            result.logistics.shipping_option = 'available';
+        }
+        // Shipping cost is not persisted at catalog ingestion time.
+        result.logistics.shipping_cost = null;
     }
 
     applyBrandCorrections(result) {
@@ -214,6 +510,19 @@ class UnifiedNormalizer {
 
         // Filter invalid images
         result.media.gallery = result.media.gallery.filter(url => !this.isInvalidImage(url));
+
+        // Prefer ImageKit assets for stable catalog rendering
+        const imagekitOnly = result.media.gallery.filter((url) => {
+            try {
+                const host = new URL(String(url)).hostname.toLowerCase();
+                return host === 'ik.imagekit.io' || host.endsWith('.imagekit.io');
+            } catch {
+                return false;
+            }
+        });
+        if (imagekitOnly.length > 0) {
+            result.media.gallery = imagekitOnly;
+        }
 
         // Ensure main_image is set
         if (!result.media.main_image && result.media.gallery.length > 0) {

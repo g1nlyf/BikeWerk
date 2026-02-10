@@ -438,6 +438,21 @@ class BuycycleCollector {
         return page.evaluate(() => {
             const details = {};
             const clean = (t) => t ? t.trim().replace(/\s+/g, ' ') : '';
+            const parsePrice = (value) => {
+                if (!value) return null;
+                const text = String(value).replace(/[^\d,.\-]/g, '').trim();
+                if (!text) return null;
+                const normalized = text.replace(/\./g, '').replace(',', '.');
+                const parsed = Number.parseFloat(normalized);
+                return Number.isFinite(parsed) ? Math.round(parsed) : null;
+            };
+
+            // Expand hidden bike details if the page renders a collapsed table.
+            const expandToggle = Array.from(document.querySelectorAll('button, a, span, div'))
+                .find((el) => /details\s*einblenden|show details|mehr details|details anzeigen/i.test((el.textContent || '').trim()));
+            if (expandToggle && typeof expandToggle.click === 'function') {
+                try { expandToggle.click(); } catch (_) {}
+            }
 
             // STRATEGY: JSON-LD (Schema.org) - Priority 1
             const scripts = document.querySelectorAll('script[type="application/ld+json"]');
@@ -456,6 +471,12 @@ class BuycycleCollector {
                             const offer = Array.isArray(product.offers) ? product.offers[0] : product.offers;
                             details.price = parseFloat(offer.price);
                             details.currency = offer.priceCurrency;
+                            const oldPrice = parsePrice(
+                                offer.highPrice ||
+                                offer.priceSpecification?.highPrice ||
+                                offer.priceSpecification?.price
+                            );
+                            if (oldPrice && details.price && oldPrice > details.price) details.originalPrice = oldPrice;
                         }
                     }
                 } catch (e) {}
@@ -500,6 +521,40 @@ class BuycycleCollector {
                                 }
                             });
                         }
+
+                        // Parse compacted table text fallback:
+                        // "GabelRockShox ... Gabelmaterialaluminum ... KassetteSRAM ..."
+                        const markerDefs = [
+                            ['Sattelstütze', 'sattelst(?:ü|u)tze'],
+                            ['Gabelmaterial', 'gabelmaterial'],
+                            ['Laufräder', 'laufr(?:ä|a)der'],
+                            ['Schaltwerk', 'schaltwerk'],
+                            ['Dämpfer', 'd(?:ä|a)mpfer'],
+                            ['Bremsen', 'bremsen'],
+                            ['Kassette', 'kassette'],
+                            ['Pedale', 'pedale'],
+                            ['Reifen', 'reifen'],
+                            ['Lenker', 'lenker'],
+                            ['Sattel', 'sattel'],
+                            ['Kurbel', 'kurbel'],
+                            ['Gabel', 'gabel']
+                        ];
+                        const markerPattern = markerDefs.map(([, pattern]) => `(?:${pattern})`).join('|');
+                        const raw = details.components.raw_text || '';
+                        if (raw) {
+                            const rowRegex = new RegExp(`(${markerPattern})\\s*:?\\s*([\\s\\S]*?)(?=(?:${markerPattern})\\s*:?|$)`, 'gi');
+                            let rowMatch;
+                            while ((rowMatch = rowRegex.exec(raw)) !== null) {
+                                const rawKey = clean(rowMatch[1]);
+                                const rawValue = clean(rowMatch[2]);
+                                if (!rawKey || !rawValue) continue;
+                                const marker = markerDefs.find(([, pattern]) => new RegExp(`^${pattern}$`, 'i').test(rawKey));
+                                const canonicalKey = marker ? marker[0] : rawKey;
+                                if (!details.components[canonicalKey]) {
+                                    details.components[canonicalKey] = rawValue;
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -522,11 +577,41 @@ class BuycycleCollector {
                             const label = clean(spans[0].textContent).replace(':', '');
                             const val = clean(spans[1].textContent);
                             details.general[label] = val;
+                        } else {
+                            const text = clean(chip.textContent);
+                            const parts = text.split(':');
+                            if (parts.length >= 2) {
+                                const label = clean(parts.shift());
+                                const val = clean(parts.join(':'));
+                                if (label && val) details.general[label] = val;
+                            }
                         }
                     });
                 }
             }
+            // 2.1 Current/Original price from DOM card (fallback if JSON-LD missed old price)
+            if (!details.price || !details.originalPrice) {
+                const hasPriceToken = (text) => {
+                    const value = String(text || '');
+                    return /(?:€|eur)\s*\d|\d[\d.,\s]*\s*(?:€|eur)/i.test(value);
+                };
 
+                const strikeEl = Array.from(document.querySelectorAll('s, del, .line-through, [style*="line-through"]'))
+                    .find((el) => hasPriceToken(el.textContent || ''));
+                if (strikeEl) {
+                    const strikePrice = parsePrice(strikeEl.textContent);
+                    if (strikePrice) details.originalPrice = strikePrice;
+                }
+
+                if (!details.price) {
+                    const priceEl = Array.from(document.querySelectorAll('h1, h2, h3, p, span, div'))
+                        .find((el) => hasPriceToken(el.textContent || '') && !(el.closest('s, del') || el.classList.contains('line-through')));
+                    if (priceEl) {
+                        const parsedPrice = parsePrice(priceEl.textContent);
+                        if (parsedPrice) details.price = parsedPrice;
+                    }
+                }
+            }
             // 3. Verkäuferbeschreibung (Full Text)
             // If JSON-LD description is short or missing, try to get the full one
             const descHeader = headings.find(h => h.textContent.includes('Verkäuferbeschreibung') || h.textContent.includes('Seller description'));
@@ -580,11 +665,54 @@ class BuycycleCollector {
             // 5. Next.js App Router Data Extraction (self.__next_f)
             // Critical for bikes where __NEXT_DATA__ is missing or DOM is partial
             const nextFData = window.self?.__next_f;
-            if (nextFData && Array.isArray(nextFData)) {
+            const streamChunks = [];
+            if (Array.isArray(nextFData)) {
+                streamChunks.push(nextFData.map(item => item && item[1] ? item[1] : '').join(''));
+            }
+            const inlineScripts = Array.from(document.querySelectorAll('script'))
+                .map((script) => script.textContent || '')
+                .filter(Boolean)
+                .join('\n');
+            if (inlineScripts) streamChunks.push(inlineScripts);
+            const stream = streamChunks.join('\n');
+            const escapeRegex = (value) => String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const decodeStreamValue = (value) => clean(
+                String(value || '')
+                    .replace(/\\n/g, ' ')
+                    .replace(/\\"/g, '"')
+                    .replace(/\\u00a0/gi, ' ')
+            );
+            const normalizeMarketComparisonValue = (rawRange, rawText = '') => {
+                const normalized = clean(`${rawRange || ''} ${rawText || ''}`)
+                    .toLowerCase()
+                    .replace(/\s+/g, ' ')
+                    .trim();
+                if (!normalized) return null;
+                if (/no[\s_-]?rating|keine\s+bewertung|kein\s+rating/.test(normalized)) return 'no_rating';
+                if (/excellent|great|sehr\s+gut/.test(normalized)) return 'great';
+                if (/good|guter\s+preis/.test(normalized)) return 'good';
+                if (/fair/.test(normalized)) return 'fair';
+                if (/high|over|zu\s+teuer|expensive/.test(normalized)) return 'high';
+                if (/low|under|g(?:ü|u)nstig|cheap/.test(normalized)) return 'low';
+                return null;
+            };
+            const readStreamLabeledValue = (sourceText, labels = []) => {
+                if (!sourceText || !labels.length) return null;
+                for (const label of labels) {
+                    const escaped = escapeRegex(label);
+                    const patterns = [
+                        new RegExp(`"key"\\s*:\\s*"${escaped}"[\\s\\S]{0,220}?"value"\\s*:\\s*"([^"]{1,600})"`, 'i'),
+                        new RegExp(`\\\\"key\\\\"\\s*:\\s*\\\\"${escaped}\\\\"[\\s\\S]{0,280}?\\\\"value\\\\"\\s*:\\s*\\\\"([^\\\\"]{1,600})\\\\"`, 'i')
+                    ];
+                    for (const pattern of patterns) {
+                        const match = sourceText.match(pattern);
+                        if (match && match[1]) return decodeStreamValue(match[1]);
+                    }
+                }
+                return null;
+            };
+            if (stream) {
                 try {
-                    // Flatten the stream
-                    const stream = nextFData.map(item => item[1]).join('');
-                    
                     // Regex extraction for Description
                     // Pattern: "description":{"key":"Informationen vom Verkäufer","value":"..."
                     const descMatch = stream.match(/"description":\{"key":"[^"]+","value":"(.*?)"/);
@@ -596,37 +724,41 @@ class BuycycleCollector {
                          }
                     }
 
-                    // Regex extraction for Attributes (Components)
-                    // Pattern: "attributes":[{"key":"year","value":"2022"...
-                    const attrMatch = stream.match(/"attributes":(\[\{.*?\}\])/);
-                    if (attrMatch && attrMatch[1]) {
-                        try {
-                            // Need to clean up the JSON string carefully as it might be cut off or contain escaped chars
-                            // The match captures strictly the array [...]
-                            const attrJson = JSON.parse(attrMatch[1].replace(/\\"/g, '"')); // Simple unescape might fail if complex
-                            
-                            // Better approach: Parse the attributes manually or robustly
-                            // Or use the captured string if valid JSON
-                            // Let's rely on a simpler regex to extract key-values from the stream fragment
-                            
-                            // Re-scan the stream for individual attributes
-                            const attrRegex = /{"key":"(.*?)","value":"(.*?)"(?:,"url":.*?)?}/g;
-                            let match;
-                            while ((match = attrRegex.exec(stream)) !== null) {
-                                const key = match[1];
-                                const val = match[2];
-                                if (key && val) {
-                                    details.components = details.components || {};
-                                    // Normalize keys: component_name -> Groupset, etc.
-                                    if (key === 'component_name') details.components['Groupset'] = val;
-                                    else if (key === 'frame_material_name') details.components['Frame Material'] = val;
-                                    else if (key === 'brake_type_name') details.components['Brakes'] = val;
-                                    else details.components[key] = val;
-                                }
+                    // Regex extraction for attributes/components from stream.
+                    // Works for both plain JSON and escaped chunks from App Router payload.
+                    const attrRegexes = [
+                        /{"key":"(.*?)","value":"(.*?)"[^}]*}/g,
+                        /\\"key\\"\s*:\s*\\"(.*?)\\"\s*,\s*\\"value\\"\s*:\s*\\"(.*?)\\"[^}]*\}/g
+                    ];
+                    for (const attrRegex of attrRegexes) {
+                        let match;
+                        while ((match = attrRegex.exec(stream)) !== null) {
+                            const key = match[1];
+                            const val = decodeStreamValue(match[2] || '');
+                            if (key && val) {
+                                details.components = details.components || {};
+                                if (key === 'component_name') details.components['Groupset'] = val;
+                                else if (key === 'frame_material_name') details.components['Frame Material'] = val;
+                                else if (key === 'brake_type_name') details.components['Brakes'] = val;
+                                else details.components[key] = val;
                             }
-                        } catch (e) {
-                            // Regex fallback
                         }
+                    }
+
+                    // Explicit key/value extraction to handle escaped stream chunks with extra fields.
+                    details.components = details.components || {};
+                    const streamComponentMap = [
+                        { key: 'Kassette', labels: ['Kassette', 'Cassette'] },
+                        { key: 'Reifen', labels: ['Reifen', 'Tires', 'Tire'] },
+                        { key: 'Bremsen', labels: ['Bremsen', 'Brakes'] },
+                        { key: 'Schaltwerk', labels: ['Schaltwerk', 'Rear derailleur'] },
+                        { key: 'Gabel', labels: ['Gabel', 'Fork'] },
+                        { key: 'Dämpfer', labels: ['Dämpfer', 'Daempfer', 'Shock', 'Damper'] }
+                    ];
+                    for (const entry of streamComponentMap) {
+                        if (details.components[entry.key]) continue;
+                        const value = readStreamLabeledValue(stream, entry.labels);
+                        if (value) details.components[entry.key] = value;
                     }
                     
                     // Also check for "general_information_all"
@@ -642,12 +774,99 @@ class BuycycleCollector {
                                  details.components = details.components || {};
                                  details.components[key] = val;
                              }
-                         }
+                          }
+                    }
+
+                    // Seller metadata from stream (contains stable machine values).
+                    details.seller = details.seller || {};
+                    const readStreamValue = (patterns) => {
+                        for (const pattern of patterns) {
+                            const match = stream.match(pattern);
+                            if (match && match[1] !== undefined) return match[1];
+                        }
+                        return null;
+                    };
+                    const sellerNameFromStream = readStreamValue([
+                        /"seller":\{[\s\S]{0,400}?"name":"([^"]+)"/,
+                        /\\"seller\\":\{[\s\S]{0,400}?\\"name\\":\\"([^\\"]+)\\"/
+                    ]);
+                    const avgRatingRaw = readStreamValue([
+                        /"avg_rating":(null|[0-9]+(?:\.[0-9]+)?)/,
+                        /\\"avg_rating\\":(null|[0-9]+(?:\.[0-9]+)?)/
+                    ]);
+                    const reviewsRaw = readStreamValue([
+                        /"user_reviews_count":(null|[0-9]+)/,
+                        /\\"user_reviews_count\\":(null|[0-9]+)/
+                    ]);
+                    const lastActiveFormatted = readStreamValue([
+                        /"last_active_at_formatted":"([^"]+)"/,
+                        /\\"last_active_at_formatted\\":\\"([^\\"]+)\\"/
+                    ]);
+
+                    if (sellerNameFromStream && !details.seller.name) details.seller.name = sellerNameFromStream;
+                    if (avgRatingRaw && avgRatingRaw !== 'null') {
+                        const rating = Number(avgRatingRaw);
+                        if (Number.isFinite(rating)) details.seller.rating = rating;
+                    }
+                    if (reviewsRaw && reviewsRaw !== 'null') {
+                        const reviews = Number(reviewsRaw);
+                        if (Number.isFinite(reviews)) details.seller.reviews_count = reviews;
+                    }
+                    if (lastActiveFormatted && !details.seller.last_active) {
+                        details.seller.last_active = clean(lastActiveFormatted).replace(/^(Zuletzt aktiv:|Last active:)\s*/i, '');
+                    }
+
+                    // Buycycle price assessment badge (e.g., "Guter Preis").
+                    const badgeRange = readStreamValue([
+                        /"price_badge":\{[\s\S]{0,500}?"range_value":"([^"]+)"/,
+                        /\\"price_badge\\":\{[\s\S]{0,500}?\\"range_value\\":\\"([^\\"]+)\\"/
+                    ]);
+                    const badgeText = readStreamValue([
+                        /"price_badge":\{[\s\S]{0,500}?"text_value":"([^"]+)"/,
+                        /\\"price_badge\\":\{[\s\S]{0,500}?\\"text_value\\":\\"([^\\"]+)\\"/
+                    ]);
+                    const badgeDescription = readStreamValue([
+                        /"price_badge":\{[\s\S]{0,700}?"description":"([^"]+)"/,
+                        /\\"price_badge\\":\{[\s\S]{0,700}?\\"description\\":\\"([^\\"]+)\\"/
+                    ]);
+                    const normalizedBadgeRange = normalizeMarketComparisonValue(badgeRange, `${badgeText || ''} ${badgeDescription || ''}`);
+                    if (normalizedBadgeRange) details.priceBadgeRange = normalizedBadgeRange;
+                    else if (badgeRange) details.priceBadgeRange = clean(badgeRange).toLowerCase();
+                    if (badgeText) details.priceBadgeText = decodeStreamValue(badgeText);
+                    if (badgeDescription) details.priceBadgeDescription = decodeStreamValue(badgeDescription);
+                    if (!details.marketComparison) {
+                        details.marketComparison = normalizeMarketComparisonValue(details.priceBadgeRange, details.priceBadgeText || details.priceBadgeDescription || '');
+                    }
+
+                    const inDemandShort = readStreamValue([
+                        /"key":"in_high_demand_short","value":"([^"]+)"/,
+                        /\\"key\\":\\"in_high_demand_short\\",\\"value\\":\\"([^\\"]+)\\"/
+                    ]);
+                    if (inDemandShort && !details.inHighDemandShort) {
+                        details.inHighDemandShort = inDemandShort;
                     }
 
                 } catch (e) {
                     console.error('Next.js App Router extraction failed:', e);
                 }
+            }
+
+            // DOM fallback for price badge on pages where stream is incomplete.
+            if (!details.priceBadgeText || !details.priceBadgeRange) {
+                const badgeCandidates = Array.from(document.querySelectorAll('span, p, div'))
+                    .map((el) => clean(el.textContent || ''))
+                    .filter((text) => text.length >= 6 && text.length <= 120 && /(preis|price)/i.test(text));
+                const badgeFromDom = badgeCandidates.find((text) =>
+                    /(guter|sehr guter|fairer|zu teurer?|good|great|fair|price)\s+(preis|price)/i.test(text)
+                );
+                if (badgeFromDom && !details.priceBadgeText) details.priceBadgeText = badgeFromDom;
+                if (!details.priceBadgeRange) {
+                    const domRange = normalizeMarketComparisonValue('', badgeFromDom || '');
+                    if (domRange) details.priceBadgeRange = domRange;
+                }
+            }
+            if (!details.marketComparison) {
+                details.marketComparison = normalizeMarketComparisonValue(details.priceBadgeRange, details.priceBadgeText || details.priceBadgeDescription || '');
             }
 
             // 6. User-Specified Real Data Extraction (Override Generic)
@@ -689,6 +908,79 @@ class BuycycleCollector {
             if (locationEl) {
                  details.seller.location = clean(locationEl.textContent);
             }
+
+            // Platform social proof (Trustpilot reviews count shown in card footer).
+            const bodyText = clean(document.body.innerText || '');
+            const trustpilotMatch =
+                bodyText.match(/(?:sehen sie unsere|see our)\s*([0-9][0-9.,\s]{2,})\s*(?:bewertungen|reviews?)\s*auf\s*trustpilot/i) ||
+                bodyText.match(/([0-9][0-9.,\s]{2,})\s*(?:bewertungen|reviews?)\s*auf\s*trustpilot/i);
+            if (trustpilotMatch && trustpilotMatch[1]) {
+                const parsedCount = Number.parseInt(String(trustpilotMatch[1]).replace(/[^\d]/g, ''), 10);
+                if (Number.isFinite(parsedCount) && parsedCount > 0) {
+                    details.platformReviewsCount = parsedCount;
+                    details.platformReviewsSource = 'Trustpilot';
+                }
+            } else {
+                const trustpilotNode = Array.from(document.querySelectorAll('a, p, div, span'))
+                    .find((el) => /trustpilot/i.test(el.textContent || ''));
+                if (trustpilotNode) {
+                    const context = clean((trustpilotNode.closest('div')?.textContent || trustpilotNode.textContent || ''));
+                    const fallbackMatch = context.match(/([0-9][0-9.,\s]{2,})\s*(?:bewertungen|reviews?)/i);
+                    if (fallbackMatch && fallbackMatch[1]) {
+                        const parsedCount = Number.parseInt(String(fallbackMatch[1]).replace(/[^\d]/g, ''), 10);
+                        if (Number.isFinite(parsedCount) && parsedCount > 0) {
+                            details.platformReviewsCount = parsedCount;
+                            details.platformReviewsSource = 'Trustpilot';
+                        }
+                    }
+                }
+            }
+            if (!details.platformReviewsSource) {
+                const hasTrustpilotWidget = Boolean(
+                    document.querySelector('.trustpilot-widget') ||
+                    document.querySelector('iframe[src*="trustpilot"]') ||
+                    document.querySelector('script[src*="trustpilot"]')
+                );
+                if (hasTrustpilotWidget) details.platformReviewsSource = 'Trustpilot';
+            }
+            if (!details.platformReviewsSource) {
+                // Buycycle consistently uses Trustpilot as a platform-level social proof source.
+                details.platformReviewsSource = 'Trustpilot';
+            }
+
+            // 7. Normalize high-value fields for downstream mapping.
+            const general = details.general || {};
+            const normalizeKey = (value) => String(value || '')
+                .toLowerCase()
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .replace(/\s+/g, ' ')
+                .trim();
+            const generalMap = Object.entries(general).reduce((acc, [key, value]) => {
+                acc[normalizeKey(key)] = value;
+                return acc;
+            }, {});
+            const readGeneral = (...keys) => {
+                for (const key of keys) {
+                    const found = generalMap[normalizeKey(key)];
+                    if (found) return found;
+                }
+                return null;
+            };
+
+            details.frameSize = details.frameSize || readGeneral('Rahmengröße', 'Rahmengroesse', 'frame size');
+            details.year = details.year || parseInt(readGeneral('Jahr', 'year') || '', 10) || null;
+            details.wheelSize = details.wheelSize || readGeneral('Laufradgröße', 'Laufradgroesse', 'wheel size');
+            details.frameMaterial = details.frameMaterial || readGeneral('Rahmenmaterial', 'frame material');
+            details.color = details.color || readGeneral('Farbe', 'color');
+            details.brakesType = details.brakesType || readGeneral('Bremstyp', 'brake type');
+            details.condition = details.condition || readGeneral('Zustand', 'condition');
+            details.location = details.location || details.seller.location || null;
+            details.sellerLastActive = details.seller.last_active || null;
+            details.sellerName = details.seller.name || null;
+            details.sellerRating = Number.isFinite(Number(details.seller.rating)) ? Number(details.seller.rating) : null;
+            details.sellerReviewsCount = Number.isFinite(Number(details.seller.reviews_count)) ? Number(details.seller.reviews_count) : null;
+            details.sellerRatingVisual = details.sellerRating !== null ? `${details.sellerRating}/5` : null;
 
             return details;
         });
@@ -756,3 +1048,4 @@ class BuycycleCollector {
 
 module.exports = new BuycycleCollector();
 module.exports.BuycycleCollector = BuycycleCollector;
+

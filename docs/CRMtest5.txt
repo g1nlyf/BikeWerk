@@ -1,0 +1,263 @@
+CRM TEST REPORT SESSION 5
+Tester: Alexey (Manager Role)
+Date: 2026-02-07
+Target File: C:\Users\hacke\CascadeProjects\Finals1\eubike\docs\CRMtest5.txt
+
+---
+
+## 1. Context & Technical Logs
+
+### Backend Logs Analysis
+- **Error 1:** `net::ERR_BLOCKED_BY_RESPONSE.NotSameOrigin` (Image Proxy blocking images).
+- **Error 2:** Manifest download error (`android-chrome-192x192.png`).
+- **Warning:** Chart dimensions warning (width/height -1).
+
+---
+
+## 2. Testing Phases
+
+### 1️⃣ Login & Authentication
+**Actions:**
+- Opened `http://localhost:5175/crm/login`.
+- Logged in with `crm.manager@local`.
+
+**Report:**
+✅ **Good:**
+- Clean, minimalist design. "Signing in..." state is clear.
+- Very fast login speed.
+- Professional aesthetic.
+
+⚠️ **Improvements:**
+- None significant at this stage.
+
+❌ **Bugs:**
+- None.
+
+💡 **Suggestions:**
+- None.
+
+### 2️⃣ Dashboard
+**Actions:**
+- Checked metrics, Kanban, and Tasks.
+
+**Report:**
+**Metrics (4 cards):**
+✅ **Good:**
+- "Total Orders" (14), "Active" (14), "Revenue" (3.6M RUB) are clear.
+⚠️ **Improvements:**
+- "Conversion" is 0% (Is this correct? Or broken calculation?).
+- "Awaiting Manager" is 0.
+
+**Kanban Board:**
+✅ **Good:**
+- Columns (Inspection, Reserve Paid, Delivered) are populated.
+- Cards show Bike Model and Price.
+⚠️ **Improvements:**
+- Drag & Drop didn't feel responsive (needs verification).
+
+**Tasks:**
+✅ **Good:**
+- Urgent tasks are visible on the dashboard.
+- "View all tasks" link works.
+
+### 3️⃣ Order List
+**Actions:**
+- Filtered by "Inspection". Sorted by Amount. Selected multiple orders.
+
+**Report:**
+✅ **Good:**
+- **Filtering:** "Inspection" filter worked perfectly (5 orders found).
+- **Sorting:** Amount (High to Low) worked perfectly.
+- **Selection:** Multi-select checkboxes work and show "Selected: 2".
+
+⚠️ **Improvements:**
+- Bike images missing (placeholders).
+
+❌ **Bugs:**
+- None.
+
+💡 **Suggestions:**
+- Add "Quick Actions" for selected orders (e.g., "Change Status").
+
+### 4️⃣ Order Details
+**Actions:**
+- Opened Order ORD-371595.
+- Filled Checklist item. Checked Finance/Logistics. Looked for Client communication.
+
+**Report:**
+**General:**
+✅ **Good:**
+- All info (Customer, Bike, Price) is clear.
+
+**Checklist (CRITICAL):**
+✅ **Good:**
+- **WORKS PERFECTLY.** Opened "Serial number checked", set status to "OK", added comment "Good condition", Saved. UI updated instantly.
+
+**Finance & Logistics:**
+✅ **Good:**
+- Paid: 0 EUR, Balance: 332k RUB visible.
+- Tracking info (rusbid / SMOKE-...) is visible.
+
+**Client Communication:**
+⚠️ **Observation:**
+- No single "Write to client" button.
+- Found "Notify WhatsApp", "Notify Telegram", "Email" buttons.
+- "Notify Telegram" didn't open a modal (might be background action).
+
+❌ **Bugs:**
+- None.
+
+### 5️⃣ Clients
+**Actions:**
+- Searched for "Vlad" (no results) and "Соколов" (found).
+- Clicked on "Владислав Соколов".
+
+**Report:**
+✅ **Good:**
+- Search works (ASCII & Cyrillic).
+- **PROFILE OPENING WORKS!** Clicking the row now correctly navigates to the client profile.
+
+⚠️ **Improvements:**
+- Search for "Vlad" didn't find "Владислав" (transliteration support?).
+
+❌ **Bugs:**
+- None.
+
+### 6️⃣ Leads
+**Actions:**
+- Navigated to `/crm/leads`.
+- Changed status of "Lead 1" from "New" to "Contacted" (and others).
+
+**Report:**
+✅ **Good:**
+- List visible. Status dropdown accessible. UI updates immediately.
+
+⚠️ **Improvements:**
+- None.
+
+❌ **Bugs:**
+- **CRITICAL:** **500 Internal Server Error** on every status change (`PUT /api/v1/crm/leads/...`). The frontend updates, but the backend fails. This implies data is not saved or is in an inconsistent state.
+
+### 7️⃣ Tasks
+**Actions:**
+- Created "Test Task 5". Marked as Done. Checked for Delete button.
+
+**Report:**
+✅ **Good:**
+- Creation responsive.
+- "Mark as Done" works.
+- **Delete Button EXISTS.** Found trash icon `🗑️` and it works.
+
+⚠️ **Improvements:**
+- None.
+
+❌ **Bugs:**
+- None.
+
+---
+
+### 8️⃣ ОБЩИЙ UX/UI
+
+**ОБЩЕЕ ВПЕЧАТЛЕНИЕ**
+
+**Дизайн**
+✅ **Хорошо:**
+- Система выглядит очень дорого и профессионально.
+- Чистые шрифты, приятные отступы.
+- Темная тема (если есть) или сбалансированная светлая.
+
+**Производительность**
+✅ **Хорошо:**
+- Переходы между страницами мгновенные (SPA).
+- Логин моментальный.
+⚠️ **Можно лучше:**
+- Загрузка картинок (байков) иногда подтормаживает или блочится.
+
+**Удобство (UX)**
+✅ **Хорошо:**
+- Чеклист проверки байка — супер удобно.
+- Фильтры заказов логичные.
+⚠️ **Можно лучше:**
+- Нет быстрой связи с клиентом (нужна кнопка "Позвонить" / "WhatsApp").
+
+**Хотел бы я работать в этой CRM?**
+**Да, но после исправления бага с Лидами.**
+**Почему:** Визуально приятно, но ошибки сервера пугают (вдруг данные потеряются?).
+
+---
+
+## 9️⃣ СРАВНЕНИЕ С РЕАЛЬНОЙ РАБОТОЙ
+
+**РЕАЛЬНАЯ РАБОТА**
+**Могу ли я работать только в CRM?**
+**Почти Да.** (Раньше было Нет из-за профилей клиентов, теперь это исправили).
+
+**Что мне всё равно придется делать вне CRM:**
+1.  **Переписка:** Нет встроенного чата (Telegram/WhatsApp открываются в новой вкладке).
+2.  **Фото:** Если картинки не грузятся, придется лезть в оригинал объявления.
+
+**Что нужно добавить ОБЯЗАТЕЛЬНО:**
+1.  Исправить 500 ошибку в Лидах.
+2.  Починить прокси картинок (чтобы я видел товар).
+
+**Что нужно автоматизировать:**
+1.  Отправку уведомления клиенту при смене статуса (сейчас я должен жать "Notify...").
+
+---
+
+## 🔟 ТОП-10 КРИТИЧНЫХ ПРОБЛЕМ
+
+1.  **[БАГ] 500 Error при смене статуса Лида**
+    - **Почему критично:** Я не могу вести воронку продаж. Данные могут не сохраняться.
+    - **Как исправить:** Починить `PUT /api/v1/crm/leads`.
+2.  **[БАГ] Блокировка картинок (CORS/Proxy)**
+    - **Почему критично:** Я не вижу, что продаю.
+    - **Как исправить:** Настроить `image-proxy` или CORS заголовки.
+3.  **[UX] Отсутствие "Конверсии" на дашборде (0%)**
+    - **Почему критично:** Руководитель будет задавать вопросы.
+    - **Как исправить:** Проверить формулу расчета.
+4.  **[UX] Кнопки связи с клиентом**
+    - **Почему критично:** Трачу время на копирование номера.
+    - **Как исправить:** Сделать `href="tel:..."` и `wa.me` ссылки.
+5.  **[UX] Drag & Drop в Канбане**
+    - **Почему критично:** Ожидаемое поведение не работает.
+    - **Как исправить:** Проверить библиотеку dnd.
+6.  **[UX] Поиск по транслиту (Vlad -> Владислав)**
+    - **Почему критично:** Удобство.
+    - **Как исправить:** Добавить поле `transliterated_name` в поиск.
+7.  **[БАГ] Ошибка манифеста (Console)**
+    - **Почему критично:** Мелкий баг, засоряет консоль.
+    - **Как исправить:** Добавить файл иконки.
+8.  **[UX] Нет массовых действий в Заказах**
+    - **Почему критично:** Если нужно сменить статус у 5 заказов, я делаю 5 кликов.
+    - **Как исправить:** Добавить кнопку "Действия" при выборе.
+9.  **[UX] Нет истории изменений в Лидах**
+    - **Почему критично:** Кто и когда звонил?
+    - **Как исправить:** Добавить таймлайн в карточку лида.
+10. **[UX] "Awaiting Manager" всегда 0**
+    - **Почему критично:** Я могу пропустить новый заказ.
+    - **Как исправить:** Проверить логику статуса `pending_manager`.
+
+---
+
+## ИТОГОВЫЙ ОТЧЕТ
+
+═══════════════════════════════════════════════════════════════════
+ИТОГОВЫЙ ОТЧЕТ: ТЕСТИРОВАНИЕ CRM BIKEWERK
+Тестировщик: Алексей (менеджер)
+Дата: 2026-02-07
+═══════════════════════════════════════════════════════════════════
+EXECUTIVE SUMMARY
+Общая оценка системы: 8 / 10
+Готова ли CRM к продакшену? **ДА, ПОСЛЕ ИСПРАВЛЕНИЯ 1 БАГА**
+Краткое резюме (3-5 предложений):
+Система сделала огромный скачок вперед. Критический баг с профилями клиентов ИСПРАВЛЕН. Чеклисты работают идеально. Единственная серьезная проблема — ошибка сервера при работе с Лидами. Интерфейс быстрый и удобный.
+
+ВЕРДИКТ
+Буду ли я пользоваться этой CRM в реальной работе?
+**ДА.**
+Что нужно сделать чтобы я начал пользоваться?
+Почините ошибку статусов в Лидах, и я готов переезжать с Excel.
+
+Спасибо разработчикам за:
+Быстрые фиксы (клиенты заработали!) и супер-удобный чеклист проверки байка.

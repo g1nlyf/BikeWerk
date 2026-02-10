@@ -10,7 +10,7 @@ const PRESERVE_IDS = [1001, 1002];
 
 // Resolve paths consistent with telegram-bot modules
 const projectRoot = path.resolve(__dirname, '..');
-const dbPath = path.join(projectRoot, '..', 'backend', 'Databases', 'eubike.db');
+const dbPath = path.join(projectRoot, '..', 'backend', 'database', 'eubike.db');
 const imageDir = path.resolve(projectRoot, '..', 'backend', 'public', 'images', 'bikes');
 
 function log(msg) {

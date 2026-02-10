@@ -49,8 +49,9 @@ export default function MagicTrackerPage() {
         if (token) {
             crmFrontApi.getOrderByToken(token)
                 .then(res => {
-                    if (res && !res.error) {
-                        setOrder(res)
+                    const payload = res?.order || res
+                    if (payload && !payload.error) {
+                        setOrder(payload as OrderData)
                     } else {
                         setError("Заказ не найден или ссылка устарела")
                     }

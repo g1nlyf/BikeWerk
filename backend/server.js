@@ -67,7 +67,7 @@ financialAgent.start();
 // const autoHunter = new AutoHunter(db);
 // autoHunter.start();
 
-// Start Hunter (Integrated - every 6 hours)
+// Start Hunter (Integrated - hourly)
 const HourlyHunter = require('./cron/hourly-hunter');
 const hourlyHunter = new HourlyHunter();
 const { recomputeAll } = require('./scripts/recompute-ranks.js');
@@ -95,8 +95,8 @@ cron.schedule('35 * * * *', async () => {
     scheduled: true,
     timezone: "Europe/Berlin"
 });
-console.log('✅ Hunter scheduled (every 6 hours at :05)');
-console.log('✅ Rank Recompute scheduled (every 6 hours at :35)');
+console.log('✅ Hunter scheduled (every hour at :05)');
+console.log('✅ Rank Recompute scheduled (every hour at :35)');
 
 const bikesDB = new BikesDatabase();
 try {
@@ -111,9 +111,12 @@ const chatGeminiClient = {
 const aiDispatcher = new AIDispatcher(bikesDB, chatGeminiClient);
 const recommendationService = new RecommendationService(db);
 
-// Initialize Supabase client
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+// Initialize Supabase client (requires env vars; never ship hardcoded keys).
+const supabaseUrl = process.env.SUPABASE_URL || null;
+const supabaseKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_KEY ||
+    null;
 const supabase = (supabaseUrl && supabaseKey) ? createClient(supabaseUrl, supabaseKey) : null;
 
 // CRM integration
@@ -128,8 +131,8 @@ const { CRMApi, initializeCRM } = require('./scripts/crm-api.js');
 // But _request method checks: if (this.db) { LOCAL MODE }
 // This means if 'db' is passed, it ALWAYS uses local mode.
 // We must NOT pass 'db' if we want to use Supabase.
-const useSupabase = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY;
-const crmApi = initializeCRM(undefined, undefined, useSupabase ? null : db);
+const useSupabase = Boolean(supabaseUrl && supabaseKey);
+const crmApi = initializeCRM(supabaseUrl, supabaseKey, useSupabase ? null : db);
 const PUBLIC_URL = process.env.PUBLIC_URL || 'http://localhost:5175';
 
 const app = express();
@@ -160,7 +163,7 @@ const ALLOWED_ORIGINS = [
     'http://localhost:3000'
 ];
 
-app.use(cors({
+const corsOptions = {
     origin: (origin, callback) => {
         // Allow requests with no origin (mobile apps, Postman, curl)
         if (!origin) return callback(null, true);
@@ -172,10 +175,12 @@ app.use(cors({
         }
     },
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'x-admin-secret', 'x-webhook-secret', 'x-telegram-init-data']
-}));
-app.options('*', cors()); // Enable pre-flight for all routes
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions)); // Enable pre-flight for all routes with same options
 
 // Security headers
 app.use(helmet({
@@ -254,27 +259,44 @@ const optionalAuth = (req, res, next) => {
     });
 };
 
+// Role guard for CRM manager/admin endpoints
+const requireManagerRole = (req, res, next) => {
+    const role = String(req.user?.role || '').toLowerCase();
+    if (!role) {
+        return res.status(401).json({ error: 'Authentication required' });
+    }
+    if (role !== 'manager' && role !== 'admin') {
+        return res.status(403).json({ error: 'Manager or admin role required' });
+    }
+    next();
+};
+
 // ========================================
 // 🔐 AUTH ROUTES
 // ========================================
 
 app.post('/api/auth/register', authLimiter, async (req, res) => {
     try {
-        const { name, email, password } = req.body;
-        if (!name || !email || !password) return res.status(400).json({ error: 'Missing fields' });
+        const { name, email, phone, password } = req.body;
+        if (!name || !password || (!email && !phone)) return res.status(400).json({ error: 'Missing fields' });
 
-        // Check existing
-        const existing = await db.query('SELECT id FROM users WHERE email = ?', [email]);
-        if (existing.length > 0) return res.status(400).json({ error: 'Email already exists' });
+        const emailNorm = email ? String(email).trim().toLowerCase() : null;
+        const phoneNorm = phone ? String(phone).trim() : null;
+
+        // Check existing by email or phone
+        let existing = [];
+        if (emailNorm) existing = await db.query('SELECT id FROM users WHERE email = ?', [emailNorm]);
+        if (!existing.length && phoneNorm) existing = await db.query('SELECT id FROM users WHERE phone = ?', [phoneNorm]);
+        if (existing.length > 0) return res.status(400).json({ error: 'User already exists' });
 
         const hashedPassword = await bcrypt.hash(password, 10);
         const result = await db.query(
-            'INSERT INTO users (name, email, password) VALUES (?, ?, ?)',
-            [name, email, hashedPassword]
+            'INSERT INTO users (name, email, phone, password, must_change_password, must_set_email, temp_password) VALUES (?, ?, ?, ?, 0, ?, NULL)',
+            [name, emailNorm, phoneNorm, hashedPassword, emailNorm ? 0 : 1]
         );
 
-        const token = jwt.sign({ id: result.insertId, email, role: 'user' }, JWT_SECRET, { expiresIn: '7d' });
-        res.json({ success: true, token, user: { id: result.insertId, name, email, role: 'user' } });
+        const token = jwt.sign({ id: result.insertId, email: emailNorm, role: 'user' }, JWT_SECRET, { expiresIn: '7d' });
+        res.json({ success: true, token, user: { id: result.insertId, name, email: emailNorm, phone: phoneNorm, role: 'user', must_change_password: 0, must_set_email: emailNorm ? 0 : 1 } });
     } catch (e) {
         console.error('Register error:', e);
         res.status(500).json({ error: 'Internal server error' });
@@ -283,10 +305,11 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
 
 app.post('/api/auth/login', authLimiter, async (req, res) => {
     try {
-        const { email, password } = req.body;
-        if (!email || !password) return res.status(400).json({ error: 'Missing fields' });
+        const { email, phone, login, password } = req.body;
+        const loginValue = String(login || email || phone || '').trim();
+        if (!loginValue || !password) return res.status(400).json({ error: 'Missing fields' });
 
-        const users = await db.query('SELECT * FROM users WHERE email = ?', [email]);
+        const users = await db.query('SELECT * FROM users WHERE email = ? OR phone = ? LIMIT 1', [loginValue, loginValue]);
         const user = users[0];
 
         if (!user || !(await bcrypt.compare(password, user.password))) {
@@ -299,7 +322,7 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
         } catch (e) { }
 
         const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
-        res.json({ success: true, token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
+        res.json({ success: true, token, user: { id: user.id, name: user.name, email: user.email, phone: user.phone, role: user.role, must_change_password: user.must_change_password, must_set_email: user.must_set_email } });
     } catch (e) {
         console.error('Login error:', e);
         res.status(500).json({ error: 'Internal server error' });
@@ -646,6 +669,16 @@ app.post('/api/auth/password-reset/confirm', async (req, res) => {
 const bookingModule = require('./src/routes/v1/modules/booking');
 const bookingRoute = bookingModule.default || bookingModule;
 app.use('/api/v1/booking', bookingRoute);
+
+// Mount CRM Routes
+const crmModule = require('./src/routes/v1/modules/crm');
+const crmRoute = crmModule.default || crmModule;
+app.use('/api/v1/crm', crmRoute);
+
+// Orders API (public tracking + reserve)
+const ordersModule = require('./src/routes/v1/modules/orders');
+const ordersRoute = ordersModule.default || ordersModule;
+app.use('/api/v1/orders', ordersRoute);
 
 // --- Public Tracker API ---
 const supabaseService = require('./src/services/supabase');
@@ -1421,10 +1454,24 @@ app.post('/api/orders/:orderId/deposit-paid', adminAuth, async (req, res) => {
 
 // Middleware (Already configured above, removing duplicate/late CORS)
 // app.use(cors()); // REMOVED
-// Removed static serving of /images to force CDN usage
-// app.use('/images', (req, res, next) => { ... });
-
+// Safe static serving for locally cached legacy images used by CRM snapshot fallback.
 const PUBLIC_ROOT = path.resolve(__dirname, 'public');
+const LOCAL_IMAGES_ROOT = path.join(PUBLIC_ROOT, 'images');
+
+const staticImageOptions = {
+    dotfiles: 'ignore',
+    fallthrough: true,
+    index: false,
+    maxAge: '7d',
+    setHeaders: (res) => {
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+        res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+};
+
+app.use('/images', express.static(LOCAL_IMAGES_ROOT, staticImageOptions));
+app.use('/src/images', express.static(LOCAL_IMAGES_ROOT, staticImageOptions));
 const IMAGES_DIR = path.join(PUBLIC_ROOT, 'images', 'bikes');
 
 function normalizeImagePath(u) {
@@ -2132,7 +2179,7 @@ cron.schedule('0 * * * *', async () => {
 app.get('/api/auth/me', authenticateToken, async (req, res) => {
     try {
         const users = await db.query(
-            'SELECT id, name, email, role, created_at, last_login FROM users WHERE id = ?',
+            'SELECT id, name, email, phone, role, created_at, last_login, must_change_password, must_set_email FROM users WHERE id = ?',
             [req.user.id]
         );
 
@@ -2143,6 +2190,30 @@ app.get('/api/auth/me', authenticateToken, async (req, res) => {
         res.json({ success: true, user: users[0] });
     } catch (error) {
         console.error('Get user error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Complete profile (email + new password after auto-registration)
+app.post('/api/auth/complete-profile', authenticateToken, async (req, res) => {
+    try {
+        const { email, password } = req.body || {};
+        if (!email || typeof email !== 'string') return res.status(400).json({ error: 'Email required' });
+        if (!password || typeof password !== 'string' || password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 chars' });
+
+        const emailNorm = email.trim().toLowerCase();
+        const existing = await db.query('SELECT id FROM users WHERE email = ? AND id <> ?', [emailNorm, req.user.id]);
+        if (existing.length > 0) return res.status(400).json({ error: 'Email already in use' });
+
+        const hashed = await bcrypt.hash(password, 10);
+        await db.query('UPDATE users SET email = ?, password = ?, must_change_password = 0, must_set_email = 0, temp_password = NULL WHERE id = ?', [emailNorm, hashed, req.user.id]);
+
+        const users = await db.query('SELECT id, name, email, phone, role, must_change_password, must_set_email FROM users WHERE id = ?', [req.user.id]);
+        const user = users[0];
+        const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
+        res.json({ success: true, token, user });
+    } catch (error) {
+        console.error('complete-profile error:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -3160,6 +3231,2074 @@ app.post('/api/v1/crm/leads', optionalAuth, async (req, res) => {
     }
 });
 
+// NOTE: Supabase enforces lead statuses via `public.lead_status_enum`.
+// This set is used only for UI guidance; we avoid hard-rejecting unknown values here
+// because enum values can differ between environments. DB remains the source of truth.
+const KNOWN_LEAD_STATUSES = new Set([
+    'new',
+    'in_progress',
+    'contacted',
+    'qualified',
+    'converted',
+    'rejected'
+]);
+
+const KNOWN_ORDER_STATUSES = new Set([
+    'awaiting_payment',
+    'awaiting_deposit',
+    'deposit_paid',
+    'pending_manager',
+    'under_inspection',
+    'ready_for_shipment',
+    'in_transit',
+    'delivered',
+    'closed',
+    'cancelled',
+    'refunded',
+    'paid_out',
+    'full_paid'
+]);
+
+function isValidLeadId(input) {
+    const value = String(input || '').trim();
+    if (!value || value.length > 80) return false;
+    if (/^[0-9]+$/.test(value)) return true;
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) return true;
+    if (/^[a-z0-9_-]{6,80}$/i.test(value)) return true;
+    return false;
+}
+
+function isSupabaseConnectivityError(error) {
+    const text = `${error?.message || ''} ${error?.details || ''} ${error?.hint || ''}`.toLowerCase();
+    return text.includes('fetch failed')
+        || text.includes('network')
+        || text.includes('timeout')
+        || text.includes('timed out')
+        || text.includes('failed to fetch')
+        || text.includes('enotfound')
+        || text.includes('econnrefused')
+        || text.includes('getaddrinfo');
+}
+
+function isSupabaseEnumError(error, enumName) {
+    const text = `${error?.message || ''} ${error?.details || ''} ${error?.hint || ''}`.toLowerCase();
+    return text.includes('invalid input value for enum') && text.includes(String(enumName || '').toLowerCase());
+}
+
+function normalizeLeadStatus(input) {
+    if (input == null) return null;
+    const normalized = String(input).trim().toLowerCase();
+    if (!normalized || normalized.length > 50) return null;
+    return KNOWN_LEAD_STATUSES.has(normalized) ? normalized : null;
+}
+
+function normalizeOrderStatus(input) {
+    if (input == null) return null;
+    const normalized = String(input).trim().toLowerCase();
+    if (!normalized || normalized.length > 50) return null;
+    return KNOWN_ORDER_STATUSES.has(normalized) ? normalized : null;
+}
+
+function parseOrderSnapshotSafe(rawSnapshot) {
+    if (!rawSnapshot) return null;
+    if (typeof rawSnapshot === 'object') return rawSnapshot;
+    if (typeof rawSnapshot !== 'string') return null;
+    try {
+        return JSON.parse(rawSnapshot);
+    } catch {
+        return null;
+    }
+}
+
+function getOrderBikeNameFromSnapshot(orderRow) {
+    const snapshot = parseOrderSnapshotSafe(orderRow?.bike_snapshot);
+    if (!snapshot || typeof snapshot !== 'object') return null;
+    const title = snapshot.title || snapshot.name;
+    if (title) return String(title);
+    const composed = [snapshot.brand, snapshot.model].filter(Boolean).join(' ').trim();
+    return composed || null;
+}
+
+function getOrderTotalRubFromSnapshot(orderRow) {
+    const snapshot = parseOrderSnapshotSafe(orderRow?.bike_snapshot);
+    if (!snapshot || typeof snapshot !== 'object') return null;
+    const value = Number(snapshot?.financials?.total_price_rub || snapshot?.total_price_rub || 0);
+    return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function getOrderSnapshotContact(orderRow) {
+    const snapshot = parseOrderSnapshotSafe(orderRow?.bike_snapshot) || {};
+    const bookingMeta = snapshot?.booking_meta || {};
+    const bookingForm = bookingMeta?.booking_form || {};
+    const contactValue =
+        bookingForm?.contact_value ||
+        bookingMeta?.contact_value ||
+        snapshot?.contact_value ||
+        null;
+    const contactMethod =
+        bookingForm?.contact_method ||
+        bookingMeta?.contact_method ||
+        snapshot?.contact_method ||
+        null;
+    const city =
+        bookingForm?.city ||
+        bookingMeta?.city ||
+        snapshot?.city ||
+        snapshot?.destination_city ||
+        null;
+    return {
+        contact_value: contactValue,
+        contact_method: contactMethod,
+        city
+    };
+}
+
+function mergeOrderCustomerWithSnapshot(customer, orderRow) {
+    const snapshotContact = getOrderSnapshotContact(orderRow);
+    const payload = customer ? { ...customer } : {};
+    payload.full_name = payload.full_name || payload.name || null;
+    payload.email = payload.email || null;
+    payload.phone = payload.phone || null;
+    payload.contact_value = payload.contact_value || snapshotContact.contact_value || null;
+    payload.preferred_channel = payload.preferred_channel || snapshotContact.contact_method || null;
+    payload.city = payload.city || payload.country || snapshotContact.city || null;
+    return payload;
+}
+
+async function handleLeadUpdate(req, res, leadIdParam) {
+    const leadId = String(leadIdParam || '').trim();
+    if (!isValidLeadId(leadId)) {
+        return res.status(400).json({ success: false, error: 'Invalid lead id format' });
+    }
+    if (process.env.NODE_ENV !== 'production' && String(req.headers['x-simulate-supabase-down'] || '') === '1') {
+        return res.status(503).json({ success: false, error: 'Lead service temporarily unavailable' });
+    }
+
+    const { status, notes, contact_name, contact_phone, contact_email } = req.body || {};
+    const normalizedStatus = normalizeLeadStatus(status);
+    if (status != null && !normalizedStatus) {
+        return res.status(400).json({
+            success: false,
+            error: 'Invalid lead status',
+            allowed_statuses: Array.from(KNOWN_LEAD_STATUSES)
+        });
+    }
+
+    if (supabase) {
+        try {
+            const { data: existingRows, error: lookupError } = await supabase
+                .from('leads')
+                .select('id')
+                .eq('id', leadId)
+                .limit(1);
+
+            if (lookupError) {
+                if (isSupabaseConnectivityError(lookupError)) {
+                    return res.status(503).json({ success: false, error: 'Lead service temporarily unavailable' });
+                }
+                console.error('CRM lead lookup error:', lookupError);
+                return res.status(500).json({ success: false, error: 'Failed to load lead before update' });
+            }
+
+            const existingLead = existingRows?.[0];
+            if (!existingLead) {
+                return res.status(404).json({ success: false, error: 'Lead not found' });
+            }
+
+            const payload = {};
+            if (normalizedStatus != null) payload.status = normalizedStatus;
+            if (notes != null) payload.customer_comment = String(notes);
+            if (!Object.keys(payload).length) {
+                return res.status(400).json({ success: false, error: 'No fields to update' });
+            }
+
+            let updateResult = await supabase
+                .from('leads')
+                .update(payload)
+                .eq('id', leadId)
+                .select('*')
+                .limit(1);
+
+            if (updateResult.error && notes != null && String(updateResult.error.message || '').toLowerCase().includes('customer_comment')) {
+                const fallbackPayload = { ...payload };
+                delete fallbackPayload.customer_comment;
+                fallbackPayload.application_notes = String(notes);
+                updateResult = await supabase
+                    .from('leads')
+                    .update(fallbackPayload)
+                    .eq('id', leadId)
+                    .select('*')
+                    .limit(1);
+            }
+
+            if (updateResult.error) {
+                if (isSupabaseConnectivityError(updateResult.error)) {
+                    return res.status(503).json({ success: false, error: 'Lead service temporarily unavailable' });
+                }
+                if (isSupabaseEnumError(updateResult.error, 'lead_status_enum')) {
+                    return res.status(400).json({
+                        success: false,
+                        error: 'Invalid lead status',
+                        allowed_statuses: Array.from(KNOWN_LEAD_STATUSES)
+                    });
+                }
+                console.error('CRM lead update error:', updateResult.error);
+                return res.status(500).json({ success: false, error: 'Failed to update lead' });
+            }
+
+            const lead = updateResult.data?.[0];
+            if (!lead) {
+                return res.status(404).json({ success: false, error: 'Lead not found' });
+            }
+            return res.json({ success: true, lead });
+        } catch (error) {
+            if (isSupabaseConnectivityError(error)) {
+                return res.status(503).json({ success: false, error: 'Lead service temporarily unavailable' });
+            }
+            console.error('CRM lead update fatal error:', error);
+            return res.status(500).json({ success: false, error: 'Failed to update lead' });
+        }
+    }
+
+    try {
+        const existingRows = await db.query('SELECT id FROM applications WHERE id = ? LIMIT 1', [leadId]);
+        if (!existingRows?.length) {
+            return res.status(404).json({ success: false, error: 'Lead not found' });
+        }
+
+        const payload = {};
+        if (normalizedStatus != null) payload.status = normalizedStatus;
+        if (notes != null) payload.notes = String(notes);
+        if (contact_name != null) payload.contact_name = String(contact_name);
+        if (contact_phone != null) payload.contact_phone = String(contact_phone);
+        if (contact_email != null) payload.contact_email = String(contact_email);
+        const keys = Object.keys(payload);
+        if (!keys.length) {
+            return res.status(400).json({ success: false, error: 'No fields to update' });
+        }
+
+        const updates = keys.map(k => `${k} = ?`).join(', ');
+        await db.query(`UPDATE applications SET ${updates}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [...keys.map(k => payload[k]), leadId]);
+        const rows = await db.query('SELECT * FROM applications WHERE id = ? LIMIT 1', [leadId]);
+        return res.json({ success: true, lead: rows?.[0] || null });
+    } catch (error) {
+        console.error('Local lead update error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to update lead' });
+    }
+}
+
+// Update lead (manager-only)
+app.patch('/api/v1/crm/leads/:id', authenticateToken, requireManagerRole, async (req, res) => {
+    return handleLeadUpdate(req, res, req.params.id);
+});
+
+app.put('/api/v1/crm/leads/:id', authenticateToken, requireManagerRole, async (req, res) => {
+    return handleLeadUpdate(req, res, req.params.id);
+});
+
+
+// ========================================
+// 🧭 CRM MANAGER API (Sprint 1)
+// ========================================
+
+// List managers/admins for assignment
+app.get('/api/v1/crm/managers', authenticateToken, requireManagerRole, async (req, res) => {
+    try {
+        if (supabase) {
+            const { data, error } = await supabase
+                .from('users')
+                .select('id, name, role, telegram_id')
+                .in('role', ['manager', 'admin'])
+                .order('name', { ascending: true });
+            if (error) throw error;
+            return res.json({ success: true, managers: data || [] });
+        }
+
+        const rows = await db.query("SELECT id, name, email, role, telegram_id FROM users WHERE role IN ('manager','admin') ORDER BY name ASC");
+        return res.json({ success: true, managers: rows || [] });
+    } catch (error) {
+        console.error('CRM managers list error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to load managers' });
+    }
+});
+
+// Dashboard stats (counts + revenue)
+app.get('/api/v1/crm/dashboard/stats', authenticateToken, requireManagerRole, async (req, res) => {
+    try {
+        let rows = [];
+        let leadRows = [];
+        if (supabase) {
+            const { data, error } = await supabase
+                .from('orders')
+                .select('status, final_price_eur, total_price_rub, created_at');
+            if (error) throw error;
+            rows = data || [];
+
+            const { data: leadData, error: leadError } = await supabase
+                .from('leads')
+                .select('status');
+            if (leadError) throw leadError;
+            leadRows = leadData || [];
+        } else {
+            rows = await db.query('SELECT status, final_price_eur, created_at FROM orders');
+            leadRows = await db.query('SELECT status FROM applications');
+        }
+
+        const now = Date.now();
+        const dayBuckets = [];
+        const dayIndex = {};
+        for (let i = 6; i >= 0; i -= 1) {
+            const d = new Date();
+            d.setHours(0, 0, 0, 0);
+            d.setDate(d.getDate() - i);
+            const key = d.toISOString().slice(0, 10);
+            dayIndex[key] = dayBuckets.length;
+            dayBuckets.push({ date: key, orders: 0, revenue_eur: 0, revenue_rub: 0 });
+        }
+        const stats = {
+            total_orders: 0,
+            active_orders: 0,
+            pending_manager: 0,
+            pending_manager_orders: 0,
+            pending_manager_leads: 0,
+            under_inspection: 0,
+            deposit_paid: 0,
+            delivered: 0,
+            closed: 0,
+            cancelled: 0,
+            refunded: 0,
+            revenue_eur: 0,
+            revenue_rub: 0,
+            last_7_days: 0,
+            last_30_days: 0,
+            conversion_note: null,
+            by_status: {}
+        };
+
+        for (const row of rows) {
+            const status = String(row.status || 'unknown');
+            stats.total_orders += 1;
+            stats.by_status[status] = (stats.by_status[status] || 0) + 1;
+
+            if (status === 'pending_manager' || status === 'awaiting_manager' || status === 'new') stats.pending_manager_orders += 1;
+            if (status === 'under_inspection') stats.under_inspection += 1;
+            if (status === 'deposit_paid') stats.deposit_paid += 1;
+            if (status === 'delivered') stats.delivered += 1;
+            if (status === 'closed') stats.closed += 1;
+            if (status === 'cancelled') stats.cancelled += 1;
+            if (status === 'refunded') stats.refunded += 1;
+
+            const createdAt = row.created_at ? new Date(row.created_at).getTime() : null;
+            if (createdAt) {
+                if (now - createdAt <= 7 * 24 * 60 * 60 * 1000) stats.last_7_days += 1;
+                if (now - createdAt <= 30 * 24 * 60 * 60 * 1000) stats.last_30_days += 1;
+                const key = new Date(createdAt).toISOString().slice(0, 10);
+                const idx = dayIndex[key];
+                if (idx !== undefined) {
+                    dayBuckets[idx].orders += 1;
+                    dayBuckets[idx].revenue_eur += Number(row.final_price_eur) || 0;
+                    if (row.total_price_rub != null) {
+                        dayBuckets[idx].revenue_rub += Number(row.total_price_rub) || 0;
+                    }
+                }
+            }
+
+            const eur = Number(row.final_price_eur) || 0;
+            stats.revenue_eur += eur;
+            if (row.total_price_rub != null) {
+                stats.revenue_rub += Number(row.total_price_rub) || 0;
+            }
+        }
+
+        stats.active_orders = stats.total_orders - (stats.closed + stats.cancelled + stats.refunded + stats.delivered);
+        stats.daily_orders = dayBuckets;
+        const pendingLeadStates = new Set(['new', 'in_progress', 'contacted', 'qualified', 'pending_manager']);
+        stats.pending_manager_leads = (leadRows || []).reduce((count, lead) => {
+            const leadStatus = String(lead?.status || '').trim().toLowerCase();
+            return pendingLeadStates.has(leadStatus) ? count + 1 : count;
+        }, 0);
+        stats.pending_manager = stats.pending_manager_orders + stats.pending_manager_leads;
+
+        const successfulStates = new Set(['delivered', 'closed', 'paid_out', 'full_paid']);
+        const successfulOrders = rows.reduce((count, row) => {
+            const status = String(row?.status || '').trim().toLowerCase();
+            return successfulStates.has(status) ? count + 1 : count;
+        }, 0);
+
+        if (stats.total_orders < 5) {
+            stats.conversion_rate = null;
+            stats.conversion_note = 'н/д (недостаточно данных)';
+        } else {
+            stats.conversion_rate = parseFloat(((successfulOrders / stats.total_orders) * 100).toFixed(1));
+            stats.conversion_note = null;
+        }
+
+        return res.json({ success: true, stats });
+    } catch (error) {
+        console.error('CRM dashboard stats error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to load stats' });
+    }
+});
+
+// Middleware for CRM (Sprint 1) - USING EXISTING MIDDLEWARE FROM LINE 211
+// const authenticateToken = ... (removed duplicate)
+// const requireManagerRole = ... (removed duplicate)
+
+// Orders list with filters (manager-only)
+app.get('/api/v1/crm/orders', authenticateToken, requireManagerRole, async (req, res) => {
+    try {
+        console.log('GET /api/v1/crm/orders query:', req.query);
+        const {
+            status,
+            manager,
+            q,
+            limit = 20,
+            offset = 0,
+            date_from,
+            date_to,
+            min_amount,
+            max_amount,
+            sort_by,
+            sort_dir
+        } = req.query;
+
+        const limitInt = Math.max(1, Math.min(200, parseInt(limit)));
+        const offsetInt = Math.max(0, parseInt(offset));
+        const statusList = status ? String(status).split(',').map(s => s.trim()).filter(Boolean) : [];
+
+        // Valid order statuses supported by Supabase ENUM
+        const VALID_ORDER_STATUSES = [
+            'new', 'pending_manager', 'under_inspection', 'awaiting_payment', 'awaiting_deposit', 'deposit_paid',
+            'full_paid', 'ready_for_shipment', 'in_transit', 'delivered', 'cancelled', 'refunded', 'closed'
+        ];
+
+        const sortBy = ['created_at', 'final_price_eur', 'order_code', 'status'].includes(String(sort_by || ''))
+            ? String(sort_by)
+            : 'created_at';
+        const sortAsc = String(sort_dir || '').toLowerCase() === 'asc';
+        const fetchLocalOrders = async () => {
+            const where = [];
+            const params = [];
+            if (statusList.length) {
+                const validStatuses = statusList.filter((value) => KNOWN_ORDER_STATUSES.has(String(value).toLowerCase()));
+                if (validStatuses.length) {
+                    where.push(`o.status IN (${validStatuses.map(() => '?').join(',')})`);
+                    params.push(...validStatuses);
+                }
+            }
+            if (manager) {
+                where.push('o.assigned_manager = ?');
+                params.push(String(manager));
+            }
+            if (date_from) {
+                where.push('o.created_at >= ?');
+                params.push(String(date_from));
+            }
+            if (date_to) {
+                where.push('o.created_at <= ?');
+                params.push(String(date_to));
+            }
+            if (min_amount) {
+                where.push('o.final_price_eur >= ?');
+                params.push(Number(min_amount));
+            }
+            if (max_amount) {
+                where.push('o.final_price_eur <= ?');
+                params.push(Number(max_amount));
+            }
+            if (q) {
+                const search = `%${String(q).trim()}%`;
+                where.push(`(
+                    o.id LIKE ? OR o.order_code LIKE ? OR o.bike_snapshot LIKE ? OR
+                    c.full_name LIKE ? OR c.email LIKE ? OR c.phone LIKE ? OR c.country LIKE ?
+                )`);
+                params.push(search, search, search, search, search, search, search);
+            }
+
+            const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+            const sortMap = {
+                created_at: 'o.created_at',
+                final_price_eur: 'o.final_price_eur',
+                order_code: 'o.order_code',
+                status: 'o.status'
+            };
+            const sortColumn = sortMap[sortBy] || 'o.created_at';
+            const sortDirection = sortAsc ? 'ASC' : 'DESC';
+
+            const countRows = await db.query(
+                `SELECT COUNT(*) as total
+                 FROM orders o
+                 LEFT JOIN customers c ON c.id = o.customer_id
+                 ${whereSql}`,
+                params
+            );
+            const totalCount = Number(countRows?.[0]?.total || 0);
+
+            const rowsLocal = await db.query(
+                `SELECT
+                    o.id,
+                    o.order_code,
+                    o.status,
+                    o.final_price_eur,
+                    o.created_at,
+                    o.assigned_manager,
+                    o.bike_snapshot,
+                    c.full_name,
+                    c.email,
+                    c.phone,
+                    c.country,
+                    c.city
+                 FROM orders o
+                 LEFT JOIN customers c ON c.id = o.customer_id
+                 ${whereSql}
+                 ORDER BY ${sortColumn} ${sortDirection}
+                 LIMIT ? OFFSET ?`,
+                [...params, limitInt, offsetInt]
+            );
+
+            const orders = (rowsLocal || []).map((o) => ({
+                order_id: o.id,
+                order_number: o.order_code,
+                status: o.status,
+                total_amount_eur: o.final_price_eur,
+                total_amount_rub: getOrderTotalRubFromSnapshot(o),
+                created_at: o.created_at,
+                assigned_manager: o.assigned_manager,
+                bike_name: o.bike_name || getOrderBikeNameFromSnapshot(o),
+                customer: {
+                    full_name: o.full_name || null,
+                    email: o.email || null,
+                    phone: o.phone || null,
+                    contact_value: o.phone || o.email || getOrderSnapshotContact(o).contact_value || null,
+                    preferred_channel: getOrderSnapshotContact(o).contact_method || null,
+                    city: o.city || o.country || getOrderSnapshotContact(o).city || null
+                },
+                bike_snapshot: o.bike_snapshot
+            }));
+
+            return { orders, totalCount };
+        };
+
+        if (supabase) {
+            try {
+            const safeSearch = q ? String(q).trim().toLowerCase() : '';
+            let query = supabase
+                .from('orders')
+                .select('id, order_code, status, final_price_eur, total_price_rub, created_at, assigned_manager, bike_name, bike_snapshot, customers(full_name, email, phone, country, city, contact_value, preferred_channel)', { count: 'exact' })
+                .order(sortBy, { ascending: sortAsc });
+
+            // Filter valid statuses only
+            if (statusList.length) {
+                const validStatuses = statusList.filter(s => VALID_ORDER_STATUSES.includes(s));
+                if (validStatuses.length) {
+                    console.log('Filtering by status:', validStatuses);
+                    query = query.in('status', validStatuses);
+                } else {
+                    console.log('No valid statuses found in filter, ignoring status filter');
+                }
+            }
+            if (manager) query = query.eq('assigned_manager', String(manager));
+            if (date_from) query = query.gte('created_at', String(date_from));
+            if (date_to) query = query.lte('created_at', String(date_to));
+            if (min_amount) query = query.gte('final_price_eur', Number(min_amount));
+            if (max_amount) query = query.lte('final_price_eur', Number(max_amount));
+            if (safeSearch) {
+                // Use server-side fuzzy matching for fields that are unreliable in SQL filters (JSON snapshot and nested customer fields).
+                const fetchLimit = Math.max(limitInt + offsetInt + 120, 200);
+                query = query.limit(Math.min(fetchLimit, 1000));
+            } else {
+                query = query.range(offsetInt, offsetInt + limitInt - 1);
+            }
+
+            const { data, error, count } = await query;
+            if (error) {
+                console.error('Supabase orders query error:', error);
+                throw error;
+            }
+
+            let filteredRows = data || [];
+            if (safeSearch) {
+                filteredRows = filteredRows.filter((o) => {
+                    const snapshotText = (() => {
+                        try {
+                            if (!o.bike_snapshot) return '';
+                            return typeof o.bike_snapshot === 'string'
+                                ? o.bike_snapshot
+                                : JSON.stringify(o.bike_snapshot);
+                        } catch {
+                            return '';
+                        }
+                    })();
+                    const haystack = [
+                        o.id,
+                        o.order_code,
+                        o.bike_name,
+                        o.customers?.full_name,
+                        o.customers?.email,
+                        o.customers?.phone,
+                        o.customers?.country,
+                        snapshotText
+                    ].filter(Boolean).join(' ').toLowerCase();
+                    return haystack.includes(safeSearch);
+                });
+            }
+
+            const totalCount = safeSearch ? filteredRows.length : (count || filteredRows.length);
+            const pagedRows = safeSearch
+                ? filteredRows.slice(offsetInt, offsetInt + limitInt)
+                : filteredRows;
+
+            const orders = (pagedRows || []).map(o => ({
+                order_id: o.id,
+                order_number: o.order_code,
+                status: o.status,
+                total_amount_eur: o.final_price_eur,
+                total_amount_rub: o.total_price_rub,
+                created_at: o.created_at,
+                assigned_manager: o.assigned_manager,
+                bike_name: o.bike_name,
+                customer: {
+                    full_name: o.customers?.full_name || null,
+                    email: o.customers?.email || null,
+                    phone: o.customers?.phone || null,
+                    contact_value: o.customers?.contact_value || o.customers?.phone || o.customers?.email || getOrderSnapshotContact(o).contact_value || null,
+                    preferred_channel: o.customers?.preferred_channel || getOrderSnapshotContact(o).contact_method || null,
+                    city: o.customers?.city || o.customers?.country || getOrderSnapshotContact(o).city || null
+                },
+                bike_snapshot: o.bike_snapshot
+            }));
+
+            if (totalCount === 0) {
+                const localFallback = await fetchLocalOrders();
+                if (localFallback.totalCount > 0) {
+                    return res.json({
+                        success: true,
+                        orders: localFallback.orders,
+                        total: localFallback.totalCount,
+                        pagination: { total: localFallback.totalCount, limit: limitInt, offset: offsetInt }
+                    });
+                }
+            }
+
+            return res.json({
+                success: true,
+                orders,
+                total: totalCount,
+                pagination: { total: totalCount, limit: limitInt, offset: offsetInt }
+            });
+            } catch (supabaseError) {
+                if (!isSupabaseConnectivityError(supabaseError)) throw supabaseError;
+                console.warn('CRM orders list: Supabase unavailable, using local fallback');
+            }
+        }
+
+        const localData = await fetchLocalOrders();
+
+        return res.json({
+            success: true,
+            orders: localData.orders,
+            total: localData.totalCount,
+            pagination: { total: localData.totalCount, limit: limitInt, offset: offsetInt }
+        });
+
+    } catch (error) {
+        console.error('CRM orders list error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to load orders' });
+    }
+});
+
+function csvEscape(value) {
+    const str = value == null ? '' : String(value);
+    return `"${str.replace(/"/g, '""')}"`;
+}
+
+function buildCsv(headers, rows) {
+    const lines = [];
+    lines.push(headers.map(csvEscape).join(','));
+    rows.forEach(row => {
+        lines.push(headers.map((h) => csvEscape(row[h])).join(','));
+    });
+    return lines.join('\n');
+}
+
+// Export orders (CSV/Excel)
+app.get('/api/v1/crm/orders/export', authenticateToken, requireManagerRole, async (req, res) => {
+    try {
+        const {
+            status,
+            manager,
+            q,
+            date_from,
+            date_to,
+            min_amount,
+            max_amount,
+            format = 'csv'
+        } = req.query;
+
+        const statusList = status ? String(status).split(',').map(s => s.trim()).filter(Boolean) : [];
+
+        let orders = [];
+        if (supabase) {
+            let query = supabase
+                .from('orders')
+                .select('id, order_code, status, final_price_eur, created_at, assigned_manager, bike_name, customer_id, old_uuid_id, customers(full_name, country)')
+                .order('created_at', { ascending: false });
+
+            if (statusList.length) query = query.in('status', statusList);
+            if (manager) query = query.eq('assigned_manager', String(manager));
+            if (date_from) query = query.gte('created_at', String(date_from));
+            if (date_to) query = query.lte('created_at', String(date_to));
+            if (min_amount) query = query.gte('final_price_eur', Number(min_amount));
+            if (max_amount) query = query.lte('final_price_eur', Number(max_amount));
+            if (q) {
+                const safeQ = String(q).trim();
+                if (safeQ) {
+                    query = query.or(`order_code.ilike.%${safeQ}%,bike_name.ilike.%${safeQ}%,id.ilike.%${safeQ}%`);
+                }
+            }
+
+            const { data, error } = await query;
+            if (error) throw error;
+            orders = data || [];
+        } else {
+            const where = [];
+            const params = [];
+            if (statusList.length) {
+                where.push(`o.status IN (${statusList.map(() => '?').join(',')})`);
+                params.push(...statusList);
+            }
+            if (manager) {
+                where.push('o.assigned_manager = ?');
+                params.push(String(manager));
+            }
+            if (date_from) {
+                where.push('o.created_at >= ?');
+                params.push(String(date_from));
+            }
+            if (date_to) {
+                where.push('o.created_at <= ?');
+                params.push(String(date_to));
+            }
+            if (min_amount) {
+                where.push('o.final_price_eur >= ?');
+                params.push(Number(min_amount));
+            }
+            if (max_amount) {
+                where.push('o.final_price_eur <= ?');
+                params.push(Number(max_amount));
+            }
+            if (q) {
+                const safeQ = `%${String(q).trim()}%`;
+                where.push('(o.order_code LIKE ? OR o.id LIKE ? OR c.full_name LIKE ? OR c.email LIKE ? OR c.phone LIKE ?)');
+                params.push(safeQ, safeQ, safeQ, safeQ, safeQ);
+            }
+            const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+            orders = await db.query(
+                `SELECT o.id, o.order_code, o.status, o.final_price_eur, o.created_at, o.assigned_manager, o.bike_snapshot, o.old_uuid_id,
+                        c.full_name, c.city
+                 FROM orders o
+                 LEFT JOIN customers c ON c.id = o.customer_id
+                 ${whereSql}
+                 ORDER BY o.created_at DESC`,
+                params
+            );
+        }
+
+        const orderIds = orders.map(o => o.id);
+        const orderUUIDs = orders.map(o => o.old_uuid_id).filter(v => v);
+
+        let payments = [];
+        let shipments = [];
+        let managers = [];
+        if (supabase && orderUUIDs.length) {
+            const payRes = await supabase.from('payments').select('order_id, amount, direction, status').in('order_id', orderUUIDs);
+            payments = payRes.data || [];
+
+            const shipRes = await supabase.from('shipments').select('order_id, tracking_number').in('order_id', orderUUIDs);
+            shipments = shipRes.data || [];
+
+            const managerIds = Array.from(new Set(orders.map(o => o.assigned_manager).filter(Boolean)));
+            if (managerIds.length) {
+                const mgrRes = await supabase.from('users').select('id, name').in('id', managerIds);
+                managers = mgrRes.data || [];
+            }
+        }
+
+        const paidMap = {};
+        payments.forEach(p => {
+            if (p.direction !== 'incoming' || p.status !== 'completed') return;
+            paidMap[p.order_id] = (paidMap[p.order_id] || 0) + Number(p.amount || 0);
+        });
+
+        const trackingMap = {};
+        shipments.forEach(s => {
+            if (!trackingMap[s.order_id] && s.tracking_number) trackingMap[s.order_id] = s.tracking_number;
+        });
+
+        const managerMap = {};
+        managers.forEach(m => { managerMap[m.id] = m.name || m.id; });
+
+        const headers = [
+            'Order Code',
+            'Order Date',
+            'Customer Name',
+            'Customer City',
+            'Bike Name',
+            'Status',
+            'Manager',
+            'Total Amount (EUR)',
+            'Paid Amount (EUR)',
+            'Tracking Number'
+        ];
+
+        const rows = orders.map(o => {
+            const customerName = o.customers?.full_name || o.full_name || '';
+            const customerCity = o.customers?.city || o.customers?.country || o.city || '';
+            const paid = o.old_uuid_id && paidMap[o.old_uuid_id] ? paidMap[o.old_uuid_id] : 0;
+            const tracking = o.old_uuid_id && trackingMap[o.old_uuid_id] ? trackingMap[o.old_uuid_id] : '';
+            const managerName = managerMap[o.assigned_manager] || o.assigned_manager || '';
+
+            return {
+                'Order Code': o.order_code || o.id,
+                'Order Date': o.created_at || '',
+                'Customer Name': customerName,
+                'Customer City': customerCity,
+                'Bike Name': o.bike_name || '',
+                'Status': o.status || '',
+                'Manager': managerName,
+                'Total Amount (EUR)': o.final_price_eur != null ? Number(o.final_price_eur) : '',
+                'Paid Amount (EUR)': paid,
+                'Tracking Number': tracking
+            };
+        });
+
+        const csv = buildCsv(headers, rows);
+        const stamp = new Date().toISOString().slice(0, 10);
+        const ext = String(format).toLowerCase() === 'excel' ? 'xls' : 'csv';
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename="orders_export_${stamp}.${ext}"`);
+        return res.send(csv);
+    } catch (error) {
+        console.error('CRM export error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to export orders' });
+    }
+});
+
+// Bulk update order status
+app.patch('/api/v1/crm/orders/bulk/status', authenticateToken, requireManagerRole, async (req, res) => {
+    try {
+        const { order_ids, new_status, status, note } = req.body || {};
+        const effectiveStatus = normalizeOrderStatus(new_status || status);
+        if (!Array.isArray(order_ids) || order_ids.length === 0) {
+            return res.status(400).json({ success: false, error: 'order_ids required' });
+        }
+
+        if (!effectiveStatus) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid status',
+                allowed_statuses: Array.from(KNOWN_ORDER_STATUSES)
+            });
+        }
+
+        if (supabase) {
+            const ids = Array.from(new Set(order_ids.map(String)));
+            const byId = await supabase.from('orders').select('id').in('id', ids);
+            const byCode = await supabase.from('orders').select('id').in('order_code', ids);
+            if (byId.error || byCode.error) {
+                const queryError = byId.error || byCode.error;
+                if (isSupabaseConnectivityError(queryError)) {
+                    return res.status(503).json({ success: false, error: 'Order service temporarily unavailable' });
+                }
+                return res.status(503).json({ success: false, error: 'Order service temporarily unavailable' });
+            }
+            const finalIds = Array.from(new Set([...(byId.data || []), ...(byCode.data || [])].map(o => o.id)));
+
+            if (!finalIds.length) return res.status(404).json({ success: false, error: 'Orders not found' });
+
+            const { error } = await supabase.from('orders').update({ status: String(effectiveStatus) }).in('id', finalIds);
+            if (error) {
+                if (isSupabaseConnectivityError(error)) {
+                    return res.status(503).json({ success: false, error: 'Order service temporarily unavailable' });
+                }
+                if (isSupabaseEnumError(error, 'order_status_enum')) {
+                    return res.status(400).json({
+                        success: false,
+                        error: 'Invalid order status',
+                        allowed_statuses: Array.from(KNOWN_ORDER_STATUSES)
+                    });
+                }
+                throw error;
+            }
+
+            try {
+                const events = finalIds.map(id => ({
+                    order_id: id,
+                    old_status: null,
+                    new_status: String(effectiveStatus),
+                    changed_by: req.user?.id || null,
+                    change_notes: note || 'Bulk status update'
+                }));
+                await supabase.from('order_status_events').insert(events);
+            } catch (e) {
+                console.warn('Bulk status events failed:', e.message || e);
+            }
+
+            return res.json({ success: true, updated: finalIds.length });
+        }
+
+        // Local DB fallback
+        const ids = order_ids.map(String);
+        const placeholders = ids.map(() => '?').join(',');
+        await db.query(`UPDATE orders SET status = ? WHERE id IN (${placeholders}) OR order_code IN (${placeholders})`, [
+            String(effectiveStatus),
+            ...ids,
+            ...ids
+        ]);
+        return res.json({ success: true, updated: ids.length });
+    } catch (error) {
+        if (isSupabaseConnectivityError(error)) {
+            return res.status(503).json({ success: false, error: 'Order service temporarily unavailable' });
+        }
+        if (isSupabaseEnumError(error, 'order_status_enum')) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid order status',
+                allowed_statuses: Array.from(KNOWN_ORDER_STATUSES)
+            });
+        }
+        console.error('CRM bulk status error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to bulk update status' });
+    }
+});
+
+// Bulk assign manager
+app.patch('/api/v1/crm/orders/bulk/assign', authenticateToken, requireManagerRole, async (req, res) => {
+    try {
+        const { order_ids, manager_id } = req.body || {};
+        if (!Array.isArray(order_ids) || order_ids.length === 0) {
+            return res.status(400).json({ success: false, error: 'order_ids required' });
+        }
+        if (!manager_id) {
+            return res.status(400).json({ success: false, error: 'manager_id required' });
+        }
+
+        if (supabase) {
+            const ids = Array.from(new Set(order_ids.map(String)));
+            const byId = await supabase.from('orders').select('id').in('id', ids);
+            const byCode = await supabase.from('orders').select('id').in('order_code', ids);
+            const finalIds = Array.from(new Set([...(byId.data || []), ...(byCode.data || [])].map(o => o.id)));
+
+            if (!finalIds.length) return res.status(404).json({ success: false, error: 'Orders not found' });
+
+            const { error } = await supabase.from('orders').update({ assigned_manager: String(manager_id) }).in('id', finalIds);
+            if (error) throw error;
+
+            return res.json({ success: true, updated: finalIds.length });
+        }
+
+        const ids = order_ids.map(String);
+        const placeholders = ids.map(() => '?').join(',');
+        await db.query(`UPDATE orders SET assigned_manager = ? WHERE id IN (${placeholders}) OR order_code IN (${placeholders})`, [
+            String(manager_id),
+            ...ids,
+            ...ids
+        ]);
+        return res.json({ success: true, updated: ids.length });
+    } catch (error) {
+        console.error('CRM bulk assign error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to bulk assign manager' });
+    }
+});
+
+// Update order status (manager-only)
+app.patch('/api/v1/crm/orders/:orderId/status', authenticateToken, requireManagerRole, async (req, res) => {
+    try {
+        const { orderId } = req.params;
+        const { status, note } = req.body || {};
+        const normalizedStatus = normalizeOrderStatus(status);
+
+        if (!normalizedStatus) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid status',
+                allowed_statuses: Array.from(KNOWN_ORDER_STATUSES)
+            });
+        }
+
+        if (supabase) {
+            try {
+                const { data: foundOrders, error: findError } = await supabase
+                    .from('orders')
+                    .select('id, order_code, status, final_price_eur, total_price_rub, created_at, assigned_manager, bike_name')
+                    .or(`id.eq.${orderId},order_code.eq.${orderId}`)
+                    .limit(1);
+                if (findError) throw findError;
+                const current = foundOrders?.[0];
+                if (!current) return res.status(404).json({ success: false, error: 'Order not found' });
+
+                const { data: updatedRows, error: updateError } = await supabase
+                    .from('orders')
+                    .update({ status: normalizedStatus })
+                    .eq('id', current.id)
+                    .select('id, order_code, status, final_price_eur, total_price_rub, created_at, assigned_manager, bike_name')
+                    .limit(1);
+                if (updateError) {
+                    if (isSupabaseEnumError(updateError, 'order_status_enum')) {
+                        return res.status(400).json({
+                            success: false,
+                            error: 'Invalid order status',
+                            allowed_statuses: Array.from(KNOWN_ORDER_STATUSES)
+                        });
+                    }
+                    throw updateError;
+                }
+
+                try {
+                    await supabase.from('order_status_events').insert({
+                        order_id: current.id,
+                        old_status: current.status || null,
+                        new_status: normalizedStatus,
+                        change_notes: note ? String(note) : null,
+                        changed_by: req.user?.id || null
+                    });
+                } catch (eventError) {
+                    console.warn('CRM status event insert warning:', eventError);
+                }
+
+                const updated = updatedRows?.[0] || { ...current, status: normalizedStatus };
+                return res.json({
+                    success: true,
+                    order: {
+                        order_id: updated.id,
+                        order_number: updated.order_code,
+                        status: updated.status,
+                        total_amount_eur: updated.final_price_eur,
+                        total_amount_rub: updated.total_price_rub,
+                        created_at: updated.created_at,
+                        assigned_manager: updated.assigned_manager,
+                        bike_name: updated.bike_name
+                    }
+                });
+            } catch (supabaseError) {
+                if (!isSupabaseConnectivityError(supabaseError)) throw supabaseError;
+                console.warn('CRM update status: Supabase unavailable, using local fallback');
+            }
+        }
+
+        const rows = await db.query(
+            'SELECT id, order_code, status, final_price_eur, created_at, assigned_manager, bike_snapshot FROM orders WHERE id = ? OR order_code = ? LIMIT 1',
+            [orderId, orderId]
+        );
+        const current = rows?.[0];
+        if (!current) return res.status(404).json({ success: false, error: 'Order not found' });
+
+        await db.query('UPDATE orders SET status = ? WHERE id = ?', [normalizedStatus, current.id]);
+        try {
+            await db.query(
+                'INSERT INTO order_status_events (id, order_id, old_status, new_status, change_notes, changed_by, created_at) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)',
+                [`OSE-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, current.id, current.status || null, normalizedStatus, note ? String(note) : null, req.user?.id || null]
+            );
+        } catch (eventError) {
+            const eventErrorText = String(eventError?.message || eventError || '');
+            if (/no such column:\s*change_notes/i.test(eventErrorText)) {
+                try {
+                    await db.query(
+                        'INSERT INTO order_status_events (id, order_id, old_status, new_status, changed_by, created_at) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)',
+                        [`OSE-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, current.id, current.status || null, normalizedStatus, req.user?.id || null]
+                    );
+                } catch (fallbackError) {
+                    console.warn('CRM status event fallback insert warning (sqlite):', fallbackError);
+                }
+            } else {
+                console.warn('CRM status event insert warning (sqlite):', eventError);
+            }
+        }
+
+        return res.json({
+            success: true,
+            order: {
+                order_id: current.id,
+                order_number: current.order_code,
+                status: normalizedStatus,
+                total_amount_eur: current.final_price_eur,
+                total_amount_rub: getOrderTotalRubFromSnapshot(current),
+                created_at: current.created_at,
+                assigned_manager: current.assigned_manager,
+                bike_name: getOrderBikeNameFromSnapshot(current)
+            }
+        });
+    } catch (error) {
+        if (isSupabaseConnectivityError(error)) {
+            return res.status(503).json({ success: false, error: 'Order service temporarily unavailable' });
+        }
+        if (isSupabaseEnumError(error, 'order_status_enum')) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid order status',
+                allowed_statuses: Array.from(KNOWN_ORDER_STATUSES)
+            });
+        }
+        console.error('CRM update status error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to update status' });
+    }
+});
+
+// Assign manager to order (manager-only)
+app.patch('/api/v1/crm/orders/:orderId/manager', authenticateToken, requireManagerRole, async (req, res) => {
+    try {
+        const { orderId } = req.params;
+        const managerId = req.body?.manager_id || req.body?.managerId || null;
+
+        if (!managerId) {
+            return res.status(400).json({ success: false, error: 'manager_id is required' });
+        }
+
+        if (supabase) {
+            try {
+                const { data: managerRows, error: managerError } = await supabase
+                    .from('users')
+                    .select('id, role')
+                    .eq('id', managerId)
+                    .limit(1);
+                if (managerError) throw managerError;
+                const manager = managerRows?.[0];
+                if (!manager) return res.status(404).json({ success: false, error: 'Manager not found' });
+                const role = String(manager.role || '').toLowerCase();
+                if (role !== 'manager' && role !== 'admin') {
+                    return res.status(400).json({ success: false, error: 'User is not a manager/admin' });
+                }
+
+                const { data: foundOrders, error: findError } = await supabase
+                    .from('orders')
+                    .select('id, order_code, status, final_price_eur, total_price_rub, created_at, assigned_manager, bike_name')
+                    .or(`id.eq.${orderId},order_code.eq.${orderId}`)
+                    .limit(1);
+                if (findError) throw findError;
+                const targetOrder = foundOrders?.[0];
+                if (!targetOrder) return res.status(404).json({ success: false, error: 'Order not found' });
+
+                const { data: updatedRows, error: updateError } = await supabase
+                    .from('orders')
+                    .update({ assigned_manager: String(managerId) })
+                    .eq('id', targetOrder.id)
+                    .select('id, order_code, status, final_price_eur, total_price_rub, created_at, assigned_manager, bike_name')
+                    .limit(1);
+                if (updateError) throw updateError;
+                const updated = updatedRows?.[0] || { ...targetOrder, assigned_manager: String(managerId) };
+                return res.json({
+                    success: true,
+                    order: {
+                        order_id: updated.id,
+                        order_number: updated.order_code,
+                        status: updated.status,
+                        total_amount_eur: updated.final_price_eur,
+                        total_amount_rub: updated.total_price_rub,
+                        created_at: updated.created_at,
+                        assigned_manager: updated.assigned_manager,
+                        bike_name: updated.bike_name
+                    }
+                });
+            } catch (supabaseError) {
+                if (!isSupabaseConnectivityError(supabaseError)) throw supabaseError;
+                console.warn('CRM update manager: Supabase unavailable, using local fallback');
+            }
+        }
+
+        const managerRows = await db.query("SELECT id, role FROM users WHERE id = ? LIMIT 1", [managerId]);
+        if (!managerRows || managerRows.length === 0) {
+            return res.status(404).json({ success: false, error: 'Manager not found' });
+        }
+        const role = String(managerRows[0].role || '').toLowerCase();
+        if (role !== 'manager' && role !== 'admin') {
+            return res.status(400).json({ success: false, error: 'User is not a manager/admin' });
+        }
+
+        const rows = await db.query(
+            'SELECT id, order_code, status, final_price_eur, created_at, assigned_manager, bike_snapshot FROM orders WHERE id = ? OR order_code = ? LIMIT 1',
+            [orderId, orderId]
+        );
+        const targetOrder = rows?.[0];
+        if (!targetOrder) return res.status(404).json({ success: false, error: 'Order not found' });
+
+        await db.query('UPDATE orders SET assigned_manager = ? WHERE id = ?', [String(managerId), targetOrder.id]);
+        return res.json({
+            success: true,
+            order: {
+                order_id: targetOrder.id,
+                order_number: targetOrder.order_code,
+                status: targetOrder.status,
+                total_amount_eur: targetOrder.final_price_eur,
+                total_amount_rub: getOrderTotalRubFromSnapshot(targetOrder),
+                created_at: targetOrder.created_at,
+                assigned_manager: String(managerId),
+                bike_name: getOrderBikeNameFromSnapshot(targetOrder)
+            }
+        });
+    } catch (error) {
+        console.error('CRM assign manager error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to assign manager' });
+    }
+});
+
+// Update editable order fields (manager-only)
+app.patch('/api/v1/crm/orders/:orderId', authenticateToken, requireManagerRole, async (req, res) => {
+    try {
+        const { orderId } = req.params;
+        const { final_price_eur, total_price_rub, manager_notes, bike_name } = req.body || {};
+        const payload = {};
+
+        if (final_price_eur !== undefined) {
+            const parsed = Number(final_price_eur);
+            if (!Number.isFinite(parsed) || parsed < 0) {
+                return res.status(400).json({ success: false, error: 'Invalid final_price_eur' });
+            }
+            payload.final_price_eur = parsed;
+        }
+        if (total_price_rub !== undefined) {
+            const parsed = Number(total_price_rub);
+            if (!Number.isFinite(parsed) || parsed < 0) {
+                return res.status(400).json({ success: false, error: 'Invalid total_price_rub' });
+            }
+            payload.total_price_rub = parsed;
+        }
+        if (manager_notes !== undefined) payload.manager_notes = manager_notes == null ? null : String(manager_notes);
+        if (bike_name !== undefined) payload.bike_name = bike_name == null ? null : String(bike_name);
+
+        if (!Object.keys(payload).length) {
+            return res.status(400).json({ success: false, error: 'No fields to update' });
+        }
+
+        if (supabase) {
+            const { data: foundOrders, error: findError } = await supabase
+                .from('orders')
+                .select('id')
+                .or(`id.eq.${orderId},order_code.eq.${orderId}`)
+                .limit(1);
+            if (findError) throw findError;
+            const target = foundOrders?.[0];
+            if (!target) return res.status(404).json({ success: false, error: 'Order not found' });
+
+            const { data: updatedRows, error: updateError } = await supabase
+                .from('orders')
+                .update(payload)
+                .eq('id', target.id)
+                .select('id, order_code, status, final_price_eur, total_price_rub, created_at, assigned_manager, bike_name, manager_notes')
+                .limit(1);
+            if (updateError) throw updateError;
+            const updated = updatedRows?.[0];
+            return res.json({
+                success: true,
+                order: {
+                    order_id: updated?.id,
+                    order_number: updated?.order_code,
+                    status: updated?.status,
+                    total_amount_eur: updated?.final_price_eur,
+                    total_amount_rub: updated?.total_price_rub,
+                    created_at: updated?.created_at,
+                    assigned_manager: updated?.assigned_manager,
+                    bike_name: updated?.bike_name,
+                    manager_notes: updated?.manager_notes
+                }
+            });
+        }
+
+        const rows = await db.query('SELECT id, order_code, status, final_price_eur, created_at, assigned_manager, bike_snapshot FROM orders WHERE id = ? OR order_code = ? LIMIT 1', [orderId, orderId]);
+        const target = rows?.[0];
+        if (!target) return res.status(404).json({ success: false, error: 'Order not found' });
+
+        const localUpdates = {};
+        if (payload.final_price_eur !== undefined) {
+            localUpdates.final_price_eur = payload.final_price_eur;
+        }
+
+        const originalSnapshot = parseOrderSnapshotSafe(target.bike_snapshot) || {};
+        const nextSnapshot = { ...originalSnapshot };
+        let snapshotChanged = false;
+
+        if (payload.total_price_rub !== undefined) {
+            nextSnapshot.financials = { ...(nextSnapshot.financials || {}), total_price_rub: payload.total_price_rub };
+            nextSnapshot.total_price_rub = payload.total_price_rub;
+            snapshotChanged = true;
+        }
+        if (payload.manager_notes !== undefined) {
+            nextSnapshot.manager_notes = payload.manager_notes;
+            snapshotChanged = true;
+        }
+        if (payload.bike_name !== undefined) {
+            nextSnapshot.title = payload.bike_name;
+            nextSnapshot.name = payload.bike_name;
+            snapshotChanged = true;
+        }
+        if (snapshotChanged) {
+            localUpdates.bike_snapshot = JSON.stringify(nextSnapshot);
+        }
+
+        const entries = Object.entries(localUpdates);
+        if (!entries.length) {
+            return res.status(400).json({ success: false, error: 'No fields to update' });
+        }
+
+        const updateSql = entries.map(([key]) => `${key} = ?`).join(', ');
+        await db.query(`UPDATE orders SET ${updateSql} WHERE id = ?`, [...entries.map(([, value]) => value), target.id]);
+
+        const updatedRows = await db.query(
+            'SELECT id, order_code, status, final_price_eur, created_at, assigned_manager, bike_snapshot FROM orders WHERE id = ? LIMIT 1',
+            [target.id]
+        );
+        const updated = updatedRows?.[0] || target;
+        return res.json({
+            success: true,
+            order: {
+                order_id: updated?.id,
+                order_number: updated?.order_code,
+                status: updated?.status,
+                total_amount_eur: updated?.final_price_eur,
+                total_amount_rub: getOrderTotalRubFromSnapshot(updated),
+                created_at: updated?.created_at,
+                assigned_manager: updated?.assigned_manager,
+                bike_name: getOrderBikeNameFromSnapshot(updated),
+                manager_notes: parseOrderSnapshotSafe(updated?.bike_snapshot)?.manager_notes || null
+            }
+        });
+    } catch (error) {
+        console.error('CRM order update error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to update order' });
+    }
+});
+
+// CRM Customers (manager-only)
+app.get('/api/v1/crm/customers', authenticateToken, requireManagerRole, async (req, res) => {
+    try {
+        const { city, q, limit = 20, offset = 0 } = req.query;
+        const limitInt = Math.max(1, Math.min(200, parseInt(limit)));
+        const offsetInt = Math.max(0, parseInt(offset));
+
+        if (supabase) {
+            let query = supabase
+                .from('customers')
+                .select('id, full_name, email, phone, country, contact_value, created_at', { count: 'exact' })
+                .order('created_at', { ascending: false })
+                .range(offsetInt, offsetInt + limitInt - 1);
+
+            if (city) query = query.ilike('country', `%${String(city)}%`);
+            if (q) {
+                const safeQ = String(q).trim();
+                if (safeQ) query = query.or(`full_name.ilike.%${safeQ}%,email.ilike.%${safeQ}%,phone.ilike.%${safeQ}%,country.ilike.%${safeQ}%,contact_value.ilike.%${safeQ}%`);
+            }
+
+            const { data, error, count } = await query;
+            if (error) throw error;
+            const customers = (data || []).map(c => ({
+                ...c,
+                city: c.city || c.country || null
+            }));
+            return res.json({ success: true, customers, total: count || customers.length, limit: limitInt, offset: offsetInt });
+        }
+
+        const where = [];
+        const params = [];
+        if (city) {
+            where.push('city LIKE ?');
+            params.push(`%${String(city)}%`);
+        }
+        if (q) {
+            const safe = `%${String(q).trim()}%`;
+            where.push('(full_name LIKE ? OR email LIKE ? OR phone LIKE ? OR city LIKE ?)');
+            params.push(safe, safe, safe, safe);
+        }
+        const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+        const countRow = await db.query(`SELECT COUNT(*) as cnt FROM customers ${whereSql}`, params);
+        const total = countRow?.[0]?.cnt || 0;
+        const rows = await db.query(
+            `SELECT id, full_name, email, phone, city, created_at FROM customers ${whereSql} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+            [...params, limitInt, offsetInt]
+        );
+        return res.json({ success: true, customers: rows || [], total, limit: limitInt, offset: offsetInt });
+    } catch (error) {
+        console.error('CRM customers list error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to load customers' });
+    }
+});
+
+app.get('/api/v1/crm/customers/:customerId', authenticateToken, requireManagerRole, async (req, res) => {
+    try {
+        const { customerId } = req.params;
+        const fetchLocalCustomer = async () => {
+            const customers = await db.query('SELECT id, full_name, email, phone, city, created_at FROM customers WHERE id = ? LIMIT 1', [customerId]);
+            const customer = customers?.[0] || null;
+            if (!customer) return null;
+            const orders = await db.query('SELECT id, order_code, status, final_price_eur, bike_snapshot, created_at FROM orders WHERE customer_id = ? ORDER BY created_at DESC', [customerId]);
+            const mappedOrders = (orders || []).map((o) => ({
+                order_id: o.id,
+                order_number: o.order_code,
+                status: o.status,
+                total_amount: o.final_price_eur != null ? Number(o.final_price_eur) : null,
+                total_amount_rub: getOrderTotalRubFromSnapshot(o),
+                created_at: o.created_at
+            }));
+            return { customer, mappedOrders };
+        };
+
+        if (supabase) {
+            const { data: customers, error } = await supabase
+                .from('customers')
+                .select('id, full_name, email, phone, country, contact_value, created_at')
+                .eq('id', customerId)
+                .limit(1);
+
+            if (!error) {
+                const raw = customers?.[0];
+                const customer = raw ? { ...raw, city: raw.city || raw.country || null } : null;
+                if (customer) {
+                    const { data: orders } = await supabase
+                        .from('orders')
+                        .select('id, order_code, status, final_price_eur, total_price_rub, created_at')
+                        .eq('customer_id', customerId)
+                        .order('created_at', { ascending: false });
+
+                    const mappedOrders = (orders || []).map((o) => ({
+                        order_id: o.id,
+                        order_number: o.order_code,
+                        status: o.status,
+                        total_amount: o.final_price_eur != null ? Number(o.final_price_eur) : null,
+                        total_amount_rub: o.total_price_rub != null ? Number(o.total_price_rub) : null,
+                        created_at: o.created_at
+                    }));
+                    const totalOrders = mappedOrders.length;
+                    const totalSpentEur = mappedOrders.reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0);
+                    const totalSpentRub = mappedOrders.reduce((sum, o) => sum + (Number(o.total_amount_rub) || 0), 0);
+                    return res.json({
+                        success: true,
+                        customer: {
+                            ...customer,
+                            total_orders: totalOrders,
+                            total_spent: totalSpentEur,
+                            total_spent_rub: totalSpentRub
+                        },
+                        orders: mappedOrders
+                    });
+                }
+            }
+        }
+
+        const localData = await fetchLocalCustomer();
+        if (!localData) return res.status(404).json({ success: false, error: 'Customer not found' });
+        const totalSpentEur = localData.mappedOrders.reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0);
+        const totalSpentRub = localData.mappedOrders.reduce((sum, o) => sum + (Number(o.total_amount_rub) || 0), 0);
+        return res.json({
+            success: true,
+            customer: {
+                ...localData.customer,
+                total_orders: localData.mappedOrders.length,
+                total_spent: totalSpentEur,
+                total_spent_rub: totalSpentRub
+            },
+            orders: localData.mappedOrders
+        });
+    } catch (error) {
+        console.error('CRM customer details error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to load customer' });
+    }
+});
+
+app.patch('/api/v1/crm/customers/:customerId', authenticateToken, requireManagerRole, async (req, res) => {
+    try {
+        const { customerId } = req.params;
+        const { full_name, email, phone, city, preferred_channel, country } = req.body || {};
+        const payload = {};
+        if (full_name != null) payload.full_name = String(full_name);
+        if (email != null) payload.email = String(email);
+        if (phone != null) payload.phone = String(phone);
+        if (city != null) payload.city = String(city);
+        if (preferred_channel != null) payload.preferred_channel = String(preferred_channel);
+        if (country != null) payload.country = String(country);
+
+        if (supabase) {
+            const updatePayload = { ...payload };
+            if (city != null && country == null) updatePayload.country = String(city);
+            if (country != null) updatePayload.country = String(country);
+            delete updatePayload.city;
+            const { data, error } = await supabase
+                .from('customers')
+                .update(updatePayload)
+                .eq('id', customerId)
+                .select('id, full_name, email, phone, country, contact_value, created_at');
+            if (error) throw error;
+            const raw = data?.[0];
+            const customer = raw ? { ...raw, city: raw.city || raw.country || null } : null;
+            return res.json({ success: true, customer });
+        }
+
+        const keys = Object.keys(payload);
+        if (!keys.length) return res.status(400).json({ success: false, error: 'No fields to update' });
+        const updates = keys.map(k => `${k} = ?`).join(', ');
+        await db.query(`UPDATE customers SET ${updates} WHERE id = ?`, [...keys.map(k => payload[k]), customerId]);
+        const rows = await db.query('SELECT id, full_name, email, phone, city, created_at FROM customers WHERE id = ? LIMIT 1', [customerId]);
+        return res.json({ success: true, customer: rows?.[0] || null });
+    } catch (error) {
+        console.error('CRM customer update error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to update customer' });
+    }
+});
+
+// CRM Leads (manager-only)
+app.get('/api/v1/crm/leads', authenticateToken, requireManagerRole, async (req, res) => {
+    try {
+        const { status, limit = 20, offset = 0 } = req.query;
+        const limitInt = Math.max(1, Math.min(200, parseInt(limit)));
+        const offsetInt = Math.max(0, parseInt(offset));
+
+        if (supabase) {
+            let query = supabase
+                .from('leads')
+                .select('id, source, status, bike_url, bike_snapshot, customer_comment, created_at, customer_id, customers(full_name, email, phone, country)', { count: 'exact' })
+                .order('created_at', { ascending: false })
+                .range(offsetInt, offsetInt + limitInt - 1);
+            if (status) query = query.eq('status', String(status));
+            const { data, error, count } = await query;
+            if (error) throw error;
+
+            const leads = (data || []).map(l => ({
+                ...l,
+                contact_name: l.customers?.full_name || null,
+                contact_email: l.customers?.email || null,
+                contact_phone: l.customers?.phone || null,
+                customer_name: l.customers?.full_name || null // fallback
+            }));
+
+            return res.json({
+                success: true,
+                leads,
+                total: count || leads.length,
+                limit: limitInt,
+                offset: offsetInt
+            });
+        }
+
+        const where = [];
+        const params = [];
+        if (status) {
+            where.push('status = ?');
+            params.push(String(status));
+        }
+        const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+        const countRow = await db.query(`SELECT COUNT(*) as cnt FROM applications ${whereSql}`, params);
+        const total = countRow?.[0]?.cnt || 0;
+        const rows = await db.query(
+            `SELECT id, contact_name, contact_phone, contact_email, status, created_at, bike_link, notes FROM applications ${whereSql} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+            [...params, limitInt, offsetInt]
+        );
+        const leads = (rows || []).map(r => ({
+            id: String(r.id),
+            contact_name: r.contact_name,
+            contact_phone: r.contact_phone,
+            contact_email: r.contact_email,
+            status: r.status,
+            created_at: r.created_at,
+            bike_url: r.bike_link,
+            notes: r.notes,
+            source: 'application'
+        }));
+        return res.json({ success: true, leads, total, limit: limitInt, offset: offsetInt });
+    } catch (error) {
+        console.error('CRM leads list error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to load leads' });
+    }
+});
+
+app.get('/api/v1/crm/leads/:leadId', authenticateToken, requireManagerRole, async (req, res) => {
+    try {
+        const { leadId } = req.params;
+        if (supabase) {
+            const { data, error } = await supabase
+                .from('leads')
+                .select('*')
+                .eq('id', leadId)
+                .limit(1);
+            if (error) throw error;
+            const lead = data?.[0];
+            if (!lead) return res.status(404).json({ success: false, error: 'Lead not found' });
+            return res.json({ success: true, lead });
+        }
+
+        const rows = await db.query('SELECT * FROM applications WHERE id = ? LIMIT 1', [leadId]);
+        const lead = rows?.[0];
+        if (!lead) return res.status(404).json({ success: false, error: 'Lead not found' });
+        return res.json({ success: true, lead });
+    } catch (error) {
+        console.error('CRM lead details error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to load lead' });
+    }
+});
+
+// Lead status updates are handled by the hardened PATCH/PUT handlers above.
+
+app.post('/api/v1/crm/leads/:leadId/convert', authenticateToken, requireManagerRole, async (req, res) => {
+    try {
+        const { leadId } = req.params;
+        if (supabase) {
+            // Minimal conversion: just update status to converted
+            const { data, error } = await supabase
+                .from('leads')
+                .update({ status: 'converted' })
+                .eq('id', leadId)
+                .select('*');
+            if (error) throw error;
+            return res.json({ success: true, lead: data?.[0] || null });
+        }
+
+        const rows = await db.query('SELECT * FROM applications WHERE id = ? LIMIT 1', [leadId]);
+        const lead = rows?.[0];
+        if (!lead) return res.status(404).json({ success: false, error: 'Lead not found' });
+
+        // Create customer if missing
+        let customerId = null;
+        if (lead.contact_email) {
+            const existing = await db.query('SELECT id FROM customers WHERE email = ? LIMIT 1', [lead.contact_email]);
+            customerId = existing?.[0]?.id || null;
+        }
+        if (!customerId && lead.contact_phone) {
+            const existing = await db.query('SELECT id FROM customers WHERE phone = ? LIMIT 1', [lead.contact_phone]);
+            customerId = existing?.[0]?.id || null;
+        }
+        if (!customerId) {
+            customerId = `CUST-${Date.now()}`;
+            await db.query(
+                'INSERT INTO customers (id, full_name, phone, email, created_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)',
+                [customerId, lead.contact_name || 'Customer', lead.contact_phone || null, lead.contact_email || null]
+            );
+        }
+
+        const orderId = `ORD-${Date.now()}`;
+        await db.query(
+            'INSERT INTO orders (id, order_code, customer_id, lead_id, status, created_at) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)',
+            [orderId, orderId, customerId, String(leadId), 'pending_manager']
+        );
+
+        await db.query('UPDATE applications SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', ['converted', leadId]);
+
+        return res.json({ success: true, order_id: orderId });
+    } catch (error) {
+        console.error('CRM lead convert error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to convert lead' });
+    }
+});
+
+// CRM Tasks (manager-only)
+const ORDER_UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ORDER_ID_REGEX = /^ORD-\d{8}-\d{4}$/i;
+const ORDER_CODE_REGEX = /^ORD-\d{6}$/i;
+
+async function resolveSupabaseOrderUuid(orderId) {
+    if (!supabase || !orderId) return orderId;
+    const raw = String(orderId);
+    if (ORDER_UUID_REGEX.test(raw)) return raw;
+
+    let order = null;
+    if (ORDER_ID_REGEX.test(raw)) {
+        const { data } = await supabase.from('orders').select('id, old_uuid_id').eq('id', raw).maybeSingle();
+        order = data || null;
+    }
+    if (!order && ORDER_CODE_REGEX.test(raw)) {
+        const { data } = await supabase.from('orders').select('id, old_uuid_id').eq('order_code', raw).maybeSingle();
+        order = data || null;
+    }
+    if (!order) {
+        const { data } = await supabase.from('orders').select('id, old_uuid_id').or(`id.eq.${raw},order_code.eq.${raw}`).maybeSingle();
+        order = data || null;
+    }
+    return order?.old_uuid_id || order?.id || raw;
+}
+
+app.get('/api/v1/crm/tasks', authenticateToken, requireManagerRole, async (req, res) => {
+    try {
+        const { status, manager, order_id, limit = 20, offset = 0 } = req.query;
+        const limitInt = Math.max(1, Math.min(200, parseInt(limit)));
+        const offsetInt = Math.max(0, parseInt(offset));
+
+        if (supabase) {
+            let query = supabase
+                .from('tasks')
+                .select('*', { count: 'exact' })
+                .order('created_at', { ascending: false })
+                .range(offsetInt, offsetInt + limitInt - 1);
+            if (status === 'completed') query = query.eq('completed', true);
+            if (status === 'pending') query = query.eq('completed', false);
+            if (manager) query = query.eq('assigned_to', String(manager));
+            if (order_id) {
+                const resolvedOrderId = await resolveSupabaseOrderUuid(String(order_id));
+                query = query.eq('order_id', String(resolvedOrderId));
+            }
+
+            const { data, error, count } = await query;
+            if (error) throw error;
+            const tasks = (data || []).map((task) => ({
+                ...task,
+                id: task.id || task.task_id || null,
+                order_id: task.order_id || task.orderId || null,
+                completed: task.completed != null ? task.completed : String(task.status || '').toLowerCase() === 'completed'
+            }));
+            return res.json({ success: true, tasks, total: count || tasks.length, limit: limitInt, offset: offsetInt });
+        }
+
+        const where = [];
+        const params = [];
+        if (status === 'completed') {
+            where.push('completed = 1');
+        } else if (status === 'pending') {
+            where.push('completed = 0');
+        }
+        if (manager) {
+            where.push('assigned_to = ?');
+            params.push(String(manager));
+        }
+        if (order_id) {
+            where.push('order_id = ?');
+            params.push(String(order_id));
+        }
+        const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+        const countRow = await db.query(`SELECT COUNT(*) as cnt FROM tasks ${whereSql}`, params);
+        const total = countRow?.[0]?.cnt || 0;
+        const rows = await db.query(
+            `SELECT id, order_id, title, description, due_at, completed, assigned_to, created_by, created_at FROM tasks ${whereSql} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+            [...params, limitInt, offsetInt]
+        );
+        const tasks = (rows || []).map((task) => ({
+            ...task,
+            id: task.id || task.task_id || null,
+            order_id: task.order_id || null,
+            completed: task.completed != null ? task.completed : String(task.status || '').toLowerCase() === 'completed'
+        }));
+        return res.json({ success: true, tasks, total, limit: limitInt, offset: offsetInt });
+    } catch (error) {
+        console.error('CRM tasks list error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to load tasks' });
+    }
+});
+
+app.post('/api/v1/crm/tasks', authenticateToken, requireManagerRole, async (req, res) => {
+    try {
+        const { title, description, order_id, assigned_to, due_at } = req.body || {};
+        if (!title) return res.status(400).json({ success: false, error: 'Title required' });
+
+        if (supabase) {
+            const resolvedOrderId = order_id ? await resolveSupabaseOrderUuid(String(order_id)) : null;
+            const payload = {
+                title: String(title),
+                description: description ? String(description) : null,
+                order_id: resolvedOrderId ? String(resolvedOrderId) : null,
+                assigned_to: assigned_to ? String(assigned_to) : null,
+                due_at: due_at || null,
+                completed: false
+            };
+            const { data, error } = await supabase.from('tasks').insert(payload).select('*');
+            if (error) throw error;
+            const task = data?.[0] || payload;
+            return res.json({
+                success: true,
+                task: {
+                    ...task,
+                    id: task.id || task.task_id || null,
+                    order_id: task.order_id || null,
+                    completed: task.completed != null ? task.completed : String(task.status || '').toLowerCase() === 'completed'
+                }
+            });
+        }
+
+        const id = `TASK-${Date.now()}`;
+        await db.query(
+            'INSERT INTO tasks (id, order_id, title, description, due_at, completed, assigned_to, created_by, created_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?, CURRENT_TIMESTAMP)',
+            [id, order_id || null, String(title), description || null, due_at || null, assigned_to || null, String(req.user.id)]
+        );
+        const rows = await db.query('SELECT * FROM tasks WHERE id = ? LIMIT 1', [id]);
+        return res.json({ success: true, task: rows?.[0] || null });
+    } catch (error) {
+        console.error('CRM task create error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to create task' });
+    }
+});
+
+app.patch('/api/v1/crm/tasks/:taskId', authenticateToken, requireManagerRole, async (req, res) => {
+    try {
+        const { taskId } = req.params;
+        const { title, description, completed, assigned_to, due_at } = req.body || {};
+
+        if (supabase) {
+            const payload = {};
+            if (title != null) payload.title = String(title);
+            if (description != null) payload.description = String(description);
+            if (completed != null) payload.completed = Boolean(completed);
+            if (assigned_to != null) payload.assigned_to = String(assigned_to);
+            if (due_at != null) payload.due_at = due_at;
+            const { data, error } = await supabase.from('tasks').update(payload).eq('id', taskId).select('*');
+            if (error) throw error;
+            const task = data?.[0] || null;
+            return res.json({
+                success: true,
+                task: task ? {
+                    ...task,
+                    id: task.id || task.task_id || null,
+                    order_id: task.order_id || null,
+                    completed: task.completed != null ? task.completed : String(task.status || '').toLowerCase() === 'completed'
+                } : null
+            });
+        }
+
+        const payload = {};
+        if (title != null) payload.title = String(title);
+        if (description != null) payload.description = String(description);
+        if (completed != null) payload.completed = Number(completed) ? 1 : 0;
+        if (assigned_to != null) payload.assigned_to = String(assigned_to);
+        if (due_at != null) payload.due_at = due_at;
+        const keys = Object.keys(payload);
+        if (!keys.length) return res.status(400).json({ success: false, error: 'No fields to update' });
+        const updates = keys.map(k => `${k} = ?`).join(', ');
+        await db.query(`UPDATE tasks SET ${updates} WHERE id = ?`, [...keys.map(k => payload[k]), taskId]);
+        const rows = await db.query('SELECT * FROM tasks WHERE id = ? LIMIT 1', [taskId]);
+        return res.json({ success: true, task: rows?.[0] || null });
+    } catch (error) {
+        console.error('CRM task update error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to update task' });
+    }
+});
+
+app.delete('/api/v1/crm/tasks/:taskId', authenticateToken, requireManagerRole, async (req, res) => {
+    try {
+        const { taskId } = req.params;
+        if (!taskId || taskId === 'undefined' || taskId === 'null') {
+            return res.status(400).json({ success: false, error: 'Invalid task id' });
+        }
+        if (supabase) {
+            const { error } = await supabase.from('tasks').delete().eq('id', taskId);
+            if (error) throw error;
+            return res.json({ success: true });
+        }
+        await db.query('DELETE FROM tasks WHERE id = ?', [taskId]);
+        return res.json({ success: true });
+    } catch (error) {
+        console.error('CRM task delete error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to delete task' });
+    }
+});
+
+// ========================================
+// 💰 CRM TRANSACTIONS (Manager Only)
+// ========================================
+
+app.get('/api/v1/crm/orders/:orderId/transactions', authenticateToken, requireManagerRole, async (req, res) => {
+    try {
+        const { orderId } = req.params;
+        const resolvedOrderId = await resolveSupabaseOrderUuid(orderId);
+
+        if (supabase) {
+            const { data, error } = await supabase
+                .from('transactions')
+                .select('*')
+                .eq('order_id', resolvedOrderId)
+                .order('transaction_date', { ascending: false });
+
+            if (error) throw error;
+
+            const totalPaid = (data || []).filter(t => t.type === 'payment').reduce((sum, t) => sum + Number(t.amount), 0);
+            const totalRefunded = (data || []).filter(t => t.type === 'refund').reduce((sum, t) => sum + Number(t.amount), 0);
+
+            return res.json({
+                success: true,
+                transactions: data || [],
+                summary: {
+                    total_paid: totalPaid,
+                    total_refunded: totalRefunded,
+                    balance: totalPaid - totalRefunded
+                }
+            });
+        }
+
+        const rows = await db.query('SELECT * FROM transactions WHERE order_id = ? ORDER BY transaction_date DESC', [resolvedOrderId]);
+        const totalPaid = rows.filter(t => t.type === 'payment').reduce((sum, t) => sum + Number(t.amount), 0);
+        const totalRefunded = rows.filter(t => t.type === 'refund').reduce((sum, t) => sum + Number(t.amount), 0);
+
+        return res.json({
+            success: true,
+            transactions: rows,
+            summary: {
+                total_paid: totalPaid,
+                total_refunded: totalRefunded,
+                balance: totalPaid - totalRefunded
+            }
+        });
+    } catch (error) {
+        console.error('CRM get transactions error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to load transactions' });
+    }
+});
+
+app.post('/api/v1/crm/orders/:orderId/transactions', authenticateToken, requireManagerRole, async (req, res) => {
+    try {
+        const { orderId } = req.params;
+        const { amount, type, method, description, transaction_date } = req.body;
+        const resolvedOrderId = await resolveSupabaseOrderUuid(orderId);
+
+        if (!amount) return res.status(400).json({ success: false, error: 'Amount is required' });
+
+        const payload = {
+            order_id: resolvedOrderId,
+            amount: Number(amount),
+            type: type || 'payment',
+            method: method || 'manual',
+            description: description || '',
+            transaction_date: transaction_date || new Date().toISOString()
+        };
+
+        if (supabase) {
+            const { data, error } = await supabase.from('transactions').insert(payload).select().single();
+            if (error) throw error;
+            return res.json({ success: true, transaction: data });
+        }
+
+        const id = `TXN-${Date.now()}`;
+        await db.query(
+            `INSERT INTO transactions (id, order_id, amount, type, method, description, transaction_date, created_at) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+            [id, resolvedOrderId, payload.amount, payload.type, payload.method, payload.description, payload.transaction_date]
+        );
+
+        const rows = await db.query('SELECT * FROM transactions WHERE id = ?', [id]);
+        return res.json({ success: true, transaction: rows[0] });
+
+    } catch (error) {
+        console.error('CRM add transaction error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to add transaction' });
+    }
+});
+
+app.delete('/api/v1/crm/transactions/:transactionId', authenticateToken, requireManagerRole, async (req, res) => {
+    try {
+        const { transactionId } = req.params;
+
+        if (supabase) {
+            const { error } = await supabase.from('transactions').delete().eq('id', transactionId);
+            if (error) throw error;
+            return res.json({ success: true });
+        }
+
+        await db.query('DELETE FROM transactions WHERE id = ?', [transactionId]);
+        return res.json({ success: true });
+
+    } catch (error) {
+        console.error('CRM delete transaction error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to delete transaction' });
+    }
+});
+
+// ========================================
+// 🚚 CRM LOGISTICS (Manager Only)
+// ========================================
+
+app.get('/api/v1/crm/orders/:orderId/shipments', authenticateToken, requireManagerRole, async (req, res) => {
+    try {
+        const { orderId } = req.params;
+        const resolvedOrderId = await resolveSupabaseOrderUuid(orderId);
+
+        if (supabase) {
+            const { data, error } = await supabase
+                .from('shipments')
+                .select('*')
+                .eq('order_id', resolvedOrderId)
+                .order('created_at', { ascending: false });
+            if (error) throw error;
+            return res.json({ success: true, shipments: data || [] });
+        }
+
+        const rows = await db.query('SELECT * FROM shipments WHERE order_id = ? ORDER BY created_at DESC', [resolvedOrderId]);
+        return res.json({ success: true, shipments: rows });
+
+    } catch (error) {
+        console.error('CRM get shipments error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to load shipments' });
+    }
+});
+
+app.post('/api/v1/crm/orders/:orderId/shipments', authenticateToken, requireManagerRole, async (req, res) => {
+    try {
+        const { orderId } = req.params;
+        const { provider, carrier, tracking_number, estimated_delivery_date } = req.body;
+        const resolvedOrderId = await resolveSupabaseOrderUuid(orderId);
+
+        if (supabase) {
+            const { data, error } = await supabase.from('shipments').insert({
+                order_id: resolvedOrderId,
+                provider: provider || carrier,
+                carrier: carrier || provider,
+                tracking_number,
+                estimated_delivery_date
+            }).select().single();
+            if (error) throw error;
+            return res.json({ success: true, shipment: data });
+        }
+
+        const id = `SHIP-${Date.now()}`;
+        const localProvider = provider || carrier || 'rusbid';
+        await db.query(
+            `INSERT INTO shipments (id, order_id, provider, tracking_number, estimated_delivery_date, created_at) 
+             VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+            [id, resolvedOrderId, localProvider, tracking_number, estimated_delivery_date]
+        );
+        const rows = await db.query('SELECT * FROM shipments WHERE id = ?', [id]);
+        return res.json({ success: true, shipment: rows[0] });
+
+    } catch (error) {
+        console.error('CRM create shipment error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to create shipment' });
+    }
+});
+
+app.patch('/api/v1/crm/shipments/:shipmentId', authenticateToken, requireManagerRole, async (req, res) => {
+    try {
+        const { shipmentId } = req.params;
+        const { tracking_number, carrier, estimated_delivery_date, status } = req.body;
+
+        if (supabase) {
+            const updates = {};
+            if (tracking_number !== undefined) updates.tracking_number = tracking_number;
+            if (carrier !== undefined) updates.carrier = carrier;
+            if (estimated_delivery_date !== undefined) updates.estimated_delivery_date = estimated_delivery_date;
+            if (status !== undefined) updates.status = status;
+
+            const { data, error } = await supabase.from('shipments').update(updates).eq('id', shipmentId).select().single();
+            if (error) throw error;
+            return res.json({ success: true, shipment: data });
+        }
+
+        const updates = [];
+        const params = [];
+        if (tracking_number !== undefined) { updates.push('tracking_number=?'); params.push(tracking_number); }
+        if (carrier !== undefined) { updates.push('provider=?'); params.push(carrier); }
+        if (estimated_delivery_date !== undefined) { updates.push('estimated_delivery_date=?'); params.push(estimated_delivery_date); }
+        if (status !== undefined) {
+            updates.push('ruspost_status=?');
+            params.push(JSON.stringify({ status }));
+        }
+
+        if (updates.length > 0) {
+            params.push(shipmentId);
+            await db.query(`UPDATE shipments SET ${updates.join(', ')} WHERE id = ?`, params);
+        }
+
+        const rows = await db.query('SELECT * FROM shipments WHERE id = ?', [shipmentId]);
+        return res.json({ success: true, shipment: rows[0] });
+
+    } catch (error) {
+        console.error('CRM update shipment error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to update shipment' });
+    }
+});
+
+app.post('/api/v1/crm/orders/:orderId/notify-tracking', authenticateToken, requireManagerRole, async (req, res) => {
+    // Mock notification for now
+    return res.json({ success: true, message: 'Notification queued' });
+});
+
 app.post('/api/metrics/search', optionalAuth, async (req, res) => {
     try {
         const { query, category, brand, minPrice, maxPrice } = req.body || {};
@@ -3401,17 +5540,24 @@ app.get('/api/image-proxy', async (req, res) => {
         if (!raw || typeof raw !== 'string') {
             return res.status(400).json({ error: 'Missing url' });
         }
+
         let target;
         try {
             target = new URL(String(raw));
         } catch (e) {
             return res.status(400).json({ error: 'Invalid url' });
         }
-        if (!/^https?:$/.test(target.protocol)) {
-            return res.status(400).json({ error: 'Only http/https protocols supported' });
+
+        if (target.protocol !== 'https:') {
+            return res.status(400).json({ error: 'Only https protocol is supported' });
+        }
+        if (target.username || target.password) {
+            return res.status(400).json({ error: 'Credentials in URL are not allowed' });
+        }
+        if (target.port && target.port !== '443') {
+            return res.status(400).json({ error: 'Only default https port is allowed' });
         }
 
-        // SECURITY: Block private/internal IPs (SSRF protection)
         const hostname = target.hostname.toLowerCase();
         const privatePatterns = [
             /^localhost$/i,
@@ -3420,57 +5566,44 @@ app.get('/api/image-proxy', async (req, res) => {
             /^192\.168\./,
             /^172\.(1[6-9]|2[0-9]|3[0-1])\./,
             /^0\./,
-            /^169\.254\./,  // Link-local
+            /^169\.254\./,
             /^::1$/,
             /^fc00:/i,
             /^fd00:/i,
-            /^\[::1\]$/
+            /^\[::1\]$/,
+            /\.local$/i,
+            /\.internal$/i
         ];
 
-        if (privatePatterns.some(pattern => pattern.test(hostname))) {
-            console.warn(`⚠️ SSRF attempt blocked: ${target.hostname}`);
+        if (privatePatterns.some((pattern) => pattern.test(hostname))) {
             return res.status(403).json({ error: 'Access to internal resources is forbidden' });
-        }
-
-        // SECURITY: Domain allowlist for known image hosts
-        const allowedDomains = [
-            'bilder.buycycle.com',
-            'images.buycycle.com',
-            'cdn.buycycle.com',
-            'bikewerk.ru',
-            'api.bikewerk.ru',
-            'eubike.ru',
-            'images.unsplash.com',
-            'upload.wikimedia.org',
-            'lh3.googleusercontent.com'
-        ];
-
-        const isAllowed = allowedDomains.some(domain =>
-            hostname === domain || hostname.endsWith('.' + domain)
-        );
-
-        if (!isAllowed) {
-            console.warn(`⚠️ Image proxy blocked non-whitelisted domain: ${hostname}`);
-            return res.status(403).json({ error: 'Domain not in allowlist' });
         }
 
         const response = await axios.get(target.toString(), {
             responseType: 'arraybuffer',
             timeout: 10000,
-            maxContentLength: 10 * 1024 * 1024,
+            maxContentLength: 8 * 1024 * 1024,
+            maxBodyLength: 8 * 1024 * 1024,
             headers: {
                 'User-Agent': 'EUBikeImageProxy/1.0',
                 'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8'
             },
-            validateStatus: (s) => s >= 200 && s < 400,
+            validateStatus: (statusCode) => statusCode >= 200 && statusCode < 400
         });
 
-        const contentType = response.headers['content-type'] || 'image/jpeg';
-        res.set('Content-Type', contentType.startsWith('image/') ? contentType : 'image/jpeg');
-        res.set('Cache-Control', 'public, max-age=900');
+        const contentType = String(response.headers['content-type'] || '').toLowerCase();
+        if (!contentType.startsWith('image/')) {
+            return res.status(415).json({ error: 'Upstream URL is not an image' });
+        }
+
+        res.set('Content-Type', contentType);
+        res.set('Cache-Control', 'public, max-age=1800');
+        res.set('Access-Control-Allow-Origin', '*');
+        res.set('Cross-Origin-Resource-Policy', 'cross-origin');
+        res.set('X-Content-Type-Options', 'nosniff');
         res.set('X-Image-Proxy', '1');
         return res.send(Buffer.from(response.data));
-    } catch (err) {
+    } catch (error) {
         return res.status(502).json({ error: 'Proxy fetch failed' });
     }
 });
@@ -4512,19 +6645,40 @@ app.get('/api/v1/crm/orders/search', async (req, res) => {
         const { q, limit = 10 } = req.query;
         if (!q) return res.json({ success: true, orders: [] });
 
-        if (!supabase) {
-            console.error('Supabase client not initialized');
-            return res.status(500).json({ error: 'Supabase configuration missing' });
-        }
-
         const limitInt = parseInt(limit);
+        const safeQ = String(q).trim();
+
+        if (!supabase) {
+            const likeQ = `%${safeQ}%`;
+            const rows = await db.query(
+                `SELECT o.id, o.order_code, o.status, o.final_price_eur, o.created_at, c.full_name
+                 FROM orders o
+                 LEFT JOIN customers c ON c.id = o.customer_id
+                 WHERE o.order_code LIKE ? OR o.id LIKE ? OR c.full_name LIKE ?
+                 ORDER BY o.created_at DESC
+                 LIMIT ?`,
+                [likeQ, likeQ, likeQ, limitInt]
+            );
+
+            const orders = (rows || []).map(o => ({
+                order_id: o.id,
+                order_number: o.order_code,
+                status: o.status,
+                total_amount: o.final_price_eur,
+                created_at: o.created_at,
+                customer_name: o.full_name || 'Customer',
+                source: 'local'
+            }));
+
+            return res.json({ success: true, orders });
+        }
 
         // Search in canonical orders via Supabase
         // We search both id and order_code loosely
         let query = supabase
             .from('orders')
             .select('id, order_code, status, final_price_eur, created_at, customers(full_name)')
-            .or(`order_code.ilike.%${q}%,id.ilike.%${q}%`);
+            .or(`order_code.ilike.%${safeQ}%,id.ilike.%${safeQ}%`);
 
         const { data: crmResults, error } = await query
             .order('created_at', { ascending: false })
@@ -4558,8 +6712,85 @@ app.get('/api/v1/crm/orders/:orderId', async (req, res) => {
         const { orderId } = req.params;
 
         if (!supabase) {
-            console.error('Supabase client not initialized');
-            return res.status(500).json({ error: 'Supabase configuration missing' });
+            const localOrders = await db.query(
+                'SELECT id, order_code, status, final_price_eur, created_at, bike_snapshot, customer_id, assigned_manager FROM orders WHERE id = ? OR order_code = ? LIMIT 1',
+                [orderId, orderId]
+            );
+            const order = localOrders?.[0] || null;
+            if (!order) {
+                return res.status(404).json({ error: 'Order not found' });
+            }
+
+            const customerRows = order.customer_id
+                ? await db.query(
+                    'SELECT full_name, email, phone, city, country, preferred_channel FROM customers WHERE id = ? LIMIT 1',
+                    [order.customer_id]
+                )
+                : [];
+            const customer = customerRows?.[0] || null;
+            const mergedCustomer = mergeOrderCustomerWithSnapshot(customer, order);
+            let managerName = null;
+            if (order.assigned_manager) {
+                const managerRows = await db.query('SELECT name FROM users WHERE id = ? LIMIT 1', [order.assigned_manager]);
+                managerName = managerRows?.[0]?.name || null;
+            }
+
+            const history = await db.query(
+                'SELECT old_status, new_status, created_at FROM order_status_events WHERE order_id = ? ORDER BY created_at ASC',
+                [order.id]
+            );
+            const logistics = await db.query(
+                'SELECT provider, tracking_number, estimated_delivery_date FROM shipments WHERE order_id = ?',
+                [order.id]
+            );
+
+            let items = [];
+            if (order.bike_snapshot) {
+                try {
+                const parsed = typeof order.bike_snapshot === 'string' ? JSON.parse(order.bike_snapshot) : order.bike_snapshot;
+                items = Array.isArray(parsed) ? parsed : [parsed];
+            } catch {
+                items = [];
+            }
+            }
+
+            const details = {
+                order: {
+                    order_id: order.id,
+                    order_number: order.order_code,
+                    status: order.status,
+                    total_amount: order.final_price_eur,
+                    customer_name: mergedCustomer?.full_name || null,
+                    created_at: order.created_at,
+                    assigned_manager: order.assigned_manager || null,
+                    assigned_manager_name: managerName || null,
+                    bike_snapshot: order.bike_snapshot || null,
+                    customer: mergedCustomer
+                },
+                history: (history || []).map(e => ({
+                    status: e.old_status || 'created',
+                    new_status: e.new_status,
+                    change_notes: `Status changed from ${e.old_status} to ${e.new_status}`,
+                    created_at: e.created_at
+                })),
+                logistics: (logistics || []).map(s => ({
+                    carrier: s.provider,
+                    tracking_number: s.tracking_number,
+                    estimated_delivery: s.estimated_delivery_date
+                })),
+                items
+            };
+
+            if (!details.history.length && order.created_at) {
+                details.history.push({
+                    status: 'created',
+                    new_status: 'created',
+                    change_notes: 'Заказ создан',
+                    created_at: order.created_at
+                });
+            }
+
+            return res.json({ success: true, ...details });
         }
 
         // Find order with relations (support both ID and Code)
@@ -4567,7 +6798,8 @@ app.get('/api/v1/crm/orders/:orderId', async (req, res) => {
             .from('orders')
             .select(`
                 *,
-                customers (full_name),
+                customers (full_name, email, phone, city, country, contact_value, preferred_channel),
+                users (name),
                 order_status_events (old_status, new_status, created_at),
                 shipments (provider, tracking_number, estimated_delivery_date)
             `)
@@ -4581,6 +6813,83 @@ app.get('/api/v1/crm/orders/:orderId', async (req, res) => {
         }
 
         if (!orders || orders.length === 0) {
+            const localOrders = await db.query(
+                'SELECT id, order_code, status, final_price_eur, created_at, bike_snapshot, customer_id, assigned_manager FROM orders WHERE id = ? OR order_code = ? LIMIT 1',
+                [orderId, orderId]
+            );
+            const localOrder = localOrders?.[0] || null;
+            if (localOrder) {
+                const customerRows = localOrder.customer_id
+                    ? await db.query(
+                        'SELECT full_name, email, phone, city, country, preferred_channel FROM customers WHERE id = ? LIMIT 1',
+                        [localOrder.customer_id]
+                    )
+                    : [];
+                const customer = customerRows?.[0] || null;
+                const mergedCustomer = mergeOrderCustomerWithSnapshot(customer, localOrder);
+                let managerName = null;
+                if (localOrder.assigned_manager) {
+                    const managerRows = await db.query('SELECT name FROM users WHERE id = ? LIMIT 1', [localOrder.assigned_manager]);
+                    managerName = managerRows?.[0]?.name || null;
+                }
+
+                const history = await db.query(
+                    'SELECT old_status, new_status, created_at FROM order_status_events WHERE order_id = ? ORDER BY created_at ASC',
+                    [localOrder.id]
+                );
+                const logistics = await db.query(
+                    'SELECT provider, tracking_number, estimated_delivery_date FROM shipments WHERE order_id = ?',
+                    [localOrder.id]
+                );
+
+                let itemsLocal = [];
+                if (localOrder.bike_snapshot) {
+                    try {
+                        const parsed = typeof localOrder.bike_snapshot === 'string' ? JSON.parse(localOrder.bike_snapshot) : localOrder.bike_snapshot;
+                        itemsLocal = Array.isArray(parsed) ? parsed : [parsed];
+                    } catch {
+                        itemsLocal = [];
+                    }
+                }
+
+                const localDetails = {
+                    order: {
+                        order_id: localOrder.id,
+                        order_number: localOrder.order_code,
+                        status: localOrder.status,
+                        total_amount: localOrder.final_price_eur,
+                        customer_name: mergedCustomer?.full_name || null,
+                        created_at: localOrder.created_at,
+                        assigned_manager: localOrder.assigned_manager || null,
+                        assigned_manager_name: managerName || null,
+                        bike_snapshot: localOrder.bike_snapshot || null,
+                        customer: mergedCustomer
+                    },
+                    history: (history || []).map(e => ({
+                        status: e.old_status || 'created',
+                        new_status: e.new_status,
+                        change_notes: `Status changed from ${e.old_status} to ${e.new_status}`,
+                        created_at: e.created_at
+                    })),
+                    logistics: (logistics || []).map(s => ({
+                        carrier: s.provider,
+                        tracking_number: s.tracking_number,
+                        estimated_delivery: s.estimated_delivery_date
+                    })),
+                    items: itemsLocal
+                };
+
+                if (!localDetails.history.length && localOrder.created_at) {
+                    localDetails.history.push({
+                        status: 'created',
+                        new_status: 'created',
+                        change_notes: 'Order created',
+                        created_at: localOrder.created_at
+                    });
+                }
+
+                return res.json({ success: true, ...localDetails });
+            }
             return res.status(404).json({ error: 'Order not found' });
         }
 
@@ -4594,14 +6903,20 @@ app.get('/api/v1/crm/orders/:orderId', async (req, res) => {
         }
 
         // Construct response
+        const managerName = Array.isArray(order.users) ? order.users[0]?.name : order.users?.name;
+        const mergedCustomer = mergeOrderCustomerWithSnapshot(order.customers || null, order);
         const details = {
             order: {
                 order_id: order.id,
                 order_number: order.order_code,
                 status: order.status,
                 total_amount: order.final_price_eur,
-                customer_name: order.customers?.full_name || 'Customer',
-                created_at: order.created_at
+                customer_name: mergedCustomer?.full_name || 'Customer',
+                created_at: order.created_at,
+                assigned_manager: order.assigned_manager || null,
+                assigned_manager_name: managerName || null,
+                bike_snapshot: order.bike_snapshot || null,
+                customer: mergedCustomer
             },
             history: [],
             logistics: [],
@@ -5260,6 +7575,74 @@ async function startServer() {
             }
         };
 
+        // Migration: ensure users.role allows 'manager'
+        try {
+            const rows = await db.query("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'");
+            const createSql = rows && rows[0] ? String(rows[0].sql || '') : '';
+            if (createSql && !createSql.includes("'manager'")) {
+                console.log('🔧 Migrating users table to allow manager role...');
+                await db.query('BEGIN TRANSACTION');
+                await db.query(`
+                    CREATE TABLE IF NOT EXISTS users_new (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT NOT NULL,
+                        email TEXT UNIQUE NOT NULL,
+                        phone TEXT,
+                        password TEXT NOT NULL,
+                        role TEXT DEFAULT 'user' CHECK (role IN ('user', 'manager', 'admin')),
+                        is_active INTEGER DEFAULT 1,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        last_login DATETIME,
+                        last_logout DATETIME,
+                        email_verified INTEGER DEFAULT 0,
+                        telegram_id INTEGER,
+                        must_change_password INTEGER DEFAULT 0,
+                        must_set_email INTEGER DEFAULT 0,
+                        temp_password TEXT
+                    )
+                `);
+                await db.query(`
+                    INSERT INTO users_new (id, name, email, password, role, is_active, created_at, updated_at, last_login, last_logout, email_verified, telegram_id)
+                    SELECT id, name, email, password, role, is_active, created_at, updated_at, last_login, last_logout, email_verified, telegram_id
+                    FROM users
+                `);
+                await db.query('DROP TABLE users');
+                await db.query('ALTER TABLE users_new RENAME TO users');
+                await db.query('CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)');
+                await db.query('COMMIT');
+                console.log('✅ Users role migration completed');
+            }
+        } catch (e) {
+            try { await db.query('ROLLBACK'); } catch { }
+            console.warn('Users role migration warning:', e.message || e);
+        }
+
+        // Auth columns migration (phone + forced reset)
+        try {
+            const ensureCol = async (name, def) => {
+                const exists = await columnExists('users', name);
+                if (!exists) await db.query(`ALTER TABLE users ADD COLUMN ${name} ${def}`);
+            };
+            await ensureCol('phone', 'TEXT');
+            await ensureCol('must_change_password', 'INTEGER DEFAULT 0');
+            await ensureCol('must_set_email', 'INTEGER DEFAULT 0');
+            await ensureCol('temp_password', 'TEXT');
+        } catch (e) {
+            console.warn('Auth columns migration warning:', e.message || e);
+        }
+
+        // CRM customer fields migration
+        try {
+            const ensureCustomerCol = async (name, def) => {
+                const exists = await columnExists('customers', name);
+                if (!exists) await db.query(`ALTER TABLE customers ADD COLUMN ${name} ${def}`);
+            };
+            await ensureCustomerCol('city', 'TEXT');
+        } catch (e) {
+            console.warn('Customers columns migration warning:', e.message || e);
+        }
+
         // CRM tables are now initialized in DatabaseManager.initialize() via initSQL in mysql-config.js
         console.log('✅ Canonical CRM tables initialized');
 
@@ -5408,3 +7791,5 @@ process.on('SIGINT', async () => {
 startServer();
 
 module.exports = app;
+
+

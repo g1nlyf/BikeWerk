@@ -1,8 +1,8 @@
-const sqlite3 = require('sqlite3').verbose();
+﻿const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 
 // Path from telegram-bot folder to backend database
-const dbPath = path.resolve(__dirname, '../backend/Databases/eubike.db');
+const dbPath = path.resolve(__dirname, '../backend/database/eubike.db');
 console.log("Checking DB at:", dbPath);
 const db = new sqlite3.Database(dbPath);
 
@@ -34,3 +34,4 @@ db.serialize(() => {
 });
 
 db.close();
+

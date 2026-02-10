@@ -2,6 +2,7 @@ import { Router } from 'express'
 // import examplesRouter from './modules/examples'
 import crmRouter from './modules/crm'
 import bookingRouter from './modules/booking'
+import ordersRouter from './modules/orders'
 import recommendationsRouter from './modules/recommendations'
 // Pages routers
 import homeRouter from './pages/home'
@@ -31,6 +32,7 @@ const v1 = Router()
 // v1.use('/examples', examplesRouter)
 v1.use('/crm', crmRouter)
 v1.use('/booking', bookingRouter)
+v1.use('/orders', ordersRouter)
 v1.use('/recommendations', recommendationsRouter)
 
 // Mount page routers (placeholders)

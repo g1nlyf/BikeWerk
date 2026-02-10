@@ -26,21 +26,34 @@ Assess technical condition based on:
 2. Photos (if available) - look for scratches, wear, damage
 3. Year & Mileage
 
-**IMPORTANT: Be GENEROUS with ratings.** Most used bikes are in good condition. Only give low ratings (1-3) if there are OBVIOUS serious defects or damage visible in photos or mentioned by seller.
+**IMPORTANT: Be OBJECTIVE and conservative.**
+- Do NOT inflate scores for marketing language like "top", "perfect", "like new".
+- Use only evidence from photos + text + specs.
+- If evidence is weak, reduce confidence and keep score moderate.
 
-**Scoring Logic (GENEROUS):**
-- **Wie neu (Like New)**: Score 90-100 | Grade A+ | Class "excellent" | Visual 5/5 | Functional 5/5
-- **Sehr gut (Very Good)**: Score 85-94 | Grade A | Class "very_good" | Visual 4-5/5 | Functional 5/5
-- **Gut (Good)**: Score 75-84 | Grade B | Class "good" | Visual 4/5 | Functional 4-5/5
-- **Akzeptabel (Fair)**: Score 60-74 | Grade C | Class "fair" | Visual 3/5 | Functional 3-4/5
-- **Defekt/Bastler (ONLY for severely damaged)**: Score <60 | Grade D | Class "poor" | Visual 1-2/5 | Functional 1-2/5
+**Scoring Logic (OBJECTIVE, 0-100):**
+- **A+ / excellent (95-100)**: practically new, no visible wear, no defects, very high confidence.
+- **A / very_good (85-94)**: fully ride-ready, minor cosmetic wear only, no functional concerns.
+- **B / good (70-84)**: ride-ready but normal wear/service expected (pads/chain/bearings etc.).
+- **C / fair (40-69)**: noticeable wear or likely maintenance needs before confident everyday use.
+- **D / poor (0-39)**: damaged/defective/unsafe or explicitly sold as repair/project.
 
-**Rating Guidelines:**
-- Visual 4-5/5: Default for any bike without obvious cosmetic damage. Minor scratches are normal.
-- Visual 3/5: ONLY if there's significant scratching, faded paint, or visible cosmetic issues.
-- Visual 1-2/5: ONLY for seriously damaged, crashed, or defective appearance.
-- Functional 4-5/5: Default for working bikes. Assume functional unless stated otherwise.
-- Functional 1-3/5: ONLY if seller mentions mechanical problems or photos show broken parts.
+**Visual/Functional Ratings (1-5):**
+- `visual_rating=5`: truly near-new.
+- `visual_rating=4`: minor normal wear.
+- `visual_rating=3`: clear wear.
+- `visual_rating=1-2`: serious cosmetic/structural issues.
+- `functional_rating=5`: clearly ride-ready now.
+- `functional_rating=4`: likely ride-ready with minor service.
+- `functional_rating=3`: uncertain functionality or moderate maintenance needed.
+- `functional_rating=1-2`: explicit faults or clear mechanical risk.
+
+**Grade mapping must follow score:**
+- `A+` for 95-100
+- `A` for 85-94
+- `B` for 70-84
+- `C` for 40-69
+- `D` for 0-39
 
 **Required Fields:**
 - `condition.rationale`: Short Russian report (2-3 sentences) explaining the score. Be specific about what you observed.

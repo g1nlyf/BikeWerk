@@ -13,9 +13,17 @@ class OrderDispatcher {
         console.log(`[OrderDispatcher] Dispatching Order ${order.order_code}...`);
 
         try {
+            if (!supabase?.supabase || typeof supabase.supabase.from !== 'function') {
+                console.warn('[OrderDispatcher] Supabase client unavailable. Skipping dispatch.');
+                return { manager: null, tasks: [] };
+            }
+
             // 1. Auto-Assign Manager
             const manager = await this._assignBestManager(order.id);
-            
+            if (!manager?.id) {
+                return { manager: manager || null, tasks: [] };
+            }
+
             // 2. AI Task Generation
             const bikeName = order.bike_name || bikeSnapshot?.title || 'Unknown Bike';
             const tasks = await this._generateAndSaveTasks(order.id, bikeName, bikeSnapshot, manager.id);
@@ -33,6 +41,10 @@ class OrderDispatcher {
      * Find manager with least active orders/tasks and assign
      */
     async _assignBestManager(orderId) {
+        if (!supabase?.supabase || typeof supabase.supabase.from !== 'function') {
+            return null;
+        }
+
         // 1. Get all active managers
         // We also want their telegram_id to ensure they can receive notifications
         // Assuming telegram_id is in users OR manager_subscribers (via join is hard with simple query)
@@ -104,6 +116,9 @@ class OrderDispatcher {
      * Generate AI tasks and save to DB
      */
     async _generateAndSaveTasks(orderId, bikeName, bikeSnapshot, managerId) {
+        if (!supabase?.supabase || typeof supabase.supabase.from !== 'function') return [];
+        if (!managerId) return [];
+
         // 1. Call Gemini
         console.log(`[OrderDispatcher] Generating AI Tasks for ${bikeName}...`);
         const taskDescriptions = await gemini.generateTechnicalTasks(bikeName, bikeSnapshot);

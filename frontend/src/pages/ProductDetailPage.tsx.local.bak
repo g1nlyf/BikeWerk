@@ -1,0 +1,665 @@
+import React from "react";
+import { Link, useParams } from "react-router-dom";
+import BikeflipHeaderPX from "@/components/layout/BikeflipHeaderPX";
+import { SEOHead } from "@/components/SEO/SEOHead";
+import { catalogApi, crmApi, resolveImageUrl } from "@/api";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+
+type BikeDetail = {
+  id: number;
+  name: string;
+  brand: string | null;
+  model: string | null;
+  category: string | null;
+  discipline: string | null;
+  sub_category: string | null;
+  year: number | null;
+  price_eur: number;
+  currency: string | null;
+  original_price_eur: number | null;
+  condition_status: string | null;
+  condition_grade: string | null;
+  condition_score: number | null;
+  condition_rationale: string | null;
+  wheel_size: string | null;
+  frame_size: string | null;
+  frame_material: string | null;
+  suspension_type: string | null;
+  seller_type: string | null;
+  country: string | null;
+  location: string | null;
+  source_url: string | null;
+  source_platform: string | null;
+  source_ad_id: string | null;
+  description: string | null;
+  main_image: string | null;
+  images: string[];
+  highlights: string[];
+  specs: Record<string, string | number | null>;
+  logistics?: {
+    shipping_option?: string | null;
+    shipping_cost?: number | null;
+    country?: string | null;
+    location?: string | null;
+    pickup_available?: boolean;
+  };
+  booking_payload?: {
+    bike_id?: number;
+    bike_url?: string | null;
+    external_bike_ref?: string | null;
+    bike_snapshot?: Record<string, unknown>;
+  };
+};
+
+type CatalogResponse = {
+  bike?: BikeDetail;
+  items?: BikeDetail[];
+  bikes?: BikeDetail[];
+};
+
+type BookingState = {
+  full_name: string;
+  contact: string;
+  city: string;
+  comment: string;
+  delivery_option: string;
+  read_login_note: boolean;
+};
+
+function formatLabel(value: string | null | undefined): string {
+  if (!value) return "Не указано";
+  return value
+    .replaceAll("_", " ")
+    .replaceAll("-", " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^\w/u, (char) => char.toUpperCase());
+}
+
+function formatPrice(value: number | null | undefined): string {
+  if (!Number.isFinite(Number(value))) return "—";
+  return new Intl.NumberFormat("ru-RU").format(Number(value));
+}
+
+function safeImage(url: string | null | undefined): string {
+  const resolved = resolveImageUrl(url || "");
+  return resolved || "/placeholder-bike.svg";
+}
+
+function parseContact(raw: string) {
+  const value = raw.trim();
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const digitsOnly = value.replace(/[^\d+]/g, "");
+  const phoneLike = digitsOnly.replace(/[^\d]/g, "").length >= 6;
+
+  if (emailRegex.test(value)) {
+    return {
+      method: "email",
+      contact_value: value,
+      email: value,
+      phone: null,
+      telegram_id: null
+    };
+  }
+
+  if (phoneLike) {
+    return {
+      method: "phone",
+      contact_value: value,
+      email: null,
+      phone: value,
+      telegram_id: null
+    };
+  }
+
+  return {
+    method: "telegram",
+    contact_value: value,
+    email: null,
+    phone: null,
+    telegram_id: value.startsWith("@") ? value.slice(1) : value
+  };
+}
+
+function collectSpecs(bike: BikeDetail | null): Array<{ label: string; value: string }> {
+  if (!bike) return [];
+  const entries: Array<{ label: string; value: string }> = [];
+  const push = (label: string, value: unknown) => {
+    if (value == null) return;
+    const text = String(value).trim();
+    if (!text) return;
+    if (["unknown", "n/a", "null", "undefined", "не указано"].includes(text.toLowerCase())) return;
+    entries.push({ label, value: text });
+  };
+
+  push("Категория", bike.category);
+  push("Дисциплина", bike.discipline);
+  push("Подкатегория", bike.sub_category);
+  push("Год", bike.year);
+  push("Размер рамы", bike.frame_size || bike.specs?.frame_size || bike.specs?.size);
+  push("Размер колес", bike.wheel_size || bike.specs?.wheel_size);
+  push("Материал рамы", bike.frame_material || bike.specs?.frame_material);
+  push("Тип подвески", bike.suspension_type || bike.specs?.suspension_type);
+  push("Ход вилки", bike.specs?.travel_front);
+  push("Ход задней подвески", bike.specs?.travel_rear);
+  push("Групсет", bike.specs?.groupset);
+  push("Тормоза", bike.specs?.brakes);
+  push("Вилка", bike.specs?.fork);
+  push("Амортизатор", bike.specs?.shock);
+  push("Цвет", bike.specs?.color);
+  push("Тип продавца", bike.seller_type);
+
+  const seen = new Set<string>();
+  return entries.filter((entry) => {
+    const key = `${entry.label}:${entry.value}`.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+export default function ProductDetailPage() {
+  const { id } = useParams();
+  const [bike, setBike] = React.useState<BikeDetail | null>(null);
+  const [related, setRelated] = React.useState<BikeDetail[]>([]);
+  const [selectedImage, setSelectedImage] = React.useState(0);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+  const [bookingOpen, setBookingOpen] = React.useState(false);
+  const [bookingLoading, setBookingLoading] = React.useState(false);
+  const [bookingError, setBookingError] = React.useState<string | null>(null);
+  const [bookingSuccess, setBookingSuccess] = React.useState<any>(null);
+
+  const [form, setForm] = React.useState<BookingState>({
+    full_name: "",
+    contact: "",
+    city: "",
+    comment: "",
+    delivery_option: "Cargo",
+    read_login_note: false
+  });
+
+  React.useEffect(() => {
+    let active = true;
+    const load = async () => {
+      if (!id) return;
+      setLoading(true);
+      setError(null);
+      try {
+        const data = (await catalogApi.getById(id)) as CatalogResponse;
+        if (!active) return;
+        if (!data?.bike) {
+          setBike(null);
+          setError("Велосипед не найден");
+          return;
+        }
+        setBike(data.bike);
+      } catch {
+        if (!active) return;
+        setBike(null);
+        setError("Ошибка загрузки карточки велосипеда");
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    load();
+    return () => {
+      active = false;
+    };
+  }, [id]);
+
+  React.useEffect(() => {
+    if (!bike) return;
+    let active = true;
+    const loadRelated = async () => {
+      try {
+        const data = (await catalogApi.list({
+          brand: bike.brand || undefined,
+          category: bike.category || undefined,
+          exclude_id: bike.id,
+          page_size: 4,
+          sort: "relevance"
+        })) as CatalogResponse;
+        if (!active) return;
+        const items = Array.isArray(data.items) ? data.items : Array.isArray(data.bikes) ? data.bikes : [];
+        setRelated(items.filter((item) => item.id !== bike.id).slice(0, 4));
+      } catch {
+        if (!active) return;
+        setRelated([]);
+      }
+    };
+    loadRelated();
+    return () => {
+      active = false;
+    };
+  }, [bike]);
+
+  React.useEffect(() => {
+    setSelectedImage(0);
+  }, [bike?.id]);
+
+  const images = React.useMemo(() => {
+    if (!bike) return [] as string[];
+    const list = [bike.main_image, ...(bike.images || [])].map((item) => safeImage(item));
+    return Array.from(new Set(list.filter(Boolean)));
+  }, [bike]);
+
+  const specs = React.useMemo(() => collectSpecs(bike), [bike]);
+
+  const mainImage = images[selectedImage] || images[0] || "/placeholder-bike.svg";
+
+  const handleSubmitBooking = React.useCallback(
+    async (event: React.FormEvent) => {
+      event.preventDefault();
+      if (!bike) return;
+
+      if (!form.full_name.trim() || !form.contact.trim()) {
+        setBookingError("Укажите имя и контакт для связи.");
+        return;
+      }
+      if (!form.read_login_note) {
+        setBookingError("Подтвердите, что вы прочитали информацию о входе в отслеживание.");
+        return;
+      }
+
+      setBookingLoading(true);
+      setBookingError(null);
+      setBookingSuccess(null);
+      try {
+        const contact = parseContact(form.contact);
+        const snapshot = {
+          ...(bike.booking_payload?.bike_snapshot || {}),
+          bike_id: String(bike.id),
+          external_bike_ref: bike.booking_payload?.external_bike_ref || bike.source_url || bike.source_ad_id || String(bike.id),
+          bike_url: bike.booking_payload?.bike_url || bike.source_url || null,
+          title: bike.name,
+          name: bike.name,
+          brand: bike.brand,
+          model: bike.model,
+          year: bike.year,
+          price: bike.price_eur,
+          listing_price_eur: bike.price_eur,
+          condition: bike.condition_status,
+          main_photo_url: bike.main_image,
+          images
+        };
+
+        const payload = {
+          bike_id: bike.id,
+          external_bike_ref: snapshot.external_bike_ref,
+          customer: {
+            name: form.full_name.trim(),
+            city: form.city.trim() || null,
+            contact_method: contact.method,
+            contact_value: contact.contact_value,
+            email: contact.email,
+            phone: contact.phone,
+            telegram_id: contact.telegram_id
+          },
+          bike_details: snapshot,
+          booking_form: {
+            city: form.city.trim() || null,
+            comment: form.comment.trim() || null,
+            delivery_option: form.delivery_option,
+            contact_method: contact.method,
+            contact_value: contact.contact_value,
+            read_login_note: true
+          },
+          delivery_method: form.delivery_option,
+          shipping_option: form.delivery_option
+        };
+
+        const response = await crmApi.createBooking(payload);
+        if (!response?.success) {
+          throw new Error(response?.error || "Не удалось создать бронирование");
+        }
+
+        setBookingSuccess(response);
+      } catch (err: any) {
+        setBookingError(err?.message || "Не удалось отправить бронирование");
+      } finally {
+        setBookingLoading(false);
+      }
+    },
+    [bike, form, images]
+  );
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#f4f4f5] text-[#18181b]">
+        <BikeflipHeaderPX />
+        <div className="mx-auto max-w-6xl px-4 py-8">
+          <div className="grid gap-6 lg:grid-cols-2">
+            <div className="aspect-[4/3] animate-pulse rounded-2xl bg-zinc-200" />
+            <div className="space-y-4">
+              <div className="h-8 w-2/3 animate-pulse rounded bg-zinc-200" />
+              <div className="h-5 w-1/3 animate-pulse rounded bg-zinc-200" />
+              <div className="h-12 w-1/2 animate-pulse rounded bg-zinc-200" />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !bike) {
+    return (
+      <div className="min-h-screen bg-[#f4f4f5] text-[#18181b]">
+        <BikeflipHeaderPX />
+        <div className="mx-auto max-w-4xl px-4 py-10">
+          <div className="rounded-2xl border border-zinc-200 bg-white p-8 text-center">
+            <h1 className="text-xl font-semibold">Карточка недоступна</h1>
+            <p className="mt-2 text-sm text-zinc-600">{error || "Велосипед не найден"}</p>
+            <Link to="/catalog" className="mt-4 inline-flex h-11 items-center rounded-lg bg-[#18181b] px-5 text-sm font-semibold text-white">
+              Вернуться в каталог
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-[#f4f4f5] text-[#18181b] pb-24 md:pb-10">
+      <SEOHead
+        title={`${bike.name} | BikeWerk`}
+        description={bike.description || `${bike.brand || ""} ${bike.model || ""} — детальная карточка и бронирование.`}
+        type="product"
+        product={{
+          name: bike.name,
+          price: bike.price_eur,
+          currency: bike.currency || "EUR",
+          condition: bike.condition_status || "used",
+          brand: bike.brand || undefined,
+          image: bike.main_image || undefined,
+          availability: "InStock"
+        }}
+      />
+      <BikeflipHeaderPX />
+
+      <div className="mx-auto max-w-6xl px-4 py-6 md:py-8">
+        <div className="mb-4 text-sm text-zinc-600">
+          <Link to="/catalog" className="hover:text-zinc-900">Каталог</Link> / <span>{bike.name}</span>
+        </div>
+
+        <div className="grid gap-6 lg:grid-cols-[1.2fr_1fr]">
+          <section className="space-y-3">
+            <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
+              <img
+                src={mainImage}
+                alt={bike.name}
+                className="aspect-[4/3] w-full object-cover"
+                onError={(event) => {
+                  const target = event.currentTarget;
+                  if (target.src.endsWith("/placeholder-bike.svg")) return;
+                  target.src = "/placeholder-bike.svg";
+                }}
+              />
+            </div>
+            {images.length > 1 ? (
+              <div className="grid grid-cols-5 gap-2">
+                {images.slice(0, 15).map((image, index) => (
+                  <button
+                    key={`${image}-${index}`}
+                    type="button"
+                    onClick={() => setSelectedImage(index)}
+                    className={`overflow-hidden rounded-xl border ${index === selectedImage ? "border-zinc-900" : "border-zinc-200"}`}
+                  >
+                    <img
+                      src={image}
+                      alt={`${bike.name} ${index + 1}`}
+                      className="aspect-square w-full object-cover"
+                      onError={(event) => {
+                        const target = event.currentTarget;
+                        if (target.src.endsWith("/placeholder-bike.svg")) return;
+                        target.src = "/placeholder-bike.svg";
+                      }}
+                    />
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </section>
+
+          <section className="space-y-4 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+            <div>
+              <h1 className="text-2xl font-bold leading-tight md:text-3xl">{bike.name}</h1>
+              <div className="mt-2 text-sm text-zinc-600">
+                {[bike.brand, bike.model, bike.year ? String(bike.year) : ""].filter(Boolean).join(" · ") || "Данные модели"}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {bike.category ? <span className="rounded-lg bg-zinc-100 px-2.5 py-1 text-xs text-zinc-700">{formatLabel(bike.category)}</span> : null}
+              {bike.discipline ? <span className="rounded-lg bg-zinc-100 px-2.5 py-1 text-xs text-zinc-700">{formatLabel(bike.discipline)}</span> : null}
+              {bike.frame_material ? <span className="rounded-lg bg-zinc-100 px-2.5 py-1 text-xs text-zinc-700">{formatLabel(bike.frame_material)}</span> : null}
+              {bike.wheel_size ? <span className="rounded-lg bg-zinc-100 px-2.5 py-1 text-xs text-zinc-700">{bike.wheel_size}</span> : null}
+            </div>
+
+            <div>
+              <div className="text-3xl font-bold text-zinc-900">€ {formatPrice(bike.price_eur)}</div>
+              {bike.original_price_eur && bike.original_price_eur > bike.price_eur ? (
+                <div className="mt-1 text-sm text-zinc-500 line-through">€ {formatPrice(bike.original_price_eur)}</div>
+              ) : null}
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-sm">
+              <div>
+                <div className="text-zinc-500">Состояние</div>
+                <div className="font-medium">{bike.condition_grade ? `Грейд ${bike.condition_grade}` : formatLabel(bike.condition_status)}</div>
+              </div>
+              <div>
+                <div className="text-zinc-500">Оценка</div>
+                <div className="font-medium">{bike.condition_score != null ? `${bike.condition_score}/100` : "—"}</div>
+              </div>
+              <div>
+                <div className="text-zinc-500">Локация</div>
+                <div className="font-medium">{bike.location || bike.country || "EU"}</div>
+              </div>
+              <div>
+                <div className="text-zinc-500">Продавец</div>
+                <div className="font-medium">{bike.seller_type ? formatLabel(bike.seller_type) : "Не указан"}</div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setBookingOpen(true);
+                setBookingError(null);
+              }}
+              className="h-12 w-full rounded-lg bg-[#18181b] px-6 text-sm font-semibold text-white transition hover:bg-black"
+            >
+              Забронировать велосипед
+            </button>
+            <p className="text-xs text-zinc-500">После брони вы получаете ссылку отслеживания и данные для входа без навязчивой регистрации.</p>
+          </section>
+        </div>
+
+        <section className="mt-6 grid gap-4 md:grid-cols-2">
+          <div className="rounded-2xl border border-zinc-200 bg-white p-5">
+            <h2 className="text-lg font-semibold">Highlights</h2>
+            {bike.highlights && bike.highlights.length > 0 ? (
+              <ul className="mt-3 space-y-2 text-sm text-zinc-700">
+                {bike.highlights.map((highlight) => (
+                  <li key={highlight} className="rounded-lg bg-zinc-50 px-3 py-2">{highlight}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-3 text-sm text-zinc-500">Ключевые преимущества будут добавлены после проверки менеджером.</p>
+            )}
+          </div>
+
+          <div className="rounded-2xl border border-zinc-200 bg-white p-5">
+            <h2 className="text-lg font-semibold">Доставка и логистика</h2>
+            <div className="mt-3 space-y-2 text-sm text-zinc-700">
+              <div className="flex items-center justify-between rounded-lg bg-zinc-50 px-3 py-2">
+                <span>Метод</span>
+                <span className="font-medium">{formatLabel(bike.logistics?.shipping_option || "cargo")}</span>
+              </div>
+              <div className="flex items-center justify-between rounded-lg bg-zinc-50 px-3 py-2">
+                <span>Самовывоз</span>
+                <span className="font-medium">{bike.logistics?.pickup_available ? "Да" : "Нет"}</span>
+              </div>
+              <div className="flex items-center justify-between rounded-lg bg-zinc-50 px-3 py-2">
+                <span>Страна</span>
+                <span className="font-medium">{bike.logistics?.country || bike.country || "Не указана"}</span>
+              </div>
+              <div className="flex items-center justify-between rounded-lg bg-zinc-50 px-3 py-2">
+                <span>Город</span>
+                <span className="font-medium">{bike.logistics?.location || bike.location || "Не указан"}</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="mt-6 rounded-2xl border border-zinc-200 bg-white p-5">
+          <details open>
+            <summary className="cursor-pointer text-lg font-semibold">Характеристики</summary>
+            <div className="mt-3 grid gap-2 md:grid-cols-2">
+              {specs.map((spec) => (
+                <div key={`${spec.label}-${spec.value}`} className="flex items-center justify-between rounded-lg bg-zinc-50 px-3 py-2 text-sm">
+                  <span className="text-zinc-500">{spec.label}</span>
+                  <span className="font-medium text-zinc-800">{spec.value}</span>
+                </div>
+              ))}
+            </div>
+          </details>
+        </section>
+
+        <section className="mt-6 rounded-2xl border border-zinc-200 bg-white p-5">
+          <h2 className="text-lg font-semibold">Результат оценки состояния</h2>
+          <p className="mt-3 text-sm leading-relaxed text-zinc-700">
+            {bike.condition_rationale || "Проверка состояния будет дополнена менеджером после контакта с продавцом."}
+          </p>
+          {bike.description ? <p className="mt-3 text-sm leading-relaxed text-zinc-600">{bike.description}</p> : null}
+        </section>
+
+        {related.length > 0 ? (
+          <section className="mt-6">
+            <h2 className="text-xl font-semibold">Похожие велосипеды</h2>
+            <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {related.map((item) => (
+                <Link
+                  to={`/product/${item.id}`}
+                  key={item.id}
+                  className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                >
+                  <img
+                    src={safeImage(item.main_image || item.images?.[0])}
+                    alt={item.name}
+                    className="aspect-[4/3] w-full object-cover"
+                    onError={(event) => {
+                      const target = event.currentTarget;
+                      if (target.src.endsWith("/placeholder-bike.svg")) return;
+                      target.src = "/placeholder-bike.svg";
+                    }}
+                  />
+                  <div className="space-y-1 p-3">
+                    <div className="line-clamp-1 text-sm font-semibold text-zinc-900">{item.name}</div>
+                    <div className="text-xs text-zinc-500">{[item.brand, item.year ? String(item.year) : ""].filter(Boolean).join(" · ")}</div>
+                    <div className="text-base font-bold text-zinc-900">€ {formatPrice(item.price_eur)}</div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </section>
+        ) : null}
+      </div>
+
+      <Dialog open={bookingOpen} onOpenChange={setBookingOpen}>
+        <DialogContent className="max-h-[90vh] max-w-[95vw] overflow-auto rounded-2xl p-0 sm:max-w-lg">
+          <div className="p-5">
+            <DialogTitle className="text-xl font-semibold">Бронирование {bike.name}</DialogTitle>
+            <p className="mt-2 text-sm text-zinc-600">Войдите с данными из подтверждения брони, чтобы отслеживать статус. Регистрация не обязательна сразу.</p>
+
+            <form className="mt-4 space-y-3" onSubmit={handleSubmitBooking}>
+              <input
+                value={form.full_name}
+                onChange={(event) => setForm((prev) => ({ ...prev, full_name: event.target.value }))}
+                placeholder="Имя"
+                className="h-12 w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 text-sm outline-none focus:border-zinc-900"
+              />
+              <input
+                value={form.contact}
+                onChange={(event) => setForm((prev) => ({ ...prev, contact: event.target.value }))}
+                placeholder="Контакт: email / телефон / Telegram"
+                className="h-12 w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 text-sm outline-none focus:border-zinc-900"
+              />
+              <input
+                value={form.city}
+                onChange={(event) => setForm((prev) => ({ ...prev, city: event.target.value }))}
+                placeholder="Город получения"
+                className="h-12 w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 text-sm outline-none focus:border-zinc-900"
+              />
+              <select
+                value={form.delivery_option}
+                onChange={(event) => setForm((prev) => ({ ...prev, delivery_option: event.target.value }))}
+                className="h-12 w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 text-sm outline-none focus:border-zinc-900"
+              >
+                <option value="Cargo">Cargo</option>
+                <option value="Pickup">Pickup</option>
+              </select>
+              <textarea
+                value={form.comment}
+                onChange={(event) => setForm((prev) => ({ ...prev, comment: event.target.value }))}
+                placeholder="Комментарий менеджеру"
+                rows={3}
+                className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm outline-none focus:border-zinc-900"
+              />
+              <label className="flex items-start gap-2 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700">
+                <input
+                  type="checkbox"
+                  checked={form.read_login_note}
+                  onChange={(event) => setForm((prev) => ({ ...prev, read_login_note: event.target.checked }))}
+                  className="mt-0.5 h-4 w-4 accent-zinc-900"
+                />
+                <span>Я прочитал, что вход в отслеживание будет доступен по данным из подтверждения бронирования.</span>
+              </label>
+
+              {bookingError ? <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{bookingError}</div> : null}
+
+              {bookingSuccess ? (
+                <div className="space-y-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+                  <div className="font-semibold">Бронь успешно создана</div>
+                  <div>Номер: {bookingSuccess.order_code || "—"}</div>
+                  {bookingSuccess.magic_link_url ? (
+                    <Link to={bookingSuccess.magic_link_url} className="inline-flex rounded-md bg-emerald-700 px-3 py-1 text-white">
+                      Перейти к отслеживанию
+                    </Link>
+                  ) : null}
+                  {bookingSuccess.auth?.temp_password ? (
+                    <div className="text-xs text-emerald-800">
+                      Вход позже: логин {bookingSuccess.auth?.user?.email || bookingSuccess.auth?.user?.phone || form.contact}, пароль предоставлен в подтверждении.
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              <button
+                type="submit"
+                disabled={bookingLoading}
+                className="h-12 w-full rounded-lg bg-[#18181b] px-6 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-zinc-400"
+              >
+                {bookingLoading ? "Отправка..." : "Подтвердить бронирование"}
+              </button>
+            </form>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-zinc-200 bg-white/95 p-3 backdrop-blur md:hidden">
+        <button
+          type="button"
+          onClick={() => {
+            setBookingOpen(true);
+            setBookingError(null);
+          }}
+          className="h-12 w-full rounded-lg bg-[#18181b] px-6 text-sm font-semibold text-white"
+        >
+          Забронировать за € {formatPrice(bike.price_eur)}
+        </button>
+      </div>
+    </div>
+  );
+}

@@ -2449,8 +2449,8 @@ class CRMApi {
 // Конфигурация для подключения к Supabase
 const CRM_CONFIG = {
     // Реальные данные Supabase проекта
-    SUPABASE_URL: process.env.SUPABASE_URL || 'https://lclalsznmrjgqsgaqtps.supabase.co',
-    SUPABASE_ANON_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxjbGFsc3pubXJqZ3FzZ2FxdHBzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA5Nzg5MDgsImV4cCI6MjA3NjU1NDkwOH0.nyTQDoddHyrY4_QizmQFLue8EjNqeQaJ0U021Hbc7YI'
+    SUPABASE_URL: process.env.SUPABASE_URL || null,
+    SUPABASE_ANON_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY || process.env.SUPABASE_ANON_KEY || null
 };
 
 // Глобальный экземпляр API

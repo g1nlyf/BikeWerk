@@ -65,7 +65,9 @@ class FinancialAgent {
 
             await this.saveRateHistory(newRate);
             await this.updateSystemRate(newRate);
-            await this.syncCatalogPrices(newRate);
+            if (process.env.FINANCIAL_AGENT_SYNC_CATALOG_PRICES === 'true') {
+                await this.syncCatalogPrices(newRate);
+            }
             
             this.currentRate = newRate;
             console.log(`✅ Financial Agent: Sync complete. Rate: ${newRate}`);
@@ -234,10 +236,11 @@ class FinancialAgent {
     }
 
     /**
-     * Recalculate RUB prices for all bikes
+     * Optional catalog sync (disabled by default).
+     * Keeps EUR baseline populated without persisting volatile RUB values.
      */
     async syncCatalogPrices(rate) {
-        // Sync rate to PriceCalculator
+        // Sync rate to PriceCalculator for any dependent runtime calculations.
         priceCalculator.EUR_RUB_RATE = rate;
 
         // Get all bikes with EUR price
@@ -246,27 +249,14 @@ class FinancialAgent {
         let updatedCount = 0;
         
         for (const bike of bikes) {
-            // Ensure we have a base EUR price. 
-            // If price_eur is null, fallback to price (assuming it was EUR).
             const basePrice = bike.price_eur || bike.price;
-            
             if (!basePrice) continue;
-
-            // Use Unified Pricing Logic (PriceCalculatorService)
-            // We match the frontend default: Cargo (170) + Insurance (4%)
-            const calc = priceCalculator.calculate(basePrice, 'Cargo', true);
-            const priceRub = calc.total_price_rub;
-
-            // Update DB
-            // We update price_rub AND ensure price_eur is set if it was missing
-            await this.db.query(
-                'UPDATE bikes SET price_rub = ?, price_eur = ? WHERE id = ?',
-                [priceRub, basePrice, bike.id]
-            );
-            updatedCount++;
+            // Keep fixed EUR baseline; RUB is computed on frontend from current rate.
+            await this.db.query('UPDATE bikes SET price_eur = COALESCE(price_eur, ?) WHERE id = ?', [basePrice, bike.id]);
+            updatedCount += 1;
         }
         
-        console.log(`💰 Smart Pricing: Updated ${updatedCount} bikes with rate ${rate} using PriceCalculatorService`);
+        console.log(`💰 Financial Agent: Ensured EUR baseline for ${updatedCount} bikes (rate ${rate})`);
     }
 
     async fallbackToManualRate() {

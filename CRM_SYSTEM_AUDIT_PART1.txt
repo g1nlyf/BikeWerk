@@ -1,0 +1,567 @@
+═══════════════════════════════════════════════════════════════════════════════
+  ПОЛНЫЙ АУДИТ CRM-СИСТЕМЫ BIKEWERK
+  Дата: 2026-02-06
+  Аудитор: Claude (Antigravity AI)
+═══════════════════════════════════════════════════════════════════════════════
+
+EXECUTIVE SUMMARY
+──────────────────────────────────────────────────────────────────────────────
+Проведен глубокий аудит всей CRM-системы BikeWerk для подготовки к созданию
+внутреннего интерфейса управления по адресу bikewerk.ru/crm.
+
+КЛЮЧЕВЫЕ НАХОДКИ:
+✅ Полнофункциональная CRM API (2535 строк кода)
+✅ 9 основных таблиц БД с правильными связями
+✅ 3 параллельных пути создания заказов
+✅ Интеграция с Supabase + локальная SQLite
+✅ 14 сервисов бизнес-логики
+⚠️  Нет единого менеджерского интерфейса (только API)
+⚠️  Дублирование логики в разных путях бронирования
+
+
+═══════════════════════════════════════════════════════════════════════════════
+ЧАСТЬ 1: КЛИЕНТСКИЙ ПУТЬ (FRONTEND)
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 1.1 КАРТОЧКА ТОВАРА (ProductDetailPage.tsx)                                │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+ФАЙЛ: frontend/src/pages/ProductDetailPage.tsx (3249 строк)
+
+ОСНОВНЫЕ CTA:
+1. "Показать условия выкупа" → /booking-checkout/:id (НОВАЯ СИСТЕМА)
+2. "Добавить в корзину" → CartPage
+3. "Быстрый заказ" → CheckoutWizard (модалка)
+
+ИСТОЧНИК ДАННЫХ:
+- API: GET /bikes/:id
+- Fallback: локальный catalog.ts
+- Формат: Unified Bike Format (media.gallery, specs, basic_info)
+
+ОТОБРАЖАЕМАЯ ИНФОРМАЦИЯ:
+- Галерея изображений (main_image + gallery)
+- Цена (price_eur, original_price, discount)
+- Характеристики (frameSize, wheelSize, groupset, brakes и т.д.)
+- Оценка качества (condition_score, visual_rating, functional_rating)
+- Информация о продавце (seller_name, seller_rating, seller_trust_score)
+- Отчет о состоянии (condition report)
+- Доп. услуги (модалка AdditionalServicesOverlay)
+
+ИНТЕГРАЦИЯ С CRM:
+- При клике "Показать условия выкупа" → переход на BuyoutConditionsPage
+- Передача данных через location.state.bike
+- Нет прямого создания заказа на этой странице
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 1.2 ПРОЦЕСС БРОНИРОВАНИЯ/ЗАКАЗА - 3 ПАРАЛЛЕЛЬНЫХ ПУТИ                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+ПУТЬ 1: BUYOUT CONDITIONS PAGE (НОВАЯ СИСТЕМА - ОСНОВНАЯ)
+═══════════════════════════════════════════════════════════════════════════════
+
+ФАЙЛ: frontend/src/pages/BuyoutConditionsPage.tsx (273 строки)
+МАРШРУТ: /booking-checkout/:id
+API ENDPOINT: POST /v1/booking
+
+СОБИРАЕМЫЕ ДАННЫЕ:
+✓ Имя клиента
+✓ Контакт (email/телефон/telegram)
+✓ Способ связи (phone/telegram/email)
+✓ Город доставки
+✓ Комментарий (опционально)
+✓ Выбор доставки (Cargo/EMS/Premium и варианты)
+✓ Доп. услуги (quantity-based)
+
+РАСЧЕТЫ:
+- Цена байка (EUR)
+- Доставка (EUR) → RUB по курсу
+- Доп. услуги (4 типа расчета: fixed, per_unit, percent_bike, percent_total_rub)
+- Итого (RUB)
+- Резервирование: 2% от итоговой суммы в RUB
+
+PAYLOAD К API:
+{
+  bike_id: string,
+  customer: {
+    name: string,
+    email?: string,
+    phone?: string,
+    telegram_id?: string,
+    contact_method: "phone" | "telegram" | "email",
+    contact_value: string,
+    city: string
+  },
+  bike_details: {...},
+  delivery_method: string,
+  total_price_rub: number,
+  booking_amount_rub: number,
+  exchange_rate: number,
+  final_price_eur: number,
+  addons: [{ id: string, qty: number }],
+  booking_form: {
+    city: string,
+    contact_method: string,
+    contact_value: string,
+    comment?: string,
+    delivery_option: string,
+    addons_selection: Record<string, number>
+  }
+}
+
+РЕЗУЛЬТАТ:
+- Создается заказ со статусом 'pending_manager'
+- Автоматически создается аккаунт (телефон/email + пароль 12345678)
+- Возвращается JWT токен + order_code
+- Показывается оверлей с логином/паролем
+- Переход на /order-tracking/:orderNumber
+
+
+═══════════════════════════════════════════════════════════════════════════════
+ПУТЬ 2: CHECKOUT WIZARD (КОРЗИНА)
+═══════════════════════════════════════════════════════════════════════════════
+
+ФАЙЛ: frontend/src/components/cart/CheckoutWizard.tsx (362 строки)
+ИСПОЛЬЗУЕТСЯ: CartPage, CalculatorPage
+API ENDPOINT: Неизвестен (не найден в коде)
+
+СОБИРАЕМЫЕ ДАННЫЕ:
+✓ Имя
+✓ Email
+✓ Телефон
+✓ Адрес доставки (полный)
+✓ Комментарий
+✓ Способ оплаты (?)
+✓ Несколько байков (items[])
+
+ОСОБЕННОСТИ:
+- Многошаговый wizard (steps)
+- Поддержка гостевого режима (guestMode)
+- Быстрый режим (fast)
+- Нужен менеджер (needsManager)
+
+⚠️  ПРОБЛЕМА: Не найден API endpoint для этого пути!
+⚠️  ПРОБЛЕМА: Неясно, как создается заказ
+
+
+═══════════════════════════════════════════════════════════════════════════════
+ПУТЬ 3: GUEST ORDER WIZARD
+═══════════════════════════════════════════════════════════════════════════════
+
+ФАЙЛ: frontend/src/pages/GuestOrderWizardPage.tsx (361 строка)
+МАРШРУТ: /guest-order (предположительно)
+API ENDPOINT: POST /v1/crm/orders/quick (упоминается в коде)
+
+СОБИРАЕМЫЕ ДАННЫЕ:
+✓ Имя
+✓ Контакт
+✓ Способ связи
+✓ Тариф (standard/sniper)
+✓ Детали товара
+
+ОСОБЕННОСТИ:
+- Упрощенный процесс для гостей
+- Быстрое создание заявки
+- Минимум полей
+
+⚠️  ПРОБЛЕМА: Endpoint /v1/crm/orders/quick не найден в backend routes!
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 1.3 СТРАНИЦА ОТСЛЕЖИВАНИЯ ЗАКАЗА                                           │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+ФАЙЛ: frontend/src/pages/OrderTrackingPage.tsx (1005 строк)
+МАРШРУТ: /order-tracking/:token
+API ENDPOINT: GET /orders/track/:token
+
+ОТОБРАЖАЕМЫЕ ДАННЫЕ:
+✓ Статус заказа (визуальный прогресс-бар)
+✓ Информация о байке (название, фото, характеристики)
+✓ Финансы (итого, оплачено, остаток)
+✓ Резервирование (2%, кнопка "Оплатить резерв")
+✓ Доп. услуги (из booking_meta)
+✓ Live Checklist (пункты проверки с комментариями)
+✓ Карточка менеджера (имя, статус online, комментарий)
+✓ История изменений (timeline)
+✓ 3D Globe (визуализация доставки)
+
+ДЕЙСТВИЯ КЛИЕНТА:
+✓ Задать вопрос менеджеру (POST /v1/crm/orders/:orderId/ask)
+✓ Изменить способ доставки (POST /v1/crm/orders/:orderId/delivery)
+✓ Оплатить резерв (POST /v1/orders/:orderId/reserve)
+✓ Подтвердить получение (POST /v1/crm/orders/:orderId/confirm-receipt)
+✓ Оставить отзыв (POST /v1/crm/orders/:orderId/feedback)
+
+СТАТУСЫ (визуальные):
+1. Бронь создана
+2. Менеджер принял
+3. Проверка продавца
+4. Ожидание оплаты
+5. Оплачено
+6. В пути
+7. Доставлено
+
+⚠️  ЗАМЕЧАНИЕ: Очередь не отображается (в ТЗ было "вы №N в очереди")
+⚠️  ЗАМЕЧАНИЕ: Чеклист fallback на 5 пунктов вместо 30
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 1.4 АУТЕНТИФИКАЦИЯ                                                          │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+РЕГИСТРАЦИЯ НЕ ТРЕБУЕТСЯ ДЛЯ ЗАКАЗА:
+- Можно заказать как гость
+- Автоматически создается аккаунт при первой брони
+
+АВТОМАТИЧЕСКОЕ СОЗДАНИЕ АККАУНТА:
+- Логин: телефон или email (что было указано в контакте)
+- Пароль: 12345678 (фиксированный)
+- Флаги: must_change_password=1, must_set_email (если телефон)
+- JWT токен выдается сразу
+- Сохраняется в localStorage
+
+ХРАНЕНИЕ ДАННЫХ:
+- Таблица users (локальная SQLite)
+- Колонки: id, name, email, phone, password (bcrypt), role, must_change_password, 
+  must_set_email, temp_password, created_at, last_login
+
+ЭНДПОИНТЫ AUTH:
+- POST /auth/register (прямая регистрация)
+- POST /auth/login (логин по email/phone + password)
+- POST /auth/complete-profile (смена пароля + email)
+- GET /auth/me (получить текущего пользователя)
+- POST /auth/logout
+
+⚠️  ПРОБЛЕМА: Нет принудительной смены пароля на фронтенде
+⚠️  ПРОБЛЕМА: Пользователь может игнорировать must_change_password=1
+
+
+═══════════════════════════════════════════════════════════════════════════════
+ЧАСТЬ 2: BACKEND API (ENDPOINTS)
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 2.1 ОСНОВНЫЕ МОДУЛИ МАРШРУТОВ                                               │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+ФАЙЛОВАЯ СТРУКТУРА:
+backend/src/routes/v1/modules/
+├── booking.ts (49 строк) - Создание брони
+├── crm.ts (782 строки) - Основной CRM API
+├── examples.ts (553 строки) - Примеры
+└── recommendations.ts (678 строк) - Рекомендации
+
+backend/src/routes/v1/pages/
+├── order-confirmation.ts - Страница подтверждения
+└── order-tracking.ts - Страница отслеживания
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 2.2 ЭНДПОИНТЫ ЗАКАЗОВ                                                       │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+СОЗДАНИЕ ЗАКАЗА/БРОНИ
+═══════════════════════════════════════════════════════════════════════════════
+
+POST /v1/booking
+ФАЙЛ: backend/src/routes/v1/modules/booking.ts
+СЕРВИС: BookingService.createBooking()
+АВТОРИЗАЦИЯ: Не требуется
+
+REQUEST BODY:
+{
+  bike_id: string,
+  customer: {
+    name: string,
+    email?: string,
+    phone?: string,
+    telegram_id?: string,
+    contact_method: string,
+    contact_value: string,
+    city: string
+  },
+  bike_details: object,
+  total_price_rub: number,
+  booking_amount_rub: number,
+  exchange_rate: number,
+  final_price_eur: number,
+  delivery_method: string,
+  addons: [{ id: string, qty: number }],
+  booking_form: object
+}
+
+RESPONSE:
+{
+  success: true,
+  order_code: "ORD-20260206-001",
+  order_id: "ORD-...",
+  magic_link_token: "uuid",
+  auth: {
+    token: "jwt",
+    user: {...},
+    temp_password: "12345678"
+  }
+}
+
+ЛОГИКА:
+1. Создает/находит клиента в таблице customers
+2. Создает lead в таблице leads
+3. Создает order в таблице orders со статусом 'pending_manager'
+4. Сохраняет финансы в bike_snapshot.booking_meta
+5. Создает локального пользователя (users table)
+6. Генерирует JWT токен
+7. Отправляет уведомление менеджеру (Telegram)
+8. Запускает AI inspection
+
+
+═══════════════════════════════════════════════════════════════════════════════
+ПОЛУЧЕНИЕ ДЕТАЛЕЙ ЗАКАЗА
+═══════════════════════════════════════════════════════════════════════════════
+
+GET /v1/crm/orders/:orderId
+ФАЙЛ: backend/src/routes/v1/modules/crm.ts (строки 182-199)
+АВТОРИЗАЦИЯ: Не требуется (публичный endpoint)
+
+ПАРАМЕТРЫ:
+- orderId: UUID | ORD-код | order_code
+
+RESPONSE:
+{
+  order: {
+    order_id: string,
+    order_number: string,
+    status: string,
+    total_amount: number,
+    booking_amount: number,
+    commission: number,
+    bike_name: string,
+    bike_snapshot: object,
+    manager_notes: string,
+    initial_quality: string,
+    final_quality: string,
+    is_refundable: boolean,
+    assigned_manager: string
+  },
+  history: [],
+  finances: {
+    total: number,
+    commission: number,
+    deposit_expected: number,
+    paid: number,
+    remainder: number,
+    currency: "EUR",
+    ledger: [...]
+  },
+  logistics: [...],
+  tasks: [...],
+  negotiations: [...],
+  inspection: {...},
+  live_feed: [...]
+}
+
+
+GET /v1/crm/orders/track/:token
+ФАЙЛ: backend/src/routes/v1/modules/crm.ts (строки 167-179)
+АВТОРИЗАЦИЯ: Не требуется (magic link)
+
+ПАРАМЕТРЫ:
+- token: magic_link_token
+
+RESPONSE: Такой же, как /v1/crm/orders/:orderId
+
+
+GET /v1/crm/orders/search?q=...&limit=10
+ФАЙЛ: backend/src/routes/v1/modules/crm.ts (строки 45-76)
+АВТОРИЗАЦИЯ: Требуется (для менеджеров)
+
+ПАРАМЕТРЫ:
+- q: строка поиска (order_code или bike_name)
+- limit: количество результатов (по умолчанию 5)
+
+RESPONSE:
+{
+  orders: [
+    {
+      order_id: string,
+      order_number: string,
+      status: string,
+      total_amount: number,
+      bike_name: string
+    }
+  ]
+}
+
+
+═══════════════════════════════════════════════════════════════════════════════
+ОБНОВЛЕНИЕ ЗАКАЗА
+═══════════════════════════════════════════════════════════════════════════════
+
+POST /v1/crm/orders/:orderId/ask
+ФАЙЛ: backend/src/routes/v1/modules/crm.ts (строки 202-275)
+АВТОРИЗАЦИЯ: Не требуется
+
+REQUEST BODY:
+{
+  question: string
+}
+
+ЛОГИКА:
+1. Создает task в таблице tasks
+2. Отправляет Telegram уведомление менеджеру
+3. Возвращает созданную задачу
+
+
+POST /v1/crm/orders/:orderId/delivery
+ФАЙЛ: backend/src/routes/v1/modules/crm.ts (строки 278-367)
+АВТОРИЗАЦИЯ: Не требуется
+
+REQUEST BODY:
+{
+  method: "Cargo" | "EMS" | "Premium"
+}
+
+ЛОГИКА:
+1. Пересчитывает цены (доставка, комиссии, итого)
+2. Обновляет заказ в БД
+3. Отправляет уведомление менеджеру
+
+
+POST /v1/orders/:orderId/reserve
+ФАЙЛ: backend/server.js (предположительно, не найден в crm.ts)
+АВТОРИЗАЦИЯ: Требуется
+
+ЛОГИКА:
+1. Обновляет статус заказа на 'deposit_paid'
+2. Возвращает успех
+
+⚠️  ПРОБЛЕМА: Endpoint не найден в коде! Возможно, это мок на фронтенде.
+
+
+POST /v1/crm/orders/:orderId/confirm-receipt
+ФАЙЛ: backend/src/routes/v1/modules/crm.ts (строки 616-711)
+АВТОРИЗАЦИЯ: Не требуется
+
+ЛОГИКА:
+1. Обновляет shipment.client_received = true
+2. Обновляет order.status = 'delivered'
+3. Создает audit log
+4. Закрывает все tasks
+5. Создает задачу для менеджера "Final Review"
+
+
+POST /v1/crm/orders/:orderId/feedback
+ФАЙЛ: backend/src/routes/v1/modules/crm.ts (строки 714-779)
+АВТОРИЗАЦИЯ: Не требуется
+
+REQUEST BODY:
+{
+  rating: number (1-5),
+  comment: string
+}
+
+ЛОГИКА:
+1. Анализирует sentiment через Gemini AI
+2. Сохраняет review в таблице reviews
+3. Если rating >= 5 или sentiment > 0.5, создает купон на 50 EUR
+
+
+═══════════════════════════════════════════════════════════════════════════════
+ПЛАТЕЖИ
+═══════════════════════════════════════════════════════════════════════════════
+
+POST /v1/crm/orders/:orderId/checkout
+ФАЙЛ: backend/src/routes/v1/modules/crm.ts (строки 396-460)
+АВТОРИЗАЦИЯ: Не требуется
+
+REQUEST BODY:
+{
+  amount?: number,
+  method: "card" | "bank_transfer" | ...
+}
+
+ЛОГИКА:
+1. Рассчитывает остаток к оплате
+2. Создает planned payment в таблице payments
+3. Возвращает mock payment_url
+
+
+POST /v1/payments/:paymentId/confirm
+ФАЙЛ: backend/src/routes/v1/modules/crm.ts (строки 463-544)
+АВТОРИЗАЦИЯ: Не требуется
+
+ЛОГИКА:
+1. Обновляет payment.status = 'completed'
+2. Проверяет, оплачен ли заказ полностью
+3. Если да, обновляет order.status = 'closed'
+4. Автоматически создает shipment
+5. Генерирует customs description через Gemini AI
+
+
+═══════════════════════════════════════════════════════════════════════════════
+ЛОГИСТИКА
+═══════════════════════════════════════════════════════════════════════════════
+
+POST /v1/shipments/:shipmentId/update
+ФАЙЛ: backend/src/routes/v1/modules/crm.ts (строки 549-579)
+АВТОРИЗАЦИЯ: Требуется (для менеджеров)
+
+REQUEST BODY:
+{
+  tracking_number?: string,
+  warehouse_received?: boolean,
+  warehouse_photos_received?: boolean
+}
+
+ЛОГИКА:
+1. Обновляет shipment в БД
+2. Если warehouse_photos_received, логирует уведомление
+
+
+═══════════════════════════════════════════════════════════════════════════════
+ОТЧЕТЫ
+═══════════════════════════════════════════════════════════════════════════════
+
+POST /v1/crm/orders/:orderId/report
+ФАЙЛ: backend/src/routes/v1/modules/crm.ts (строки 370-393)
+АВТОРИЗАЦИЯ: Требуется
+
+ЛОГИКА:
+1. Получает order, tasks, negotiations
+2. Генерирует digital report через Gemini AI
+3. Возвращает отчет
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 2.3 ИНТЕГРАЦИИ                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+ПЛАТЕЖНЫЕ СИСТЕМЫ:
+❌ НЕТ реальной интеграции
+✓ Есть mock endpoints для checkout/confirm
+✓ Структура готова для Stripe/PayPal/Тинькофф
+
+ДОСТАВКА/ЛОГИСТИКА:
+✓ Таблица shipments с provider enum (rusbid, dhl, ems)
+✓ Tracking number
+✓ Warehouse received flags
+❌ НЕТ реальной интеграции с API доставки
+
+УВЕДОМЛЕНИЯ:
+✓ Telegram (через ManagerBotService)
+  - Уведомление менеджера о новой брони
+  - Уведомление о вопросе клиента
+  - Уведомление о смене доставки
+✓ Email (через EmailService)
+  - Verification codes
+  - Password reset
+❌ SMS не реализовано
+
+WEBHOOKS:
+❌ НЕТ webhooks для внешних систем
+
+
+КОНЕЦ ЧАСТИ 1. ПРОДОЛЖЕНИЕ В CRM_SYSTEM_AUDIT_PART2.txt

@@ -1,0 +1,396 @@
+{
+  "generated_at": "2026-02-07T18:12:39.184528Z",
+  "schema": "public",
+  "orders": [
+    {
+      "name": "old_uuid_id",
+      "def": "uuid not null default gen_random_uuid ()"
+    },
+    {
+      "name": "order_code",
+      "def": "text not null"
+    },
+    {
+      "name": "bike_url",
+      "def": "text null"
+    },
+    {
+      "name": "bike_snapshot",
+      "def": "jsonb null"
+    },
+    {
+      "name": "final_price_eur",
+      "def": "numeric(12, 2) null"
+    },
+    {
+      "name": "commission_eur",
+      "def": "numeric(12, 2) null"
+    },
+    {
+      "name": "status",
+      "def": "public.order_status_enum not null default 'awaiting_payment'::order_status_enum"
+    },
+    {
+      "name": "assigned_manager",
+      "def": "uuid null"
+    },
+    {
+      "name": "created_at",
+      "def": "timestamp with time zone not null default now()"
+    },
+    {
+      "name": "customer_id",
+      "def": "text null"
+    },
+    {
+      "name": "lead_id",
+      "def": "text null"
+    },
+    {
+      "name": "id",
+      "def": "text not null default generate_readable_id ('ORD'::text)"
+    },
+    {
+      "name": "bike_id",
+      "def": "text null"
+    },
+    {
+      "name": "bike_name",
+      "def": "text null"
+    },
+    {
+      "name": "listing_price_eur",
+      "def": "numeric(12, 2) null"
+    },
+    {
+      "name": "booking_amount_eur",
+      "def": "numeric(12, 2) null"
+    },
+    {
+      "name": "negotiated_price_eur",
+      "def": "numeric(12, 2) null"
+    },
+    {
+      "name": "initial_quality",
+      "def": "text null"
+    },
+    {
+      "name": "final_quality",
+      "def": "text null"
+    },
+    {
+      "name": "is_refundable",
+      "def": "boolean null default false"
+    },
+    {
+      "name": "magic_link_token",
+      "def": "text null"
+    },
+    {
+      "name": "total_price_rub",
+      "def": "numeric(12, 2) null"
+    },
+    {
+      "name": "booking_amount_rub",
+      "def": "numeric(12, 2) null"
+    },
+    {
+      "name": "delivery_method",
+      "def": "text null"
+    },
+    {
+      "name": "exchange_rate",
+      "def": "numeric null"
+    },
+    {
+      "name": "manager_notes",
+      "def": "text null"
+    }
+  ],
+  "leads": [
+    {
+      "name": "old_uuid_id",
+      "def": "uuid not null default gen_random_uuid ()"
+    },
+    {
+      "name": "source",
+      "def": "text not null"
+    },
+    {
+      "name": "bike_url",
+      "def": "text null"
+    },
+    {
+      "name": "bike_snapshot",
+      "def": "jsonb null"
+    },
+    {
+      "name": "customer_comment",
+      "def": "text null"
+    },
+    {
+      "name": "status",
+      "def": "public.lead_status_enum not null default 'new'::lead_status_enum"
+    },
+    {
+      "name": "created_at",
+      "def": "timestamp with time zone not null default now()"
+    },
+    {
+      "name": "customer_id",
+      "def": "text null"
+    },
+    {
+      "name": "id",
+      "def": "text not null default generate_readable_id ('LEAD'::text)"
+    }
+  ],
+  "customers": [
+    {
+      "name": "old_uuid_id",
+      "def": "uuid not null default gen_random_uuid ()"
+    },
+    {
+      "name": "full_name",
+      "def": "text not null"
+    },
+    {
+      "name": "phone",
+      "def": "text null"
+    },
+    {
+      "name": "email",
+      "def": "text null"
+    },
+    {
+      "name": "preferred_channel",
+      "def": "public.preferred_channel_enum null default 'telegram'::preferred_channel_enum"
+    },
+    {
+      "name": "country",
+      "def": "text null"
+    },
+    {
+      "name": "created_at",
+      "def": "timestamp with time zone not null default now()"
+    },
+    {
+      "name": "id",
+      "def": "text not null default generate_readable_id ('CUST'::text)"
+    },
+    {
+      "name": "contact_value",
+      "def": "text null"
+    }
+  ],
+  "shipments": [
+    {
+      "name": "old_uuid_id",
+      "def": "uuid not null default gen_random_uuid ()"
+    },
+    {
+      "name": "provider",
+      "def": "public.shipment_provider_enum not null default 'rusbid'::shipment_provider_enum"
+    },
+    {
+      "name": "tracking_number",
+      "def": "text null"
+    },
+    {
+      "name": "warehouse_received",
+      "def": "boolean null default false"
+    },
+    {
+      "name": "warehouse_photos_received",
+      "def": "boolean null default false"
+    },
+    {
+      "name": "client_received",
+      "def": "boolean null default false"
+    },
+    {
+      "name": "ruspost_status",
+      "def": "jsonb null"
+    },
+    {
+      "name": "ruspost_last_update",
+      "def": "timestamp with time zone null"
+    },
+    {
+      "name": "created_at",
+      "def": "timestamp with time zone not null default now()"
+    },
+    {
+      "name": "order_id",
+      "def": "text null"
+    },
+    {
+      "name": "id",
+      "def": "text not null default generate_readable_id ('SHIP'::text)"
+    },
+    {
+      "name": "detailed_history",
+      "def": "jsonb null default '[]'::jsonb"
+    },
+    {
+      "name": "current_location",
+      "def": "text null"
+    }
+  ],
+  "tasks": [
+    {
+      "name": "id",
+      "def": "uuid not null default gen_random_uuid ()"
+    },
+    {
+      "name": "order_id",
+      "def": "text null"
+    },
+    {
+      "name": "title",
+      "def": "text not null"
+    },
+    {
+      "name": "description",
+      "def": "text null"
+    },
+    {
+      "name": "due_at",
+      "def": "timestamp with time zone null"
+    },
+    {
+      "name": "completed",
+      "def": "boolean null default false"
+    },
+    {
+      "name": "assigned_to",
+      "def": "uuid null"
+    },
+    {
+      "name": "created_at",
+      "def": "timestamp with time zone not null default now()"
+    }
+  ],
+  "inspections": [
+    {
+      "name": "id",
+      "def": "uuid not null default gen_random_uuid ()"
+    },
+    {
+      "name": "order_id",
+      "def": "text null"
+    },
+    {
+      "name": "stage",
+      "def": "text not null"
+    },
+    {
+      "name": "photos",
+      "def": "text[] null"
+    },
+    {
+      "name": "defects_found",
+      "def": "jsonb null"
+    },
+    {
+      "name": "ai_verdict",
+      "def": "text null"
+    },
+    {
+      "name": "manager_notes",
+      "def": "text null"
+    },
+    {
+      "name": "created_at",
+      "def": "timestamp with time zone not null default now()"
+    },
+    {
+      "name": "bike_specs_confirmed",
+      "def": "jsonb null default '{}'::jsonb"
+    },
+    {
+      "name": "inspection_type",
+      "def": "text null default 'pre_purchase'::text"
+    },
+    {
+      "name": "updated_at",
+      "def": "timestamp with time zone null default timezone ('utc'::text, now())"
+    },
+    {
+      "name": "checklist",
+      "def": "jsonb null default '{}'::jsonb"
+    },
+    {
+      "name": "photos_status",
+      "def": "jsonb null default '{}'::jsonb"
+    },
+    {
+      "name": "next_action_suggestion",
+      "def": "text null"
+    }
+  ],
+  "order_status_events": [
+    {
+      "name": "old_uuid_id",
+      "def": "uuid not null default gen_random_uuid ()"
+    },
+    {
+      "name": "old_status",
+      "def": "text null"
+    },
+    {
+      "name": "new_status",
+      "def": "text null"
+    },
+    {
+      "name": "changed_by",
+      "def": "uuid null"
+    },
+    {
+      "name": "created_at",
+      "def": "timestamp with time zone not null default now()"
+    },
+    {
+      "name": "order_id",
+      "def": "text null"
+    },
+    {
+      "name": "id",
+      "def": "text not null default generate_readable_id ('EVT'::text)"
+    }
+  ],
+  "users": [
+    {
+      "name": "id",
+      "def": "uuid not null default gen_random_uuid ()"
+    },
+    {
+      "name": "name",
+      "def": "text not null"
+    },
+    {
+      "name": "role",
+      "def": "public.user_role_enum not null default 'manager'::user_role_enum"
+    },
+    {
+      "name": "active",
+      "def": "boolean not null default true"
+    },
+    {
+      "name": "created_at",
+      "def": "timestamp with time zone not null default now()"
+    }
+  ],
+  "orders_constraints": [
+    "constraint orders_pkey primary key (id)",
+    "constraint orders_order_code_key unique (order_code)",
+    "constraint orders_assigned_manager_fkey foreign KEY (assigned_manager) references users (id) on delete set null",
+    "constraint orders_customer_id_fkey foreign KEY (customer_id) references customers (id)",
+    "constraint orders_lead_id_fkey foreign KEY (lead_id) references leads (id)",
+    "constraint chk_final_price_nonneg check ("
+  ],
+  "leads_constraints": [
+    "constraint leads_pkey primary key (id)",
+    "constraint leads_customer_id_fkey foreign KEY (customer_id) references customers (id)"
+  ]
+}

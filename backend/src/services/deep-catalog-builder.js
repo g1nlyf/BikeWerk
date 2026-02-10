@@ -20,7 +20,7 @@ const BuycycleCollector = require('../../scrapers/buycycle-collector');
 // So from backend/src/services, we need to go up: ../../ (to backend) -> ../ (to eubike) -> telegram-bot
 // So ../../../telegram-bot/unified-hunter.js
 
-const KleinanzeigenCollector = require('../../scrapers/kleinanzeigen-collector');
+const KleinanzeigenCollector = require('../scrapers/kleinanzeigen-collector');
 
 class DeepCatalogBuilder {
   

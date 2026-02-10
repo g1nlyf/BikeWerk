@@ -2,8 +2,8 @@ const Database = require('better-sqlite3');
 const { DB_PATH } = require('../config/db-path');
 
 /**
- * DATABASE SERVICE V2 - ИСПРАВЛЕННЫЙ
- * Точный маппинг на 191 столбец БД
+ * DATABASE SERVICE V2 - Ð˜Ð¡ÐŸÐ ÐÐ’Ð›Ð•ÐÐÐ«Ð™
+ * Ð¢Ð¾Ñ‡Ð½Ñ‹Ð¹ Ð¼Ð°Ð¿Ð¿Ð¸Ð½Ð³ Ð½Ð° 191 ÑÑ‚Ð¾Ð»Ð±ÐµÑ† Ð‘Ð”
  */
 class DatabaseServiceV2 {
 
@@ -11,7 +11,7 @@ class DatabaseServiceV2 {
     this.dbPath = dbPath || DB_PATH;
     this.db = new Database(this.dbPath);
 
-    console.log(`✅ Database Service v2.0 initialized`);
+    console.log(`âœ… Database Service v2.0 initialized`);
     console.log(`   Database: ${this.dbPath}`);
   }
 
@@ -28,13 +28,160 @@ class DatabaseServiceV2 {
     return 'other';
   }
 
-  /**
-   * Safe Join Helper
-   */
-  safeJoin(arr, delimiter = '; ') {
-    if (Array.isArray(arr)) return arr.join(delimiter);
-    if (typeof arr === 'string') return arr;
-    return '';
+  normalizeWheelSize(value) {
+    if (value === undefined || value === null) return null;
+    const text = String(value)
+      .toLowerCase()
+      .replace(/["']/g, '')
+      .replace(',', '.')
+      .trim();
+    if (text.includes('mullet') || text.includes('mallet') || /\bmx\b/.test(text) || text.includes('mixed')) return 'mullet';
+    if (text.includes('700c') || /\b28\b/.test(text)) return '700c';
+    if (text.includes('650b') || text.includes('27.5') || /\b27\.?5\b/.test(text)) return '27.5';
+    if (/\b29\b/.test(text)) return '29';
+    if (/\b26\b/.test(text)) return '26';
+    return null;
+  }
+
+  normalizeSellerType(value) {
+    if (value === undefined || value === null) return 'private';
+    const text = String(value).trim().toLowerCase();
+    if (!text) return 'private';
+    if (text.includes('privat') || text.includes('private')) return 'private';
+    if (
+      text.includes('gewerblich') ||
+      text.includes('dealer') ||
+      text.includes('shop') ||
+      text.includes('händler') ||
+      text.includes('handler') ||
+      text.includes('commercial') ||
+      text.includes('pro')
+    ) {
+      return 'pro';
+    }
+    return 'private';
+  }
+
+  normalizeFrameSize(value, category) {
+    if (value === undefined || value === null) return null;
+    const raw = String(value).trim().toUpperCase();
+    if (!raw) return null;
+
+    const combo = raw.match(/\b(XXL|XL|L|M|S|XS)\s*[\/-]\s*(XXL|XL|L|M|S|XS)\b/);
+    if (combo) return `${combo[1]}/${combo[2]}`;
+
+    // Specialized sizing family (S1..S6)
+    const specialized = raw.match(/\bS([1-6])\b/);
+    if (specialized) return `S${specialized[1]}`;
+
+    const compact = raw.replace(/\s+/g, '');
+    if (['XS', 'S', 'M', 'L', 'XL', 'XXL'].includes(compact)) return compact;
+
+    // Explicit metric / inch sizes
+    const cm = raw.match(/\b(\d{2,3}(?:[.,]\d)?)\s*CM\b/);
+    if (cm) return `${cm[1].replace(',', '.')} cm`;
+    const inch = raw.match(/\b(\d{2}(?:[.,]\d)?)\s*(?:\"|INCH|ZOLL)\b/);
+    if (inch) return `${inch[1].replace(',', '.')}\"`;
+
+    // Numeric road sizes (e.g., 52/54/56/58)
+    const numeric = compact.match(/\b(4[6-9]|5[0-9]|6[0-2])\b/);
+    if (numeric) return numeric[1];
+
+    // "SMALL/MEDIUM/LARGE" -> S/M/L
+    if (compact.includes('SMALL')) return 'S';
+    if (compact.includes('MEDIUM')) return 'M';
+    if (compact.includes('LARGE')) return 'L';
+
+    // For MTB/eMTB keep compact canonical size labels
+    const categoryText = String(category || '').toLowerCase();
+    if (categoryText === 'mtb' || categoryText === 'emtb') {
+      return compact;
+    }
+    return compact;
+  }
+
+  normalizeConditionScore(value) {
+    if (value === undefined || value === null || value === '') return null;
+    const num = Number(value);
+    if (!Number.isFinite(num)) return null;
+    // Legacy flows sometimes returned 0..10 scale.
+    const scaled = num <= 10 ? num * 10 : num;
+    const clamped = Math.max(0, Math.min(100, scaled));
+    return Math.round(clamped);
+  }
+
+  deriveConditionGrade(score) {
+    if (!Number.isFinite(score)) return null;
+    if (score >= 95) return 'A+';
+    if (score >= 80) return 'A';
+    if (score >= 41) return 'B';
+    return 'C';
+  }
+
+  deriveConditionClass(score) {
+    if (!Number.isFinite(score)) return null;
+    if (score >= 95) return 'excellent';
+    if (score >= 80) return 'very_good';
+    if (score >= 41) return 'good';
+    if (score >= 21) return 'fair';
+    return 'poor';
+  }
+
+  extractSourceAdId(sourceAdId, sourceUrl) {
+    const direct = sourceAdId === undefined || sourceAdId === null ? '' : String(sourceAdId).trim();
+    if (direct && direct.toLowerCase() !== 'null' && direct.toLowerCase() !== 'undefined') {
+      return direct;
+    }
+
+    const url = String(sourceUrl || '');
+    // Kleinanzeigen: .../<adId>-...
+    const klein = url.match(/\/(\d+)-\d+-\d+\/?$/);
+    if (klein) return klein[1];
+    // Buycycle: ...-52266
+    const buycycle = url.match(/-(\d{3,})\/?$/);
+    if (buycycle) return buycycle[1];
+    return null;
+  }
+
+  normalizeDiscipline(value) {
+    if (value === undefined || value === null) return null;
+    const text = String(value).trim().toLowerCase();
+    if (!text) return null;
+    if (text.includes('downhill') || /\bdh\b/.test(text)) return 'downhill';
+    if (text.includes('enduro')) return 'enduro';
+    if (text.includes('cross') || /\bxc\b/.test(text)) return 'cross_country';
+    if (text.includes('trail') && text.includes('emtb')) return 'emtb_trail';
+    if (text.includes('trail')) return 'trail_riding';
+    if (text.includes('emtb') || text.includes('e mtb')) return 'emtb';
+    if (text.includes('gravel')) return 'gravel';
+    if (text.includes('road')) return 'road';
+    return text.replace(/\s+/g, '_');
+  }
+
+  normalizeSubCategory(value, discipline) {
+    const raw = value === undefined || value === null ? '' : String(value).trim().toLowerCase();
+    if (raw) {
+      if (raw.includes('downhill') || raw === 'dh') return 'downhill';
+      if (raw.includes('enduro')) return 'enduro';
+      if (raw.includes('trail')) return 'trail';
+      if (raw.includes('cross') || raw === 'xc') return 'cross_country';
+      if (raw.includes('all road') || raw.includes('all_road')) return 'all_road';
+      if (raw.includes('aero')) return 'aero';
+      if (raw.includes('endurance')) return 'endurance';
+      if (raw.includes('climb')) return 'climbing';
+      return raw.replace(/\s+/g, '_');
+    }
+    switch (discipline) {
+      case 'downhill': return 'downhill';
+      case 'enduro': return 'enduro';
+      case 'trail_riding': return 'trail';
+      case 'cross_country': return 'cross_country';
+      case 'road': return 'road';
+      case 'gravel': return 'all_road';
+      case 'emtb':
+      case 'emtb_trail': return 'trail';
+      default: return null;
+    }
   }
 
   /**
@@ -47,7 +194,7 @@ class DatabaseServiceV2 {
   }
 
   /**
-   * Сохранить велосипед из Unified Format
+   * Ð¡Ð¾Ñ…Ñ€Ð°Ð½Ð¸Ñ‚ÑŒ Ð²ÐµÐ»Ð¾ÑÐ¸Ð¿ÐµÐ´ Ð¸Ð· Unified Format
    */
   insertBike(unifiedData) {
     const u = unifiedData || {};
@@ -64,6 +211,24 @@ class DatabaseServiceV2 {
     u.meta = u.meta || {};
 
     u.basic_info.category = this.normalizeCategory(u.basic_info.category);
+    const normalizedWheelSize = this.normalizeWheelSize(u.specs.wheel_size || u.specs.wheel_diameter);
+    if (normalizedWheelSize) u.specs.wheel_size = normalizedWheelSize;
+    u.specs.frame_size = this.normalizeFrameSize(u.specs.frame_size, u.basic_info.category);
+    u.seller.type = this.normalizeSellerType(u.seller.type);
+    u.logistics.shipping_cost = null;
+    u.meta.source_ad_id = this.extractSourceAdId(u.meta.source_ad_id, u.meta.source_url);
+    if (u.condition) {
+      const normalizedConditionScore = this.normalizeConditionScore(u.condition.score);
+      if (normalizedConditionScore !== null) {
+        u.condition.score = normalizedConditionScore;
+      }
+      if (!u.condition.grade && normalizedConditionScore !== null) {
+        u.condition.grade = this.deriveConditionGrade(normalizedConditionScore);
+      }
+      if (!u.condition.class && normalizedConditionScore !== null) {
+        u.condition.class = this.deriveConditionClass(normalizedConditionScore);
+      }
+    }
     u.condition.issues = Array.isArray(u.condition.issues)
       ? u.condition.issues
       : (u.condition.issues ? [String(u.condition.issues)] : []);
@@ -80,13 +245,13 @@ class DatabaseServiceV2 {
       catch { return '{}'; }
     };
 
-    console.log(`\n💾 Saving bike to database...`);
+    console.log(`\nðŸ’¾ Saving bike to database...`);
     console.log(`   Name: ${u.basic_info.name}`);
     console.log(`   Brand: ${u.basic_info.brand}`);
-    console.log(`   Price: €${u.pricing.price}`);
+    console.log(`   Price: â‚¬${u.pricing.price}`);
 
     try {
-      // ТОЧНЫЙ СПИСОК СТОЛБЦОВ ИЗ ТВОЕЙ БД
+      // Ð¢ÐžÐ§ÐÐ«Ð™ Ð¡ÐŸÐ˜Ð¡ÐžÐš Ð¡Ð¢ÐžÐ›Ð‘Ð¦ÐžÐ’ Ð˜Ð— Ð¢Ð’ÐžÐ•Ð™ Ð‘Ð”
       const stmt = this.db.prepare(`
         INSERT INTO bikes (
           name, brand, model, year, category, sub_category, 
@@ -266,6 +431,115 @@ class DatabaseServiceV2 {
 
       const bikeId = result.lastInsertRowid;
 
+      // Persist key filter fields that are present in UnifiedBike but not part of the main INSERT list yet.
+      // This keeps the INSERT stable while making catalog filters (discipline/shipping) reliable.
+      try {
+        const discipline = this.normalizeDiscipline(u.basic_info?.discipline || null);
+        const subCategory = this.normalizeSubCategory(u.basic_info?.sub_category || null, discipline);
+        let shippingOption = u.logistics?.shipping_option || null;
+        if (u.meta?.source_platform === 'buycycle') shippingOption = 'available';
+        if (!shippingOption) shippingOption = 'unknown';
+        const readyToShip = u.logistics?.ready_to_ship ? 1 : 0;
+        const zipCode = u.logistics?.zip_code || null;
+        const shippingDays = u.logistics?.shipping_days || null;
+        const normalizedSellerType = this.normalizeSellerType(u.seller?.type);
+        const sourceAdId = this.extractSourceAdId(u.meta?.source_ad_id, u.meta?.source_url);
+        const priceEur = String(u.pricing?.currency || '').toUpperCase() === 'EUR'
+          ? (u.pricing?.price ?? null)
+          : (u.pricing?.price_eur ?? null);
+        const wheelDiameter = normalizedWheelSize || null;
+        const frameSize = this.normalizeFrameSize(u.specs?.frame_size, u.basic_info?.category);
+        const sourceUrl = u.meta?.source_url || null;
+        const normalizedConditionScore = this.normalizeConditionScore(u.condition?.score);
+        const conditionClass =
+          u.condition?.class ||
+          (normalizedConditionScore !== null ? this.deriveConditionClass(normalizedConditionScore) : null);
+        const conditionConfidence =
+          u.condition?.confidence === undefined || u.condition?.confidence === null || u.condition?.confidence === ''
+            ? null
+            : Number(u.condition.confidence);
+        const conditionRationale = u.condition?.rationale || null;
+        const sellerMemberSince = u.seller?.member_since || u.seller?.memberSince || null;
+        const toNullableNumber = (value) => {
+          if (value === undefined || value === null || value === '') return null;
+          const n = Number(value);
+          return Number.isFinite(n) ? n : null;
+        };
+        const sellerReviewsCount = toNullableNumber(u.seller?.reviews_count);
+        const sellerRatingVisual = u.seller?.rating_visual || null;
+        const sellerBadgesJson = (() => {
+          const badges = u.seller?.badges;
+          if (!badges) return null;
+          try {
+            return typeof badges === 'string' ? badges : JSON.stringify(badges);
+          } catch {
+            return null;
+          }
+        })();
+        const descriptionRu = u.basic_info?.description_ru || null;
+        const originalPrice = u.pricing?.original_price ?? null;
+        const normalizedSize = frameSize || null;
+        const platformReviewsCount = toNullableNumber(u.meta?.platform_trust?.reviews_count);
+        const platformReviewsSource = u.meta?.platform_trust?.source || null;
+
+        this.db.prepare(`
+          UPDATE bikes
+          SET discipline = ?,
+              sub_category = COALESCE(?, sub_category),
+              shipping_option = ?,
+              ready_to_ship = ?,
+              zip_code = ?,
+              shipping_days = ?,
+              seller_type = ?,
+              source_ad_id = COALESCE(?, source_ad_id),
+              price_eur = COALESCE(?, price_eur),
+              wheel_diameter = COALESCE(?, wheel_diameter),
+              frame_size = COALESCE(?, frame_size),
+              size = COALESCE(?, size),
+              condition_class = COALESCE(?, condition_class),
+              condition_confidence = COALESCE(?, condition_confidence),
+              condition_rationale = COALESCE(?, condition_rationale),
+              seller_member_since = COALESCE(?, seller_member_since),
+              seller_reviews_count = COALESCE(?, seller_reviews_count),
+              seller_rating_visual = COALESCE(?, seller_rating_visual),
+              seller_badges_json = COALESCE(?, seller_badges_json),
+              platform_reviews_count = COALESCE(?, platform_reviews_count),
+              platform_reviews_source = COALESCE(?, platform_reviews_source),
+              description_ru = COALESCE(?, description_ru),
+              original_price = COALESCE(?, original_price),
+              original_url = COALESCE(?, original_url)
+          WHERE id = ?
+        `).run(
+          discipline,
+          subCategory,
+          shippingOption,
+          readyToShip,
+          zipCode,
+          shippingDays,
+          normalizedSellerType,
+          sourceAdId,
+          priceEur,
+          wheelDiameter,
+          frameSize,
+          normalizedSize,
+          conditionClass,
+          Number.isFinite(conditionConfidence) ? conditionConfidence : null,
+          conditionRationale,
+          sellerMemberSince,
+          sellerReviewsCount,
+          sellerRatingVisual,
+          sellerBadgesJson,
+          platformReviewsCount,
+          platformReviewsSource,
+          descriptionRu,
+          originalPrice,
+          sourceUrl,
+          bikeId
+        );
+      } catch (e) {
+        console.warn(`[DatabaseServiceV2] Failed to set discipline/shipping fields: ${e.message}`);
+      }
+
       if (u.pricing.fmv && u.pricing.price) {
         const margin = Math.round(((u.pricing.fmv - u.pricing.price) / u.pricing.fmv) * 1000) / 10;
         try {
@@ -275,24 +549,24 @@ class DatabaseServiceV2 {
         }
       }
 
-      console.log(`   ✅ Bike saved successfully!`);
-      console.log(`   📊 Database ID: ${bikeId}`);
-      console.log(`   🏆 Quality Score: ${u.quality_score}`);
-      console.log(`   📈 Completeness: ${u.completeness.toFixed(1)}%`);
+      console.log(`   âœ… Bike saved successfully!`);
+      console.log(`   ðŸ“Š Database ID: ${bikeId}`);
+      console.log(`   ðŸ† Quality Score: ${u.quality_score}`);
+      console.log(`   ðŸ“ˆ Completeness: ${Number(u.completeness || 0).toFixed(1)}%`);
 
       return bikeId;
 
     } catch (error) {
-      console.error(`   ❌ Database insert failed: ${error.message}`);
+      console.error(`   âŒ Database insert failed: ${error.message}`);
       console.error(`   Full error:`, error);
       throw error;
     }
   }
 
   /**
-   * Сохранить массив велосипедов
-   * @param {Array} bikes - Массив unified bike objects
-   * @param {Object} options - Опции 
+   * Ð¡Ð¾Ñ…Ñ€Ð°Ð½Ð¸Ñ‚ÑŒ Ð¼Ð°ÑÑÐ¸Ð² Ð²ÐµÐ»Ð¾ÑÐ¸Ð¿ÐµÐ´Ð¾Ð²
+   * @param {Array} bikes - ÐœÐ°ÑÑÐ¸Ð² unified bike objects
+   * @param {Object} options - ÐžÐ¿Ñ†Ð¸Ð¸ 
    */
   async saveBikesToDB(bikes, options = {}) {
     const bikeList = Array.isArray(bikes) ? bikes : (bikes ? [bikes] : []);
@@ -308,7 +582,7 @@ class DatabaseServiceV2 {
       results: []
     };
 
-    console.log(`\n📦 Batch saving ${bikeList.length} bikes...`);
+    console.log(`\nðŸ“¦ Batch saving ${bikeList.length} bikes...`);
 
     for (const bike of bikeList) {
       try {
@@ -317,7 +591,7 @@ class DatabaseServiceV2 {
         const sourcePlatform = bike.meta?.source_platform;
 
         if (this.bikeExists(sourceAdId, sourcePlatform)) {
-          console.log(`   ⚠️ Skipped duplicate: ${sourceAdId}`);
+          console.log(`   âš ï¸ Skipped duplicate: ${sourceAdId}`);
           summary.duplicates++;
           summary.results.push({ success: false, reason: 'duplicate', id: sourceAdId });
           continue;
@@ -334,7 +608,7 @@ class DatabaseServiceV2 {
         }
 
       } catch (err) {
-        console.error(`   ❌ Failed to save bike: ${err.message}`);
+        console.error(`   âŒ Failed to save bike: ${err.message}`);
         summary.failed++;
         summary.results.push({ success: false, reason: err.message });
       }
@@ -376,7 +650,7 @@ class DatabaseServiceV2 {
   }
 
   /**
-   * Проверить существует ли велосипед
+   * ÐŸÑ€Ð¾Ð²ÐµÑ€Ð¸Ñ‚ÑŒ ÑÑƒÑ‰ÐµÑÑ‚Ð²ÑƒÐµÑ‚ Ð»Ð¸ Ð²ÐµÐ»Ð¾ÑÐ¸Ð¿ÐµÐ´
    */
   bikeExists(sourceAdId, sourcePlatform) {
     const stmt = this.db.prepare(`
@@ -390,7 +664,7 @@ class DatabaseServiceV2 {
   }
 
   /**
-   * Получить велосипед по ID
+   * ÐŸÐ¾Ð»ÑƒÑ‡Ð¸Ñ‚ÑŒ Ð²ÐµÐ»Ð¾ÑÐ¸Ð¿ÐµÐ´ Ð¿Ð¾ ID
    */
   getBikeById(id) {
     const stmt = this.db.prepare('SELECT * FROM bikes WHERE id = ?');
@@ -398,7 +672,7 @@ class DatabaseServiceV2 {
   }
 
   /**
-   * Удалить тестовый велосипед (для очистки)
+   * Ð£Ð´Ð°Ð»Ð¸Ñ‚ÑŒ Ñ‚ÐµÑÑ‚Ð¾Ð²Ñ‹Ð¹ Ð²ÐµÐ»Ð¾ÑÐ¸Ð¿ÐµÐ´ (Ð´Ð»Ñ Ð¾Ñ‡Ð¸ÑÑ‚ÐºÐ¸)
    */
   deleteTestBike(sourceAdId, sourcePlatform) {
     if (!sourceAdId) return false;
@@ -481,7 +755,7 @@ class DatabaseServiceV2 {
   }
 
   /**
-   * Закрыть соединение
+   * Ð—Ð°ÐºÑ€Ñ‹Ñ‚ÑŒ ÑÐ¾ÐµÐ´Ð¸Ð½ÐµÐ½Ð¸Ðµ
    */
   close() {
     this.db.close();

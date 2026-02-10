@@ -1,10 +1,10 @@
-const path = require('path');
+﻿const path = require('path');
 const fs = require('fs');
 const sqlite3 = require('sqlite3').verbose();
 
 function resolveDbPath() {
     const preferred = path.resolve(__dirname, '../backend/database/eubike.db');
-    const legacy = path.resolve(__dirname, '../backend/Databases/eubike.db');
+    const legacy = path.resolve(__dirname, '../backend/database/eubike.db');
     return fs.existsSync(preferred) ? preferred : legacy;
 }
 
@@ -12,7 +12,7 @@ function normalizeRecord(category, discipline) {
     const d = String(discipline || '').toLowerCase();
     const c = String(category || '').toLowerCase();
 
-    if (d.includes('kids') || d.includes('детск') || d.includes('child') || d.includes('junior') || d.includes('kinder') || d.includes('14"') || d.includes('16"') || d.includes('20"') || d.includes('24"')) {
+    if (d.includes('kids') || d.includes('Ð´ÐµÑ‚ÑÐº') || d.includes('child') || d.includes('junior') || d.includes('kinder') || d.includes('14"') || d.includes('16"') || d.includes('20"') || d.includes('24"')) {
         let sub = 'Kids Balance';
         if (d.includes('14"')) sub = 'Kids 14"';
         else if (d.includes('16"')) sub = 'Kids 16"';
@@ -47,11 +47,11 @@ function normalizeRecord(category, discipline) {
         return { category: 'mtb', sub: 'MTB Trail' };
     }
 
-    if (c.includes('грав')) return { category: 'gravel', sub: null };
-    if (c.includes('шосс')) return { category: 'road', sub: null };
-    if (c.includes('электро')) return { category: 'emtb', sub: null };
-    if (c.includes('дет')) return { category: 'kids', sub: null };
-    if (c.includes('горн')) return { category: 'mtb', sub: null };
+    if (c.includes('Ð³Ñ€Ð°Ð²')) return { category: 'gravel', sub: null };
+    if (c.includes('ÑˆÐ¾ÑÑ')) return { category: 'road', sub: null };
+    if (c.includes('ÑÐ»ÐµÐºÑ‚Ñ€Ð¾')) return { category: 'emtb', sub: null };
+    if (c.includes('Ð´ÐµÑ‚')) return { category: 'kids', sub: null };
+    if (c.includes('Ð³Ð¾Ñ€Ð½')) return { category: 'mtb', sub: null };
 
     return { category: 'mtb', sub: null };
 }
@@ -138,3 +138,4 @@ run().catch(err => {
     console.error('Verification failed:', err.message);
     process.exit(1);
 });
+

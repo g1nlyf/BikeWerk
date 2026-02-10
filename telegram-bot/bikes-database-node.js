@@ -7,9 +7,11 @@ class BikesDatabase {
         this.categories = ['Горный', 'Шоссейный', 'Городской', 'Электро', 'BMX', 'Детский'];
         this.brands = ['trek', 'specialized', 'giant', 'cannondale', 'scott', 'merida', 'cube', 'bianchi'];
         
-        // Use ENV if available, else fallback to relative path
-        this.dbPath = process.env.BOT_DB_PATH || process.env.DB_PATH
-            ? path.resolve(process.cwd(), process.env.BOT_DB_PATH || process.env.DB_PATH)
+        // Use canonical DB path and resolve relative env values against project root
+        const envPath = process.env.BOT_DB_PATH || process.env.DB_PATH;
+        const projectRoot = path.resolve(__dirname, '..');
+        this.dbPath = envPath
+            ? (path.isAbsolute(envPath) ? envPath : path.resolve(projectRoot, envPath))
             : path.resolve(__dirname, '../backend/database/eubike.db');
             
         console.log(`[BikesDatabase] Using DB at: ${this.dbPath}`);
@@ -27,6 +29,7 @@ class BikesDatabase {
             }
             this.db = new sqlite3.Database(this.dbPath);
             await this.runQuery('PRAGMA foreign_keys = ON');
+            await this.ensureCoreTables();
             
             // Migration: Ensure logistics_priority column exists
             try {
@@ -274,6 +277,54 @@ class BikesDatabase {
             console.error('BikesDatabase initialization failed:', error);
             throw error;
         }
+    }
+
+    async ensureCoreTables() {
+        await this.runQuery(`
+            CREATE TABLE IF NOT EXISTS bikes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                brand TEXT,
+                model TEXT,
+                price REAL DEFAULT 0,
+                category TEXT DEFAULT 'other',
+                description TEXT,
+                location TEXT,
+                condition_status TEXT DEFAULT 'used',
+                size TEXT,
+                wheel_diameter TEXT,
+                year INTEGER,
+                is_negotiable INTEGER DEFAULT 0,
+                shipping_option TEXT DEFAULT 'unknown',
+                original_url TEXT UNIQUE,
+                source TEXT DEFAULT 'manual',
+                source_ad_id TEXT,
+                views_count INTEGER DEFAULT 0,
+                publish_date DATETIME,
+                is_active INTEGER DEFAULT 0,
+                priority TEXT DEFAULT 'normal',
+                fmv REAL,
+                hotness_score REAL DEFAULT 0,
+                salvage_value REAL DEFAULT 0,
+                condition_grade TEXT,
+                condition_score REAL,
+                condition_penalty REAL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
+        await this.runQuery(`
+            CREATE TABLE IF NOT EXISTS bike_images (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                bike_id INTEGER NOT NULL,
+                image_url TEXT NOT NULL,
+                is_main INTEGER DEFAULT 0,
+                image_order INTEGER DEFAULT 0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (bike_id) REFERENCES bikes(id) ON DELETE CASCADE
+            )
+        `);
     }
 
     async runQuery(sql, params = []) {

@@ -1,11 +1,11 @@
-// Copy bikes by IDs from backend/Databases/eubike.db to backend/database/eubike.db
+﻿// Copy bikes by IDs from backend/database/eubike.db to backend/database/eubike.db
 // Usage: node scripts/copy-bikes-from-other-db.js 74 75
 const path = require('path');
 const { open } = require('sqlite');
 const sqlite3 = require('sqlite3').verbose();
 
 async function copy(ids) {
-  const srcPath = path.resolve(__dirname, '../Databases/eubike.db');
+  const srcPath = path.resolve(__dirname, '../database/eubike.db');
   const dstPath = path.resolve(__dirname, '../database/eubike.db');
   const src = await open({ filename: srcPath, driver: sqlite3.Database });
   const dst = await open({ filename: dstPath, driver: sqlite3.Database });
@@ -67,5 +67,5 @@ if (ids.length === 0) {
   process.exit(1);
 }
 copy(ids)
-  .then(() => console.log('✅ Copy completed'))
-  .catch(err => { console.error('❌ Copy failed:', err.message); process.exit(1); });
+  .then(() => console.log('âœ… Copy completed'))
+  .catch(err => { console.error('âŒ Copy failed:', err.message); process.exit(1); });

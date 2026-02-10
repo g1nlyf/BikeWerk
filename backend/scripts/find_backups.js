@@ -29,8 +29,8 @@ async function run() {
                 echo "=== Searching for .db files ==="
                 find /root -name "*.db" -o -name "*.db.bak" -o -name "*.sqlite"
                 
-                echo "\n=== Checking backend/Databases folder ==="
-                ls -l /root/eubike/backend/Databases/
+                echo "\n=== Checking backend/database folder ==="
+                ls -l /root/eubike/backend/database/
                 
                 echo "\n=== Checking root backups ==="
                 ls -l /root/*.bak

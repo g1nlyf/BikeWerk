@@ -16,8 +16,8 @@ export default function WhoWeAreSection({ className }: WhoWeAreSectionProps) {
         {/* Огромный фоновый заголовок поверх секции */}
         <div className="pointer-events-none absolute inset-x-0 -top-6 z-0 flex justify-center">
           <h2
-            className="select-none font-extrabold tracking-tight text-foreground text-center text-[18vw] md:text-[13rem] leading-[0.82]"
-            style={{ opacity: 0.16, WebkitMaskImage: 'linear-gradient(to bottom, black 78%, transparent)', maskImage: 'linear-gradient(to bottom, black 78%, transparent)' }}
+            className="select-none font-heading font-extrabold tracking-tighter text-foreground text-center text-[18vw] md:text-[13rem] leading-[0.82]"
+            style={{ opacity: 0.12, WebkitMaskImage: 'linear-gradient(to bottom, black 70%, transparent)', maskImage: 'linear-gradient(to bottom, black 70%, transparent)' }}
           >
             Кто мы
           </h2>

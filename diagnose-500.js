@@ -1,4 +1,4 @@
-const { Client } = require('ssh2');
+﻿const { Client } = require('ssh2');
 
 const config = {
     host: '45.9.41.232',
@@ -14,7 +14,7 @@ const commands = [
     
     // Check if the database file exists (if using SQLite)
     'echo "\n=== DATABASE FILE CHECK ==="',
-    'ls -la /root/eubike/backend/Databases/eubike.db || echo "Database file not found"',
+    'ls -la /root/eubike/backend/database/eubike.db || echo "Database file not found"',
     
     // Check environment variables (safely, excluding sensitive info if possible, but we need to see if DB vars are set)
     'echo "\n=== ENV VARS CHECK ==="',
@@ -36,3 +36,4 @@ conn.on('ready', () => {
         });
     });
 }).connect(config);
+

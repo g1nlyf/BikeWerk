@@ -2,7 +2,6 @@ import * as React from 'react'
 import BikeflipHeaderPX from '@/components/layout/BikeflipHeaderPX'
 import { SEOHead } from '@/components/SEO/SEOHead'
 import { API_BASE } from '@/api'
-import { BookingOverlay } from "@/components/checkout/BookingOverlay";
 import { useCart } from '@/context/CartContext'
 import { Button } from '@/components/ui/button'
 import { Trash2, Plus, Minus, ArrowRight, ShoppingBag, ShieldCheck, Truck } from 'lucide-react'
@@ -199,34 +198,7 @@ export default function CartPage() {
         </div>
 
         {/* Universal Order Overlay */}
-        <BookingOverlay
-          open={checkoutOpen}
-          onOpenChange={setCheckoutOpen}
-          items={items.map((i) => {
-            const base = API_BASE.replace('/api', '')
-            const img = i.image
-            const imageUrl = img
-              ? (img.startsWith('http') ? img : `${base}${img}`)
-              : placeholderImg
-            return {
-              id: String(i.bike_id),
-              name: i.name || `${i.brand} ${i.model}`,
-              price: i.price,
-              image: imageUrl,
-              details: {
-                brand: i.brand,
-                model: i.model,
-                year: (i as any).year,
-                size: (i as any).size,
-              },
-              link: i.url
-            }
-          })}
-          mode="cart"
-          onSuccess={() => {
-            clearCart()
-          }}
-        />
+        
       </main>
     </div>
   )

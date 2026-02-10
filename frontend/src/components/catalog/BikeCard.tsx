@@ -11,7 +11,6 @@ import { useAuth } from "@/lib/auth";
 import { metricsApi } from "@/api";
 import { useCartUI } from "@/lib/cart-ui";
 import { useLeadSystem } from "@/context/LeadSystemContext";
-import { BookingOverlay } from "@/components/checkout/BookingOverlay";
 import { cn } from "@/lib/utils";
 import { formatRUB, calculatePriceBreakdown, calculateMarketingBreakdown } from "@/lib/pricing";
 import { useAnalytics, useImpression } from "@/components/AnalyticsProvider";
@@ -997,30 +996,7 @@ export const BikeCard: React.FC<{ bike: BikeData; variant?: "default" | "compact
         </DialogContent>
       </Dialog>
 
-      <BookingOverlay
-        open={orderOverlayOpen}
-        onOpenChange={setOrderOverlayOpen}
-        items={[{
-          id: String(bike.id),
-          name: title,
-          price: bike.priceEU,
-          image: imageSrc,
-          details: {
-            brand: bike.brand,
-            model: bike.model,
-            year: bike.year,
-            size: bike.size,
-          }
-        }]}
-        mode="single"
-        // Calculate defaults for card view (Cargo + Insurance)
-        shippingOption="Cargo"
-        insuranceIncluded={true}
-        priceRub={Math.round(calculatePriceBreakdown(Number(bike.priceEU), 'Cargo', true).totalRub)}
-        depositAmount={Math.round(calculatePriceBreakdown(Number(bike.priceEU), 'Cargo', true).bookingRub)}
-        finalPriceEur={Math.round(calculatePriceBreakdown(Number(bike.priceEU), 'Cargo', true).details.finalPriceEur)}
-        exchangeRate={Math.round(calculatePriceBreakdown(Number(bike.priceEU), 'Cargo', true).details.exchangeRate)}
-      />
+      
     </div>
   );
 };

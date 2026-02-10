@@ -1,0 +1,207 @@
+CRM Test Report - BikeWerk
+Tester: Alexey (Manager Role) Date: 2026-02-07
+
+1. Context & Technical Logs
+Backend Logs Analysis
+Error: ETELEGRAM: 409 Conflict (Multiple bot instances running)
+Error: SQLITE_CONSTRAINT: NOT NULL constraint failed: metric_events.type (Database error when saving metrics)
+2. Testing Phases
+1️⃣ Login & Authentication
+Context: Tested with crm.manager@local.
+
+Findings: ✅ Good:
+
+Clean, professional design.
+Very fast authentication.
+Clear error messages (verified via code inspection previously).
+⚠️ Improvements:
+
+Browser suggested autocomplete="current-password" warning.
+android-chrome-192x192.png manifest error (minor).
+❌ Bugs:
+
+None in the login flow itself.
+💡 Suggestions:
+
+Add "Remember me" checkbox.
+2️⃣ Dashboard
+Context: Viewed immediately after login.
+
+Findings: ✅ Good:
+
+Kanban board has clear columns and item cards.
+"Revenue" and "Total Orders" metrics are visible.
+⚠️ Improvements:
+
+MISSING METRIC: "Conversion" card is missing entirely from the dashboard.
+Many bikes show "No image" placeholder.
+❌ Bugs:
+
+CRITICAL: GET /api/v1/crm/orders?status=pending_manager returned 500 Internal Server Error.
+Consequence: "Awaiting Manager" metric is 0 (likely incorrect) and the list might be empty.
+BUG: Urgent Tasks display "URL: undefined" in their descriptions (e.g., "Verify bike... URL: undefined").
+💡 Suggestions:
+
+Fix the 500 error immediately to see new orders.
+Fix the URL generation for tasks.
+3️⃣ Order List
+Context: http://localhost:5175/crm/orders
+
+Findings: ✅ Good:
+
+Sorting by Amount works.
+Multi-selections work.
+Clear columns (ID, Bike, Customer, Date, Status, Amount, Manager).
+⚠️ Improvements:
+
+Image loading issues (mixed content/blocked) for bike thumbnails.
+❌ Bugs:
+
+CRITICAL: Filtering by status "Awaiting manager" causes 500 Internal Server Error. The list does not update.
+💡 Suggestions:
+
+Fix status filter backend handler.
+4️⃣ Order Details
+Context: Viewed individual order.
+
+Findings: ✅ Good:
+
+CHECKLIST WORKS: Can open modal, set status to "OK", add comment, and save. Progress updates correctly (e.g., "1 / 28").
+Customer and Bike info clearly visible.
+Timeline shows events.
+Finance section shows paid/balance.
+⚠️ Improvements:
+
+Logistics section was empty (might be just this order).
+❌ Bugs:
+
+None observed in the details view itself.
+💡 Suggestions:
+
+none.
+5️⃣ Clients
+Context: http://localhost:5175/crm/customers
+
+Findings: ✅ Good:
+
+Search works for ASCII names (e.g., "Test").
+⚠️ Improvements:
+
+No "Call" or "Email" quick actions in the list.
+❌ Bugs:
+
+CRITICAL: Clicking on a customer row DOES NOT OPEN anything. The profile view is inaccessible.
+Search with non-ASCII characters (Cyrillic) had tooling issues (might work for real user, but unverified).
+💡 Suggestions:
+
+Fix the click handler for table rows immediately.
+6️⃣ Leads
+Context: http://localhost:5175/crm/leads
+
+Findings: ✅ Good:
+
+List populates.
+⚠️ Improvements:
+
+None.
+❌ Bugs:
+
+CRITICAL: Changing status (e.g., New -> Contacted) triggers 500 Internal Server Error. The UI does not update.
+💡 Suggestions:
+
+Fix backend handler for lead status updates.
+7️⃣ Tasks
+Context: http://localhost:5175/crm/tasks
+
+Findings: ✅ Good:
+
+Creation works perfectly.
+"Mark as Done" works and visuals update (Grey -> Black).
+⚠️ Improvements:
+
+MISSING: There is no "Delete" button for tasks.
+❌ Bugs:
+
+Task descriptions in dashboard showed "URL: undefined".
+💡 Suggestions:
+
+Add a delete/archive icon.
+8️⃣ General UX/UI
+Summary:
+
+Visuals: Excellent. Clean, modern, "Premium" feel.
+Performance: Very fast (SPA feel), except when backend 500s occur.
+Usability: High potential, but broken navigation (Clients) and backend errors (Filters, Leads) make it unusable for daily work currently.
+9️⃣ Real World Simulation (Manager Alexey)
+Scenario: Processing 10-15 orders/day.
+
+Can I work in this CRM? -> NO.
+
+Why?
+
+I cannot filter new orders ("Awaiting manager" crashes). BLOCKER.
+I cannot see client details (Profile doesn't open). BLOCKER.
+I cannot process leads (Status change crashes).
+I cannot see bike photos (Images broken).
+What I still need Telegram/Excel for:
+
+Communication with customers (No integration).
+Viewing actual bike photos (CRM images broken).
+Keeping track of "Warning" clients (Can't see history).
+🔟 TOP 10 CRITICAL ISSUES
+[BUG] Order Status Filter 500 Error
+
+Criticality: BLOCKER.
+Why: I can't see "New Orders" specifically.
+Fix: Debug GET /api/v1/crm/orders?status=... on backend.
+[BUG] Client Profile Navigation Broken
+
+Criticality: BLOCKER.
+Why: I can't see client address, history, or detailed contacts.
+Fix: Check onClick handler in CustomersTable.tsx.
+[BUG] Lead Status Change 500 Error
+
+Criticality: HIGH.
+Why: Cannot manage sales funnel.
+Fix: Debug PATCH /api/v1/crm/leads/:id/status.
+[BUG] Missing "Conversion" Metric
+
+Criticality: MEDIUM.
+Why: Dashboard looks broken/incomplete.
+Fix: Add conversion to dashboard API response or frontend calculation.
+[BUG] Task Descriptions "URL: undefined"
+
+Criticality: MEDIUM.
+Why: Looks unprofessional and breaks context.
+Fix: Ensure bike_url or order_url is correctly passed to Task generator.
+[BUG] Image Proxy / Mixed Content Errors
+
+Criticality: HIGH.
+Why: Manager needs to see the product.
+Fix: Fix image-proxy returning 403 or CORS headers.
+[UX] No "Delete" Task Button
+
+Criticality: MEDIUM.
+Why: List becomes cluttered with mistakes or old tasks.
+Fix: Add trash icon to task row.
+[UX] Missing Customer Communication Links
+
+Criticality: MEDIUM.
+Why: Friction in workflow (copy-paste number vs 1-click).
+Fix: Add href="tel:..." and href="mailto:..." links.
+[UX] Backend Logs "SQLite Constraint"
+
+Criticality: HIGH (Technical).
+Why: Data loss in analytics.
+Fix: Ensure type is set when inserting metric_events.
+[UX] "No Image" Placeholders
+
+Criticality: MEDIUM.
+Why: Hard to identify bikes visually.
+Fix: Ensure efficient image fallback or placeholder generation.
+EXECUTIVE SUMMARY
+Status: ❌ NOT READY FOR PRODUCTION Score: 4/10
+
+The system looks beautiful and feels fast, but fundamental workflows are broken by server errors (500s) and UI disconnections (Client profiles). The "Order Checklist" - a complex feature - works perfectly, which is a great achievement. However, without working Filters, Client Profiles, and Lead Management, a manager cannot perform their daily duties.
+
+Verdict: Fix the Top 3 Blockers immediately, and it will be a solid MVP.
