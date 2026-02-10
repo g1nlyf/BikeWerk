@@ -36,9 +36,25 @@ export function formatEUR(amount: number) {
   return `${v} €`;
 }
 
-export function formatRUB(amountEur: number) {
-  const rub = Math.round((amountEur || 0) * RATES.eur_to_rub);
-  return `${rub.toLocaleString()} ₽`;
+// NOTE: Most UI components already compute totals in RUB and only need formatting.
+export function formatRUB(amountRub: number) {
+  const rub = Math.round(amountRub || 0);
+  return `${rub.toLocaleString("ru-RU")} ₽`;
+}
+
+export function formatRUBFromEUR(amountEur: number, rate = RATES.eur_to_rub) {
+  const eur = Number(amountEur || 0);
+  const r = normalizeEurToRubRate(rate);
+  return formatRUB(Math.round(eur * r));
+}
+
+// Some sources may provide rate in "cents" (e.g. 10500 instead of 105).
+export function normalizeEurToRubRate(value: unknown, fallback = RATES.eur_to_rub) {
+  const n = Number(value);
+  const fb = Number(fallback);
+  if (!Number.isFinite(n) || n <= 0) return Number.isFinite(fb) && fb > 0 ? fb : 105;
+  if (n > 1000) return n / 100;
+  return n;
 }
 
 /**

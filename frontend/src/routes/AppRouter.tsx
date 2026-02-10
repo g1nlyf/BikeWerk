@@ -12,6 +12,7 @@ import PasswordResetPage from "@/pages/PasswordResetPage";
 import GuestOrderWizardPage from "@/pages/GuestOrderWizardPage";
 import OrderTrackingPage from "@/pages/OrderTrackingPage";
 import BuyoutConditionsPage from "@/pages/BuyoutConditionsPage";
+import BookingFinalizePage from "@/pages/BookingFinalizePage";
 import TestBikeflipLanding2 from "@/pages/TestBikeflipLanding2";
 import AboutPage from "@/pages/AboutPage";
 import { AdminMobileDashboard } from "@/pages/AdminDashboard/AdminMobileDashboard";
@@ -58,6 +59,7 @@ export default function AppRouter() {
         <Route path="/cart" element={<CartPage />} />
         <Route path="/guest-order" element={<GuestOrderWizardPage />} />
         <Route path="/booking-checkout/:id" element={<BuyoutConditionsPage />} />
+        <Route path="/booking-checkout/:id/booking" element={<BookingFinalizePage />} />
         <Route path="/order-tracking" element={<OrderTrackingPage />} />
         <Route path="/order-tracking/:token" element={<OrderTrackingPage />} />
         {/* Deprecated routes redirected */}

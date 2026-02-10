@@ -17,7 +17,6 @@ import { getFullSizeUrl, getThumbnailUrl } from "@/utils/imagekit";
 import { useCartUI } from "@/lib/cart-ui";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { BookingOverlay } from "@/components/checkout/BookingOverlay";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
 import { calculatePriceBreakdown, formatRUB } from "@/lib/pricing";
 import { RATES, calculateMarketingBreakdown, refreshRates } from "@/lib/pricing";
@@ -26,9 +25,6 @@ import { ValueStack, AIInsightTooltip } from "@/components/product/ValueStack";
 import { WaitlistForm } from "@/components/WaitlistForm";
 
 import MiniCatalogBikeflip from "@/components/landing/MiniCatalogBikeflip";
-import { useCheckoutUI } from "@/lib/checkout-ui";
-import { useLeadSystem } from "@/context/LeadSystemContext";
-import type { CheckoutBike } from "@/lib/checkout-ui";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 
 import { SniperAnalysis } from "@/components/catalog/SniperAnalysis";
@@ -980,8 +976,6 @@ export default function ProductDetailPage() {
     setActiveIndex(index);
   };
   const { openCart, showNotification } = useCartUI();
-  const { openBuyback } = useCheckoutUI();
-  const { openLeadModal } = useLeadSystem();
   const [addedToCart, setAddedToCart] = React.useState(false);
   const [ctaRipple, setCtaRipple] = React.useState(false);
   const [orderOverlayOpen, setOrderOverlayOpen] = React.useState(false);
@@ -1006,17 +1000,20 @@ export default function ProductDetailPage() {
   const deliveryRef = React.useRef<HTMLDivElement>(null);
   const [isDesktopInitial, setIsDesktopInitial] = React.useState<boolean>(false);
   const { user } = useAuth();
-  const [checkoutOpen, setCheckoutOpen] = React.useState(false);
   const [isFavorite, setIsFavorite] = React.useState(false);
   const [descExpanded, setDescExpanded] = React.useState(false);
   const [translatedDescription, setTranslatedDescription] = React.useState<string | null>(null);
   const [translating, setTranslating] = React.useState(false);
   const [reportText, setReportText] = React.useState<string>('');
-  const [checkoutInitialStep, setCheckoutInitialStep] = React.useState<"contact" | "faq">("contact");
   const [waitlistOpen, setWaitlistOpen] = React.useState(false);
   const [processOpen, setProcessOpen] = React.useState(false);
   const [localLotOpen, setLocalLotOpen] = React.useState(false);
   const [directMessageRestrictedOpen, setDirectMessageRestrictedOpen] = React.useState(false);
+
+  const openBuyoutConditions = React.useCallback(() => {
+    if (!product?.id) return;
+    window.location.href = `/booking-checkout/${product.id}`;
+  }, [product?.id]);
 
 
   function GuaranteeDialog({ 
@@ -1439,13 +1436,17 @@ export default function ProductDetailPage() {
     (async () => {
       try {
         if (!product?.id) return;
+        if (!(user?.role === 'admin' || user?.role === 'manager')) {
+          if (!cancelled) setBestPrice(false);
+          return;
+        }
         const r = await adminApi.getEvaluation(Number(product.id));
         const score = r?.evaluation?.price_value_score ?? null;
         if (!cancelled) setBestPrice(Number(score) === 10);
       } catch (err) { console.warn('getEvaluation failed', err); }
     })();
     return () => { cancelled = true };
-  }, [product?.id]);
+  }, [product?.id, user?.role]);
 
   
 
@@ -2256,11 +2257,10 @@ export default function ProductDetailPage() {
                     <Button 
                       className="w-full h-12 rounded-xl text-base font-bold bg-black text-white hover:bg-black/90 shadow-md"
                       onClick={() => {
-                        setCheckoutInitialStep("contact");
-                        setCheckoutOpen(true);
+                        openBuyoutConditions();
                       }}
                     >
-                      Забронировать сейчас
+                      Показать условия выкупа
                     </Button>
 
                     <div className="space-y-1.5 pt-1">
@@ -2873,7 +2873,7 @@ export default function ProductDetailPage() {
                 </div>
 
                 <div className="pt-2">
-                   <Button onClick={()=> { setLessInfoOpen(false); setCheckoutOpen(true); }} className="w-full h-12 rounded-full font-medium">
+                   <Button onClick={()=> { setLessInfoOpen(false); openBuyoutConditions(); }} className="w-full h-12 rounded-full font-medium">
                      Оставить заявку на уточнение
                    </Button>
                 </div>
@@ -2968,7 +2968,7 @@ export default function ProductDetailPage() {
                   className="h-12 rounded-full bg-black text-white hover:bg-black/90"
                   onClick={() => { 
                     setOrderOverlayOpen(false);
-                    setCheckoutOpen(true); 
+                    openBuyoutConditions(); 
                   }}
                 >
                   Давайте заказывать!
@@ -3081,7 +3081,7 @@ export default function ProductDetailPage() {
                  className="w-full h-12 rounded-full font-bold bg-black text-white hover:bg-black/90" 
                  onClick={() => {
                    setDirectMessageRestrictedOpen(false);
-                   setCheckoutOpen(true);
+                   openBuyoutConditions();
                  }}
                >
                  Бронируем!
@@ -3090,38 +3090,6 @@ export default function ProductDetailPage() {
           </DialogContent>
         </Dialog>
 
-        <BookingOverlay
-          key={checkoutOpen ? 'open' : 'closed'}
-          open={checkoutOpen}
-          onOpenChange={setCheckoutOpen}
-          initialStep={checkoutInitialStep}
-          items={[{
-            id: String(product.id),
-            name: product.title || `${product.brand} ${product.model}`,
-            price: Number(product.price || product.discountPrice || product.originalPrice || 0),
-            image: Array.isArray(product.images) ? product.images[0] : undefined,
-            link: product.external_link,
-            details: {
-              brand: product.brand,
-              model: product.model,
-              year: product.year,
-              size: product.size,
-            }
-          }]}
-          priceRub={totalRubRounded}
-          depositAmount={depositAmount}
-          mode="single"
-          shippingOption={finalShippingOption}
-          insuranceIncluded={insuranceIncluded}
-          finalPriceEur={totalEurRounded}
-          exchangeRate={eurRate}
-          onEditDelivery={() => {
-            setCheckoutOpen(false);
-            setTimeout(() => {
-                deliveryRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }, 100);
-          }}
-        />
 
         <Dialog open={localLotOpen} onOpenChange={setLocalLotOpen}>
           <DialogContent className="sm:max-w-md rounded-3xl p-6">
