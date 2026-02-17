@@ -6,6 +6,7 @@ import { Footer } from "@/components/layout/Footer";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Check, Info, Shield, Truck } from "lucide-react";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
 import { apiGet } from "@/api";
 import { formatRUB, getEurRate, normalizeEurToRubRate } from "@/lib/pricing";
@@ -51,6 +52,7 @@ export default function BuyoutConditionsPage() {
 
   const [delivery, setDelivery] = useState<DeliveryOptionId>("Cargo");
   const [addons, setAddons] = useState<AddonSelection>({});
+  const [showAllDelivery, setShowAllDelivery] = useState(false);
 
   useEffect(() => {
     if (!bikeId) return;
@@ -95,15 +97,37 @@ export default function BuyoutConditionsPage() {
   const bikePriceEur = Number((bike as any)?.price || (bike as any)?.price_eur || 0);
 
   const deliveryOption = DELIVERY_OPTIONS.find((o) => o.id === delivery) || DELIVERY_OPTIONS[0];
-  const deliveryRub = Math.round(deliveryOption.priceEur * exchangeRate);
+  const primaryDeliveryOptionIds: DeliveryOptionId[] = ["Cargo", "EMS", "PremiumGroup"];
+  const primaryAddons = ["personal_inspection", "extra_packaging", "extra_insurance"];
+  const faqItems = [
+    {
+      question: "Когда я плачу?",
+      answer: "Сейчас ничего не списывается. Сначала мы проверяем продавца и байк, и только после подтверждения вы переходите к оплате.",
+    },
+    {
+      question: "Что входит в проверку?",
+      answer: "Проверяем продавца, соответствие байка описанию и документы. При необходимости запрашиваем дополнительные фото и видео.",
+    },
+    {
+      question: "Можно ли отменить бронь?",
+      answer: "Да, бронь бесплатная и без штрафов до этапа оплаты.",
+    },
+    {
+      question: "Почему есть EUR и ₽?",
+      answer: "EUR — базовая валюта расчёта. Сумма в рублях показывается как ориентир по текущему курсу.",
+    },
+  ];
 
   const baseTotalRub = Math.round((bikePriceEur + deliveryOption.priceEur) * exchangeRate);
   const addonsTotals = calculateAddonsTotals({ bikePriceEur, baseTotalRub, exchangeRate, selection: addons });
   const totalRub = baseTotalRub + addonsTotals.totalRub;
-  const reservationRub = Math.ceil(totalRub * 0.02);
 
   const handleAddonQty = (addonId: string, qty: number) => {
     setAddons((prev) => ({ ...prev, [addonId]: Math.max(0, qty) }));
+  };
+
+  const toggleAddon = (addonId: string) => {
+    setAddons((prev) => ({ ...prev, [addonId]: prev[addonId] ? 0 : 1 }));
   };
 
   const proceed = () => {
@@ -165,7 +189,7 @@ export default function BuyoutConditionsPage() {
   return (
     <div className="min-h-screen bg-white text-[#18181b]">
       <BikeflipHeaderPX />
-      <div className="max-w-6xl mx-auto px-4 pb-24 pt-8 space-y-6">
+      <div className="max-w-6xl mx-auto px-4 pb-40 pt-8 space-y-6">
         <header className="flex items-start justify-between gap-6">
           <div>
             <Breadcrumbs
@@ -175,8 +199,13 @@ export default function BuyoutConditionsPage() {
                 { label: "Условия выкупа" },
               ]}
             />
-            <h1 className="text-2xl font-semibold tracking-tight">Условия выкупа</h1>
-            <p className="mt-1 text-sm text-zinc-500">Выберите доставку и дополнительные услуги. Дальше предложим создать аккаунт или продолжить как гость.</p>
+            <h1 className="heading-fielmann text-3xl md:text-4xl mt-3">Условия выкупа и доставки</h1>
+            <p className="text-fielmann mt-3">Сейчас ничего платить не нужно — оформим бесплатную бронь, а оплата будет только после проверки.</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <div className="rounded-full bg-[#f4f4f5] px-3 py-1 text-xs">Бронь бесплатная</div>
+              <div className="rounded-full bg-[#f4f4f5] px-3 py-1 text-xs">Оплата после проверки</div>
+              <div className="rounded-full bg-[#f4f4f5] px-3 py-1 text-xs">Отмена без штрафов</div>
+            </div>
           </div>
           <div className="hidden md:block text-right">
             <div className="text-sm text-zinc-500">Байк</div>
@@ -187,81 +216,141 @@ export default function BuyoutConditionsPage() {
 
         <div className="grid lg:grid-cols-3 gap-6 items-start">
           <div className="lg:col-span-2 space-y-4 order-2 lg:order-1">
-            <Card className="p-4 rounded-[12px] shadow-sm bg-white border border-zinc-200">
+            <Card className="p-6 rounded-[24px] shadow-sm bg-white border border-zinc-200">
               <div className="flex items-center gap-2 mb-3">
                 <Shield className="w-4 h-4" />
-                <h2 className="font-semibold text-lg">Этапы и безопасность</h2>
+                <h2 className="font-semibold text-lg">Как проходит процесс</h2>
               </div>
-              <ul className="space-y-3 text-sm text-[#18181b]">
-                <li className="flex gap-2"><Check className="w-4 h-4 mt-0.5" />Бронь бесплатная. Мы связываемся с продавцом и собираем данные по чек-листу.</li>
-                <li className="flex gap-2"><Check className="w-4 h-4 mt-0.5" />Оплата производится только после полной проверки байка и продавца.</li>
-                <li className="flex gap-2"><Check className="w-4 h-4 mt-0.5" />Резерв 2% оплачивается позже на странице отслеживания и фиксирует приоритет в очереди.</li>
-              </ul>
+              <div className="grid sm:grid-cols-3 gap-2 text-sm">
+                <div className="rounded-xl bg-[#f4f4f5] p-3">
+                  <div className="font-medium">1. Бесплатная бронь</div>
+                  <p className="mt-1 text-xs text-zinc-500">Фиксируем выбранные условия без оплаты.</p>
+                </div>
+                <div className="rounded-xl bg-[#f4f4f5] p-3">
+                  <div className="font-medium">2. Проверка</div>
+                  <p className="mt-1 text-xs text-zinc-500">Проверяем продавца и состояние байка.</p>
+                </div>
+                <div className="rounded-xl bg-[#f4f4f5] p-3">
+                  <div className="font-medium">3. Оплата и доставка</div>
+                  <p className="mt-1 text-xs text-zinc-500">Оплачиваете только после подтверждения.</p>
+                </div>
+              </div>
             </Card>
 
-            <Card className="p-4 rounded-[12px] shadow-sm bg-white border border-zinc-200">
+            <Card className="p-6 rounded-[24px] shadow-sm bg-white border border-zinc-200">
               <div className="flex items-center gap-2 mb-3">
                 <Truck className="w-4 h-4" />
                 <h2 className="font-semibold text-lg">Доставка</h2>
               </div>
               <div className="space-y-3">
-                {DELIVERY_OPTIONS.map((opt) => (
-                  <label
-                    key={opt.id}
-                    className={`flex items-start gap-3 p-3 rounded-xl border transition-colors ${delivery === opt.id ? "border-[#18181b] bg-[#f4f4f5]" : "border-[#e4e4e7] hover:bg-[#f4f4f5]"}`}
-                    onClick={() => setDelivery(opt.id)}
-                  >
-                    <span className={`mt-1 h-4 w-4 rounded-full border ${delivery === opt.id ? "bg-[#18181b] border-[#18181b]" : "border-zinc-400"}`} />
-                    <div className="flex-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="font-medium">{opt.title}</div>
-                        <div className="font-semibold">€ {opt.priceEur}</div>
+                {(showAllDelivery
+                  ? DELIVERY_OPTIONS
+                  : DELIVERY_OPTIONS.filter((opt) => primaryDeliveryOptionIds.includes(opt.id))).map((opt) => (
+                    <label
+                      key={opt.id}
+                      className={`flex items-start gap-3 p-3 rounded-xl border transition-colors ${delivery === opt.id ? "border-[#18181b] bg-[#f4f4f5]" : "border-[#e4e4e7] hover:bg-[#f4f4f5]"}`}
+                      onClick={() => setDelivery(opt.id)}
+                    >
+                      <span className={`mt-1 h-4 w-4 rounded-full border ${delivery === opt.id ? "bg-[#18181b] border-[#18181b]" : "border-zinc-400"}`} />
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="font-medium">{opt.title}</div>
+                          <div className="font-semibold">€ {opt.priceEur}</div>
+                        </div>
+                        <div className="text-sm text-zinc-500">{opt.subtitle}</div>
+                        <div className="text-xs text-zinc-500">Сроки: {opt.eta}</div>
+                        {opt.highlight && <div className="mt-1 text-xs text-[#18181b]">{opt.highlight}</div>}
                       </div>
-                      <div className="text-sm text-zinc-500">{opt.subtitle}</div>
-                      <div className="text-xs text-zinc-500">Сроки: {opt.eta}</div>
-                    </div>
-                  </label>
-                ))}
+                    </label>
+                  ))}
+                <Button
+                  variant="outline"
+                  className="btn-pill-secondary h-11"
+                  onClick={() => setShowAllDelivery((prev) => !prev)}
+                >
+                  {showAllDelivery ? "Скрыть дополнительные варианты" : "Показать все варианты"}
+                </Button>
               </div>
             </Card>
 
-            <Card className="p-4 rounded-[12px] shadow-sm bg-white border border-zinc-200">
+            <Card className="p-6 rounded-[24px] shadow-sm bg-white border border-zinc-200">
               <div className="flex items-center gap-2 mb-3">
                 <Info className="w-4 h-4" />
                 <h2 className="font-semibold text-lg">Доп. услуги</h2>
               </div>
               <div className="space-y-3 text-sm">
-                {ADDON_OPTIONS.map((addon) => (
+                {ADDON_OPTIONS.filter((addon) => primaryAddons.includes(addon.id)).map((addon) => (
                   <div key={addon.id} className="flex items-center justify-between gap-3 p-3 rounded-xl border border-[#e4e4e7]">
                     <div>
                       <div className="font-medium">{addon.title}</div>
                       <div className="text-zinc-500 text-xs">{addon.description}</div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-9 w-9 rounded-full border-zinc-200 bg-white hover:bg-[#f4f4f5]"
-                        onClick={() => handleAddonQty(addon.id, (addons[addon.id] || 0) - 1)}
-                      >
-                        -
-                      </Button>
-                      <div className="w-8 text-center tabular-nums">{addons[addon.id] || 0}</div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-9 w-9 rounded-full border-zinc-200 bg-white hover:bg-[#f4f4f5]"
-                        onClick={() => handleAddonQty(addon.id, (addons[addon.id] || 0) + 1)}
-                      >
-                        +
-                      </Button>
-                    </div>
+                    <Button size="sm" variant={addons[addon.id] ? "default" : "outline"} className="h-9 rounded-[8px]" onClick={() => toggleAddon(addon.id)}>
+                      {addons[addon.id] ? "Включено" : "Добавить"}
+                    </Button>
                   </div>
                 ))}
+
+                <Accordion type="single" collapsible>
+                  <AccordionItem value="more-addons" className="border border-zinc-200 rounded-xl px-3">
+                    <AccordionTrigger className="text-sm">Ещё услуги</AccordionTrigger>
+                    <AccordionContent>
+                      <div className="space-y-3 pt-2">
+                        {ADDON_OPTIONS.filter((addon) => !primaryAddons.includes(addon.id)).map((addon) => (
+                          <div key={addon.id} className="rounded-xl border border-[#e4e4e7] p-3">
+                            <div className="flex items-center justify-between gap-3">
+                              <div>
+                                <div className="font-medium">{addon.title}</div>
+                                <div className="text-zinc-500 text-xs">{addon.description}</div>
+                              </div>
+                              {addon.type === "per_unit" ? (
+                                <div className="flex items-center gap-2">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-8 w-8 rounded-full border-zinc-200 bg-white hover:bg-[#f4f4f5]"
+                                    onClick={() => handleAddonQty(addon.id, (addons[addon.id] || 0) - 1)}
+                                  >
+                                    -
+                                  </Button>
+                                  <div className="w-8 text-center tabular-nums">{addons[addon.id] || 0}</div>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-8 w-8 rounded-full border-zinc-200 bg-white hover:bg-[#f4f4f5]"
+                                    onClick={() => handleAddonQty(addon.id, (addons[addon.id] || 0) + 1)}
+                                  >
+                                    +
+                                  </Button>
+                                </div>
+                              ) : (
+                                <Button size="sm" variant={addons[addon.id] ? "default" : "outline"} className="h-8 rounded-[8px]" onClick={() => toggleAddon(addon.id)}>
+                                  {addons[addon.id] ? "Включено" : "Добавить"}
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </AccordionContent>
+                  </AccordionItem>
+                </Accordion>
               </div>
             </Card>
 
-            <Card className="p-4 rounded-[12px] shadow-sm bg-white border border-zinc-200">
+            <Card className="p-6 rounded-[24px] shadow-sm bg-white border border-zinc-200">
+              <h2 className="font-semibold text-lg mb-3">Ответы на частые вопросы</h2>
+              <Accordion type="single" collapsible>
+                {faqItems.map((item, index) => (
+                  <AccordionItem key={item.question} value={`faq-${index}`}>
+                    <AccordionTrigger className="text-sm text-left">{item.question}</AccordionTrigger>
+                    <AccordionContent className="text-sm text-zinc-600">{item.answer}</AccordionContent>
+                  </AccordionItem>
+                ))}
+              </Accordion>
+            </Card>
+
+            <Card className="p-6 rounded-[24px] shadow-sm bg-white border border-zinc-200">
               <h2 className="font-semibold text-lg mb-3">Что включено</h2>
               <div className="grid sm:grid-cols-2 gap-2 text-sm">
                 {INCLUDED_SERVICES.map((item) => (
@@ -274,12 +363,12 @@ export default function BuyoutConditionsPage() {
             </Card>
           </div>
 
-          <div className="space-y-4 order-1 lg:order-2">
-            <Card className="p-4 rounded-[12px] shadow-sm bg-white border border-zinc-200">
+          <div className="space-y-4 order-1 lg:order-2 lg:sticky lg:top-24">
+            <Card className="p-6 rounded-[24px] shadow-sm bg-white border border-zinc-200">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h2 className="font-semibold text-lg">Итог</h2>
-                  <div className="mt-1 text-xs text-zinc-500">Оплата будет только после полной проверки</div>
+                  <div className="mt-1 text-xs text-zinc-500">Сейчас 0 ₽. Оплата после подтверждения проверки.</div>
                 </div>
                 <div className="rounded-full bg-[#f4f4f5] px-3 py-1 text-xs text-[#18181b]">бесплатно</div>
               </div>
@@ -287,10 +376,9 @@ export default function BuyoutConditionsPage() {
               <div className="mt-4 space-y-2 text-sm">
                 <div className="flex justify-between"><span>Байк</span><span>€ {bikePriceEur.toLocaleString("ru-RU")}</span></div>
                 <div className="flex justify-between"><span>Доставка</span><span>€ {deliveryOption.priceEur.toLocaleString("ru-RU")}</span></div>
-                <div className="flex justify-between"><span>Доставка в ₽</span><span>{formatRUB(deliveryRub)}</span></div>
-                <div className="flex justify-between"><span>Доп. услуги</span><span>{formatRUB(addonsTotals.totalRub)}</span></div>
-                <div className="flex justify-between font-semibold"><span>Итого</span><span>{formatRUB(totalRub)}</span></div>
-                <div className="flex justify-between text-xs text-zinc-500"><span>Резервирование (2%)</span><span>{formatRUB(reservationRub)}</span></div>
+                <div className="flex justify-between"><span>Услуги</span><span>€ {addonsTotals.totalEur.toLocaleString("ru-RU", { maximumFractionDigits: 0 })}</span></div>
+                <div className="flex justify-between font-semibold"><span>Итого</span><span>€ {(bikePriceEur + deliveryOption.priceEur + addonsTotals.totalEur).toLocaleString("ru-RU", { maximumFractionDigits: 0 })}</span></div>
+                <div className="flex justify-between text-xs text-zinc-500"><span>Ориентир в ₽</span><span>{formatRUB(totalRub)}</span></div>
               </div>
 
               <div className="mt-4 rounded-[12px] border border-zinc-200 bg-[#f4f4f5] p-4 text-sm">
@@ -298,7 +386,7 @@ export default function BuyoutConditionsPage() {
                   <Info className="mt-0.5 h-4 w-4" />
                   <div>
                     <div className="font-medium">Оплата только после проверки</div>
-                    <div className="mt-1 text-xs text-zinc-500">Мы проверяем байк и продавца. После подтверждения вы оплачиваете резерв 2% и переходите к выкупу.</div>
+                    <div className="mt-1 text-xs text-zinc-500">Мы проверяем байк и продавца. После подтверждения переходите к оплате и выкупу.</div>
                   </div>
                 </div>
               </div>
@@ -307,14 +395,15 @@ export default function BuyoutConditionsPage() {
 
               <div className="mt-4 grid gap-2">
                 <Button
-                  className="h-12 rounded-[8px] bg-[#18181b] text-white px-8 hover:bg-black"
+                  className="btn-pill-primary h-14"
                   onClick={proceed}
                 >
-                  К бронированию
+                  Перейти к бесплатному бронированию
                 </Button>
+                <div className="text-center text-xs text-zinc-500">Ничего не спишем на этом шаге</div>
                 <Button
                   variant="outline"
-                  className="h-12 rounded-[8px] border-zinc-200 bg-white px-8 hover:bg-[#f4f4f5]"
+                  className="btn-pill-secondary h-14"
                   onClick={() => navigate(`/product/${bikeId}`)}
                 >
                   Вернуться к байку
@@ -323,8 +412,22 @@ export default function BuyoutConditionsPage() {
             </Card>
           </div>
         </div>
+
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-zinc-200 bg-white p-3 lg:hidden">
+          <div className="mx-auto max-w-6xl flex items-center justify-between gap-3">
+            <div className="text-sm">
+              <div className="font-semibold">Итого: {formatRUB(totalRub)}</div>
+              <div className="text-xs text-zinc-500">Сейчас 0 ₽ • оплата после проверки</div>
+            </div>
+            <Button className="btn-pill-primary h-11 px-6 text-sm" onClick={proceed}>
+              К бесплатной брони
+            </Button>
+          </div>
+        </div>
       </div>
-      <Footer />
+      <div className="hidden md:block">
+        <Footer />
+      </div>
     </div>
   );
 }

@@ -2,7 +2,7 @@
 import React from "react";
 import BikeflipHeaderPX from "@/components/layout/BikeflipHeaderPX";
 import { SEOHead } from "@/components/SEO/SEOHead";
-import { refreshRates, RATES as PricingRates } from "@/lib/pricing";
+import { refreshRates, RATES as PricingRates, calculatePriceBreakdownWithDeliveryCost } from "@/lib/pricing";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -400,20 +400,10 @@ export default function CalculatorPage() {
   const RATES = React.useMemo(() => ({
     eur_to_rub: 98.5,
     real_delivery: 220,
-    marketing_service_rate: 0.08,
-    markup_table: [
-      { min: 500, max: 1500, markup: 320 },
-      { min: 1500, max: 2500, markup: 400 },
-      { min: 2500, max: 3500, markup: 500 },
-      { min: 3500, max: 5000, markup: 650 },
-      { min: 5000, max: 7000, markup: 800 },
-      { min: 7000, max: Infinity, markup: 1000 },
-    ],
   }), []);
 
   const [eurRate, setEurRate] = React.useState<number>(RATES.eur_to_rub);
   const [deliveryBase, setDeliveryBase] = React.useState<number>(0);
-  const [serviceRate, setServiceRate] = React.useState<number>(RATES.marketing_service_rate);
   const [isNegotiable, setIsNegotiable] = React.useState(false);
   const [pickupOnly, setPickupOnly] = React.useState(false);
   const [pickupDialogOpen, setPickupDialogOpen] = React.useState(false);
@@ -475,34 +465,39 @@ export default function CalculatorPage() {
     return { vb, pickup };
   }
 
-  const getRealMarkup = React.useCallback((bikePrice: number) => {
-    if (!Number.isFinite(bikePrice) || bikePrice <= 0) return 0;
-    for (const r of RATES.markup_table) {
-      if (bikePrice >= r.min && bikePrice < r.max) return r.markup;
-    }
-    return RATES.markup_table[0].markup;
-  }, [RATES]);
-
+  /**
+   * Unified pricing source (same formulas as frontend/src/lib/pricing.ts and backend price service).
+   */
   const calculateMarketingBreakdown = React.useCallback((bikePrice: number) => {
-    const realMarkup = getRealMarkup(bikePrice);
-    const marketingService = bikePrice * serviceRate;
-    const markupRemainder = realMarkup - marketingService;
-    const deliveryAddition = markupRemainder * 0.4;
-    const otherFees = markupRemainder * 0.4;
-    const logisticsFees = markupRemainder * 0.2;
-    const marketingDelivery = deliveryBase + deliveryAddition;
-    const totalEur = bikePrice + marketingService + marketingDelivery + logisticsFees + otherFees;
-    const totalRub = totalEur * eurRate;
+    if (!Number.isFinite(bikePrice) || bikePrice <= 0) {
+      return {
+        bikePrice: 0,
+        serviceCost: 0,
+        deliveryCost: 0,
+        insuranceFees: 0,
+        cargoInsurance: 0,
+        subtotal: 0,
+        paymentCommission: 0,
+        totalEur: 0,
+        totalRub: 0,
+      };
+    }
+
+    const calc = calculatePriceBreakdownWithDeliveryCost(bikePrice, deliveryBase, false, eurRate);
+    const details = calc.details;
+
     return {
       bikePrice,
-      serviceCost: marketingService,
-      deliveryCost: marketingDelivery,
-      logisticsFees,
-      otherFees,
-      totalEur,
-      totalRub,
+      serviceCost: details.serviceFeeEur,
+      deliveryCost: details.shippingCostEur,
+      insuranceFees: details.insuranceFeesEur,
+      cargoInsurance: details.cargoInsuranceEur,
+      subtotal: details.subtotalEur,
+      paymentCommission: details.paymentCommissionEur,
+      totalEur: details.finalPriceEur,
+      totalRub: calc.totalRub,
     };
-  }, [getRealMarkup, eurRate, deliveryBase, serviceRate]);
+  }, [eurRate, deliveryBase]);
 
   const effectivePriceEUR = React.useMemo(() => {
     if (mode === "manual") return Number(priceInput || 0);

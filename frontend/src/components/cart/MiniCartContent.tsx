@@ -8,6 +8,20 @@ import { calculateMarketingBreakdown, formatEUR } from "@/lib/pricing";
 import { adminApi } from "@/api";
 import { useCart } from "@/context/CartContext";
 
+function canReadAdminEvaluation(): boolean {
+  try {
+    const token = localStorage.getItem("authToken");
+    if (!token) return false;
+    const raw = localStorage.getItem("currentUser");
+    if (!raw) return false;
+    const u = JSON.parse(raw);
+    const role = String(u?.role || "").toLowerCase();
+    return role === "admin" || role === "manager";
+  } catch {
+    return false;
+  }
+}
+
 export default function MiniCartContent() {
   const { closeCart } = useCartUI();
   const { items, loading } = useCart();
@@ -17,6 +31,10 @@ export default function MiniCartContent() {
     let cancelled = false;
     (async () => {
       try {
+        if (!canReadAdminEvaluation()) {
+          if (!cancelled) setBestMap({});
+          return;
+        }
         const ids = Array.from(new Set(items.map(i => i.bike_id)));
         if (ids.length === 0) return;
         const evaluations = await Promise.all(ids.map(async (id) => {

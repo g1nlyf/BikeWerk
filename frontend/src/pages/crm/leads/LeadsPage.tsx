@@ -79,7 +79,8 @@ export default function LeadsPage() {
       </div>
 
       <div className="rounded-xl border border-[#e4e4e7] bg-white shadow-sm overflow-hidden">
-        <table className="min-w-full text-sm">
+        <div className="overflow-x-auto">
+          <table className="min-w-[680px] w-full text-sm">
           <thead className="bg-[#f4f4f5] text-slate-500 text-xs uppercase tracking-wide">
             <tr>
               <th className="px-4 py-3 text-left">Лид</th>
@@ -126,7 +127,8 @@ export default function LeadsPage() {
               </tr>
             )}
           </tbody>
-        </table>
+          </table>
+        </div>
       </div>
     </div>
   )

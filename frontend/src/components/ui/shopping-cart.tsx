@@ -24,6 +24,20 @@ interface ShoppingCartProps {
   onCheckout?: () => void;
 }
 
+function canReadAdminEvaluation(): boolean {
+  try {
+    const token = localStorage.getItem('authToken');
+    if (!token) return false;
+    const raw = localStorage.getItem('currentUser');
+    if (!raw) return false;
+    const u = JSON.parse(raw);
+    const role = String(u?.role || '').toLowerCase();
+    return role === 'admin' || role === 'manager';
+  } catch {
+    return false;
+  }
+}
+
 export const ShoppingCart: React.FC<ShoppingCartProps> = ({ items, onQuantityChange, onRemoveItem, onCheckout }) => {
   const [bestMap, setBestMap] = React.useState<Record<string, boolean>>({});
   const [eurRate, setEurRate] = React.useState<number>(RATES.eur_to_rub);
@@ -33,6 +47,10 @@ export const ShoppingCart: React.FC<ShoppingCartProps> = ({ items, onQuantityCha
     (async () => { try { const v = await refreshRates(); if (!cancelled) setEurRate(v); } catch {} })();
     (async () => {
       try {
+        if (!canReadAdminEvaluation()) {
+          if (!cancelled) setBestMap({});
+          return;
+        }
         const ids = Array.from(new Set(items.map(i => i.id))).filter(Boolean);
         const evaluations = await Promise.all(ids.map(async (id) => {
           try {

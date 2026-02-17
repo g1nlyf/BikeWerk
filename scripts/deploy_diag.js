@@ -1,12 +1,32 @@
 const { NodeSSH } = require('node-ssh');
 const path = require('path');
+const fs = require('fs');
 
 const ssh = new NodeSSH();
+const PROJECT_ROOT = path.resolve(__dirname, '..');
+const PASS_FILE = path.join(PROJECT_ROOT, 'deploy_password.txt');
+
+function getPassword() {
+    if (process.env.EUBIKE_DEPLOY_PASSWORD) {
+        return process.env.EUBIKE_DEPLOY_PASSWORD.trim();
+    }
+
+    if (!fs.existsSync(PASS_FILE)) {
+        throw new Error('Missing deploy password. Set EUBIKE_DEPLOY_PASSWORD or create deploy_password.txt');
+    }
+
+    const pass = fs.readFileSync(PASS_FILE, 'utf8').trim();
+    if (!pass || pass.includes('PASTE_YOUR_ROOT_PASSWORD_HERE')) {
+        throw new Error('deploy_password.txt is empty or contains placeholder content');
+    }
+
+    return pass;
+}
 
 const config = {
     host: '45.9.41.232',
     username: 'root',
-    password: '&9&%4q6631vI',
+    password: getPassword(),
     remoteBase: '/root/eubike',
     localBase: 'c:\\Users\\hacke\\CascadeProjects\\Finals1\\eubike'
 };

@@ -36,29 +36,29 @@ export function LandingJournalTeaser() {
   const navigate = useNavigate();
 
   return (
-    <section className="py-24 bg-white font-manrope">
+    <section className="py-24 bg-white">
       <div className="container mx-auto px-4 md:px-6">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-start">
-          
+
           {/* Left Column: Teaser */}
           <div className="flex flex-col justify-center h-full">
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-orange-100 text-orange-700 text-sm font-bold w-fit mb-6">
               <BookOpen className="w-4 h-4" />
-              Bikeflip Журнал
+              BikeWerk Журнал
             </div>
-            
+
             <h2 className="text-4xl md:text-5xl font-extrabold text-gray-900 mb-6 leading-tight">
-              Мы знаем о велосипедах <br className="hidden md:block"/>
+              Мы знаем о велосипедах <br className="hidden md:block" />
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-red-600">
                 немного больше
               </span>
             </h2>
-            
+
             <p className="text-xl text-gray-600 mb-8 leading-relaxed max-w-lg">
               В нашем журнале мы честно рассказываем о том, как выбрать, проверить и доставить велосипед мечты. Без маркетинговой воды, только опыт тысяч сделок.
             </p>
 
-            <Button 
+            <Button
               size="lg"
               className="w-fit h-14 rounded-full px-8 text-lg font-bold bg-black hover:bg-gray-800 transition-all shadow-lg hover:shadow-xl"
               onClick={() => navigate('/journal')}
@@ -87,7 +87,7 @@ export function LandingJournalTeaser() {
                     <p className="text-gray-600 text-base leading-relaxed mb-4">
                       {faq.answer}
                     </p>
-                    <button 
+                    <button
                       onClick={() => navigate(faq.linkUrl)}
                       className="text-orange-600 font-bold text-sm flex items-center gap-1 hover:gap-2 transition-all"
                     >

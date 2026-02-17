@@ -26,7 +26,7 @@ export default function WhoWeAreSection({ className }: WhoWeAreSectionProps) {
         {/* Контент поверх фона: убираем все заголовки, оставляем только фон «Кто мы» */}
         <div className="relative z-10 text-center mt-6 md:mt-8 mb-6 md:mb-8">
           <p className="mt-5 text-xl md:text-2xl text-muted-foreground max-w-4xl mx-auto">
-            Мы — команда <span className="font-semibold text-primary">BikeEU</span>: логисты, специалисты по таможне, менеджеры и другие профессионалы.
+            Мы — команда <span className="font-semibold text-primary">BikeWerk</span>: логисты, специалисты по таможне, менеджеры и другие профессионалы.
             Нас объединяет любовь к велосипедам и дотошность к мелочам каждой доставки.
             Мы здесь, чтобы именно <span className="font-semibold">ты</span> ездил на байке прямиком из <span className="font-semibold">Европы</span> — остальное возьмём на себя мы.
           </p>

@@ -3,6 +3,14 @@
 // Версия: 2.2 - Updated at 2024-12-25 (Canonical Alignment)
 // ========================================
 
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
+require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
+const {
+    ORDER_STATUS,
+    normalizeOrderStatus
+} = require('../src/domain/orderLifecycle');
+
 class CRMApi {
     constructor(supabaseUrl, supabaseKey, db = null) {
         this.supabaseUrl = supabaseUrl;
@@ -44,6 +52,44 @@ class CRMApi {
             documents: 'documents',
             tasks: 'tasks'
         };
+    }
+
+    _extractBikePriceEur(orderData = {}) {
+        const snapshot = orderData.bike_snapshot && typeof orderData.bike_snapshot === 'object'
+            ? orderData.bike_snapshot
+            : {};
+        const value = Number(
+            orderData.listing_price_eur ??
+            orderData.bike_price_eur ??
+            orderData.bike_price ??
+            snapshot.listing_price_eur ??
+            snapshot.price_eur ??
+            snapshot.price ??
+            snapshot?.financials?.bike_price_eur ??
+            (orderData.items && orderData.items[0] ? orderData.items[0].price : null) ??
+            0
+        );
+        if (!Number.isFinite(value) || value <= 0) return null;
+        return value;
+    }
+
+    _assertBikePriceWithinCompliance(orderData = {}) {
+        const bikePriceEur = this._extractBikePriceEur(orderData);
+        if (!bikePriceEur) return;
+        if (bikePriceEur < 500) {
+            const error = new Error('BIKE_PRICE_BELOW_MINIMUM');
+            error.code = 'BIKE_PRICE_BELOW_MINIMUM';
+            error.statusCode = 400;
+            error.details = { bike_price_eur: bikePriceEur, min_price_eur: 500 };
+            throw error;
+        }
+        if (bikePriceEur > 5000) {
+            const error = new Error('BIKE_PRICE_LIMIT_EXCEEDED');
+            error.code = 'BIKE_PRICE_LIMIT_EXCEEDED';
+            error.statusCode = 400;
+            error.details = { bike_price_eur: bikePriceEur };
+            throw error;
+        }
     }
 
     // Вспомогательный метод для выполнения запросов (локально или через API)
@@ -319,16 +365,16 @@ class CRMApi {
             const valInit = qualityMap[initial] || 0;
             const valFinal = qualityMap[finalClass] || 0;
 
-            let newStatus = 'quality_confirmed';
+            let newStatus = ORDER_STATUS.EXPERT_REPORT_READY;
             let isRefundable = 0;
 
             if (valFinal < valInit) {
                 // Degradation
-                newStatus = 'quality_degraded';
+                newStatus = ORDER_STATUS.AWAITING_CLIENT_DECISION_POST_INSPECTION;
                 isRefundable = 1;
             } else {
                 // Same or better
-                newStatus = 'quality_confirmed';
+                newStatus = ORDER_STATUS.EXPERT_REPORT_READY;
                 isRefundable = 0;
             }
 
@@ -638,6 +684,7 @@ class CRMApi {
     // Создать заказ
     async createOrder(orderData) {
         try {
+            this._assertBikePriceWithinCompliance(orderData);
             // ... (existing code)
             
             // 1. Обеспечиваем наличие клиента, если его еще нет
@@ -664,10 +711,11 @@ class CRMApi {
                 bike_snapshot: orderData.bike_snapshot || null,
                 final_price_eur: orderData.final_price_eur || null,
                 commission_eur: orderData.commission_eur || null,
-                status: orderData.status || 'awaiting_deposit', // Changed from awaiting_payment
+                status: normalizeOrderStatus(orderData.status) || ORDER_STATUS.BOOKED,
                 assigned_manager: orderData.assigned_manager || orderData.manager_id || null,
                 // booking_price removed to fix 400 error
                 is_refundable: orderData.is_refundable ? true : false, // Sprint 1: Refundable flag
+                created_via: orderData.created_via || orderData.source || 'crm_api',
                 created_at: new Date().toISOString(),
                 magic_link_token: orderData.magic_link_token || this.generateUUID() // Euphoria Tracker Token
                 // timeline_events removed to fix 400 error
@@ -885,17 +933,21 @@ class CRMApi {
             if (!updatedBy) {
                 throw new Error('CRM_USER_ID_REQUIRED');
             }
+            const normalizedNewStatus = normalizeOrderStatus(newStatus);
+            if (!normalizedNewStatus) {
+                throw new Error('ORDER_STATUS_INVALID');
+            }
 
             // Sprint 5: Timestamp for confirmation (48h timer)
             let confirmationTimestamp = null;
-            if (newStatus === 'quality_confirmed' || newStatus === 'quality_degraded') {
+            if (normalizedNewStatus === ORDER_STATUS.CHECK_READY || normalizedNewStatus === ORDER_STATUS.EXPERT_REPORT_READY) {
                 confirmationTimestamp = new Date().toISOString();
             }
 
             // Notification Trigger 1: Quality Confirmed/Degraded
-            if (newStatus === 'quality_confirmed') {
+            if (normalizedNewStatus === ORDER_STATUS.CHECK_READY) {
                 await this.sendNotification('quality_confirmed', orderId, "Ваш отчет готов! У вас есть 48 часов, чтобы завершить покупку");
-            } else if (newStatus === 'quality_degraded') {
+            } else if (normalizedNewStatus === ORDER_STATUS.AWAITING_CLIENT_DECISION_POST_INSPECTION) {
                 await this.sendNotification('quality_degraded', orderId, "Внимание: класс качества изменился. У вас есть право на мгновенный возврат задатка");
             }
 
@@ -904,7 +956,7 @@ class CRMApi {
                 try {
                     await this.callRpc('advance_order_status_safe', {
                         p_order_id: orderId,
-                        p_new_status: newStatus,
+                        p_new_status: normalizedNewStatus,
                         p_user_id: updatedBy,
                         p_reason: null,
                         p_notes: statusNote
@@ -922,7 +974,7 @@ class CRMApi {
 
                     await this.logAudit('ORDER_STATUS_CHANGE', 'orders', orderId, {
                         old_status: 'unknown_rpc',
-                        new_status: newStatus,
+                        new_status: normalizedNewStatus,
                         notes: statusNote
                     }, updatedBy);
 
@@ -933,9 +985,9 @@ class CRMApi {
             }
 
             // Fallback или локальный режим
-            await this.addStatusHistory(orderId, newStatus, statusNote, updatedBy);
+            await this.addStatusHistory(orderId, normalizedNewStatus, statusNote, updatedBy);
             
-            const updateBody = { status: newStatus };
+            const updateBody = { status: normalizedNewStatus };
             if (confirmationTimestamp) {
                 updateBody.confirmation_timestamp = confirmationTimestamp;
             }
@@ -948,7 +1000,7 @@ class CRMApi {
             });
             
             await this.logAudit('ORDER_STATUS_CHANGE', 'orders', orderId, {
-                new_status: newStatus,
+                new_status: normalizedNewStatus,
                 notes: statusNote,
                 fallback: true
             }, updatedBy);
@@ -964,17 +1016,17 @@ class CRMApi {
     async checkExpiredOrders() {
         try {
             console.log('⏰ Checking for expired orders...');
-            // Find orders that are quality_confirmed/degraded AND older than 48h
+            // Find orders waiting for client decision after checks and older than 48h
             // Logic: NOW > confirmation_timestamp + 48h
             
             // Calculate cutoff time (48h ago)
             const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
             
             // Since filtering by date math is tricky in simple API wrapper, we might need to fetch candidate orders
-            // Filter: status in ('quality_confirmed', 'quality_degraded') AND confirmation_timestamp < cutoff
+            // Filter: status in ('awaiting_client_decision', 'awaiting_client_decision_post_inspection') AND confirmation_timestamp < cutoff
             
             // Note: complex OR/AND logic depends on implementation. 
-            // We'll fetch quality_confirmed and quality_degraded separately or together if supported.
+            // We'll fetch the two decision-wait statuses separately for compatibility.
             // For simplicity, let's fetch all active orders in these statuses.
             
             let candidates = [];
@@ -983,12 +1035,12 @@ class CRMApi {
                 const confirmed = await this._request({
                     table: 'orders',
                     method: 'GET',
-                    filters: { status: 'eq.quality_confirmed' }
+                    filters: { status: `eq.${ORDER_STATUS.AWAITING_CLIENT_DECISION}` }
                 });
                 if (confirmed) candidates.push(...confirmed);
             } catch (e) {
                 if (!e.message?.includes('invalid input value for enum')) {
-                    console.warn('⚠️ Error fetching quality_confirmed orders:', e.message);
+                    console.warn('⚠️ Error fetching awaiting_client_decision orders:', e.message);
                 }
             }
             
@@ -996,12 +1048,12 @@ class CRMApi {
                 const degraded = await this._request({
                     table: 'orders',
                     method: 'GET',
-                    filters: { status: 'eq.quality_degraded' }
+                    filters: { status: `eq.${ORDER_STATUS.AWAITING_CLIENT_DECISION_POST_INSPECTION}` }
                 });
                 if (degraded) candidates.push(...degraded);
             } catch (e) {
                 if (!e.message?.includes('invalid input value for enum')) {
-                    console.warn('⚠️ Error fetching quality_degraded orders:', e.message);
+                    console.warn('⚠️ Error fetching awaiting_client_decision_post_inspection orders:', e.message);
                 }
             }
             
@@ -1710,7 +1762,7 @@ class CRMApi {
                 customer_id: application.customer_id,
                 bike_url: application.bike_url,
                 bike_snapshot: application.bike_snapshot,
-                status: 'awaiting_payment',
+                status: ORDER_STATUS.BOOKED,
                 ...orderData
             };
 
@@ -1771,7 +1823,7 @@ class CRMApi {
                 },
                 orders: {
                     total: orders.length,
-                    new: orders.filter(order => order.status === 'new').length,
+                    new: orders.filter(order => normalizeOrderStatus(order.status) === ORDER_STATUS.BOOKED).length,
                     confirmed: orders.filter(order => order.status === 'confirmed').length,
                     completed: orders.filter(order => order.status === 'completed').length
                 },
@@ -1798,12 +1850,13 @@ class CRMApi {
     async createQuickOrder(orderData) {
         try {
             console.log('🚀 CRM: Создание быстрого заказа...', orderData);
+            this._assertBikePriceWithinCompliance(orderData);
             
             // 1. Создаем заявку (Lead)
             const applicationPayload = {
                 source: orderData.source || 'quick_order',
                 customer_name: orderData.name || 'Anonymous',
-                contact_method: orderData.contact_method || 'telegram',
+                contact_method: orderData.contact_method || 'whatsapp',
                 contact_value: orderData.contact_value || '',
                 application_notes: orderData.notes || null,
                 bike_url: orderData.bike_url || null,
@@ -1815,7 +1868,7 @@ class CRMApi {
             console.log('✅ Заявка создана:', application.id);
             
             // 2. Создаем заказ на основе заявки
-            let initialStatus = 'awaiting_deposit';
+            let initialStatus = ORDER_STATUS.BOOKED;
             // Explicitly set verification_pending for new model if 3% deposit is not yet paid but intended?
             // Actually, if "quick order" implies intent to pay deposit, status is awaiting_deposit.
             // If deposit is paid, it moves to verification_pending.
@@ -1836,12 +1889,12 @@ class CRMApi {
                 lead_id: application.id,
                 customer_id: application.customer_id, // Передаем ID клиента из заявки
                 customer_name: orderData.name || 'Anonymous',
-                contact_method: orderData.contact_method || 'telegram',
+                contact_method: orderData.contact_method || 'whatsapp',
                 contact_value: orderData.contact_value || '',
                 order_notes: orderData.notes || null,
                 bike_url: orderData.bike_url || null,
                 bike_snapshot: orderData.bike_snapshot || null,
-                status: 'awaiting_payment', // Canonical status for Supabase Enum (mapped from awaiting_deposit)
+                status: initialStatus,
                 bike_id: bikeId, // Now supported in DB
                 bike_name: orderData.items && orderData.items[0] ? orderData.items[0].name : 'Unknown Bike', // New Field
                 booking_amount_eur: bookingPrice, // New Field (was booking_price in code, DB has booking_amount_eur)
@@ -1856,6 +1909,7 @@ class CRMApi {
                 assigned_manager: orderData.assigned_manager || orderData.manager_id || null,
                 is_refundable: false, // Default false
                 initial_quality: 'A', // Default assumption for now, or extract from snapshot if available
+                created_via: 'website_quick_order',
                 created_at: new Date().toISOString(),
                 magic_link_token: orderData.magic_link_token || this.generateUUID()
                 // timeline_events removed to fix 400 error
@@ -2099,8 +2153,9 @@ class CRMApi {
                 bike_snapshot: cartData.bike_snapshot || null,
                 final_price_eur: parseFloat(cartData.bike_price) || 0,
                 // booking_price removed to fix 400 error
-                status: needsManager ? 'awaiting_payment' : 'awaiting_payment', // Canonical status
+                status: ORDER_STATUS.FULL_PAYMENT_PENDING,
                 assigned_manager: null,
+                created_via: 'cart_checkout',
                 order_notes: customerData.notes || cartData.notes || null
             };
 

@@ -1,4 +1,4 @@
-// EUBike SQLite Database Configuration and Schema
+﻿// EUBike SQLite Database Configuration and Schema
 const sqlite3 = require('sqlite3').verbose();
 const { open } = require('sqlite');
 const path = require('path');
@@ -102,7 +102,7 @@ CREATE INDEX IF NOT EXISTS idx_behavior_metrics_updated ON bike_behavior_metrics
 -- Raw metric events (for analytics)
 CREATE TABLE IF NOT EXISTS metric_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    bike_id INTEGER NOT NULL,
+    bike_id INTEGER,
     event_type TEXT NOT NULL,
     value INTEGER DEFAULT 1,
     metadata TEXT,
@@ -110,14 +110,156 @@ CREATE TABLE IF NOT EXISTS metric_events (
     session_id TEXT,
     referrer TEXT,
     source_path TEXT,
+    event_id TEXT,
     dwell_ms INTEGER,
     user_id INTEGER,
+    person_key TEXT,
     FOREIGN KEY (bike_id) REFERENCES bikes(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_metric_events_bike_created ON metric_events(bike_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_metric_events_type_created ON metric_events(event_type, created_at);
+CREATE INDEX IF NOT EXISTS idx_metric_events_event_id ON metric_events(event_id);
+CREATE INDEX IF NOT EXISTS idx_metric_events_session_created ON metric_events(session_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_metric_events_person_created ON metric_events(person_key, created_at);
+
+CREATE TABLE IF NOT EXISTS metrics_session_facts (
+    session_id TEXT PRIMARY KEY,
+    person_key TEXT,
+    user_id INTEGER,
+    crm_lead_id TEXT,
+    customer_email_hash TEXT,
+    customer_phone_hash TEXT,
+    first_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    last_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    event_count INTEGER DEFAULT 0,
+    page_views INTEGER DEFAULT 0,
+    first_clicks INTEGER DEFAULT 0,
+    catalog_views INTEGER DEFAULT 0,
+    product_views INTEGER DEFAULT 0,
+    add_to_cart INTEGER DEFAULT 0,
+    checkout_starts INTEGER DEFAULT 0,
+    checkout_steps INTEGER DEFAULT 0,
+    checkout_validation_errors INTEGER DEFAULT 0,
+    checkout_submit_attempts INTEGER DEFAULT 0,
+    checkout_submit_success INTEGER DEFAULT 0,
+    checkout_submit_failed INTEGER DEFAULT 0,
+    forms_seen INTEGER DEFAULT 0,
+    forms_first_input INTEGER DEFAULT 0,
+    form_submit_attempts INTEGER DEFAULT 0,
+    form_validation_errors INTEGER DEFAULT 0,
+    booking_starts INTEGER DEFAULT 0,
+    booking_success INTEGER DEFAULT 0,
+    orders INTEGER DEFAULT 0,
+    dwell_ms_sum INTEGER DEFAULT 0,
+    first_source_path TEXT,
+    last_source_path TEXT,
+    entry_referrer TEXT,
+    utm_source TEXT,
+    utm_medium TEXT,
+    utm_campaign TEXT,
+    click_id TEXT,
+    landing_path TEXT,
+    is_bot INTEGER DEFAULT 0,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_metrics_session_facts_user ON metrics_session_facts(user_id);
+CREATE INDEX IF NOT EXISTS idx_metrics_session_facts_last_seen ON metrics_session_facts(last_seen_at);
+CREATE INDEX IF NOT EXISTS idx_metrics_session_facts_utm ON metrics_session_facts(utm_source, utm_medium, utm_campaign);
+CREATE INDEX IF NOT EXISTS idx_metrics_session_facts_person ON metrics_session_facts(person_key);
+
+CREATE TABLE IF NOT EXISTS metrics_anomalies (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    anomaly_key TEXT NOT NULL,
+    severity TEXT NOT NULL,
+    metric_name TEXT NOT NULL,
+    baseline_value REAL,
+    current_value REAL,
+    delta_pct REAL,
+    details TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_metrics_anomalies_created ON metrics_anomalies(created_at);
+CREATE INDEX IF NOT EXISTS idx_metrics_anomalies_key ON metrics_anomalies(anomaly_key, created_at);
+
+CREATE TABLE IF NOT EXISTS metrics_identity_nodes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    identity_type TEXT NOT NULL,
+    identity_value TEXT NOT NULL,
+    person_key TEXT NOT NULL,
+    user_id INTEGER,
+    session_id TEXT,
+    crm_lead_id TEXT,
+    first_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    last_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(identity_type, identity_value),
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_metrics_identity_person ON metrics_identity_nodes(person_key);
+CREATE INDEX IF NOT EXISTS idx_metrics_identity_user ON metrics_identity_nodes(user_id);
+CREATE INDEX IF NOT EXISTS idx_metrics_identity_lead ON metrics_identity_nodes(crm_lead_id);
+
+CREATE TABLE IF NOT EXISTS metrics_feature_store (
+    person_key TEXT PRIMARY KEY,
+    profile_key TEXT,
+    user_id INTEGER,
+    session_id TEXT,
+    crm_lead_id TEXT,
+    budget_cluster TEXT DEFAULT 'unknown',
+    weighted_price REAL DEFAULT 0,
+    intent_score REAL DEFAULT 0,
+    recency_half_life_days REAL DEFAULT 7,
+    recency_decay REAL DEFAULT 1,
+    discipline_embedding_json TEXT,
+    brand_embedding_json TEXT,
+    category_embedding_json TEXT,
+    last_event_at DATETIME,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_metrics_feature_store_user ON metrics_feature_store(user_id);
+CREATE INDEX IF NOT EXISTS idx_metrics_feature_store_budget ON metrics_feature_store(budget_cluster);
+CREATE INDEX IF NOT EXISTS idx_metrics_feature_store_intent ON metrics_feature_store(intent_score);
+
+CREATE TABLE IF NOT EXISTS referral_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug TEXT NOT NULL UNIQUE,
+    channel_name TEXT NOT NULL,
+    code_word TEXT,
+    creator_tag TEXT,
+    target_path TEXT NOT NULL DEFAULT '/',
+    utm_source TEXT NOT NULL DEFAULT 'creator',
+    utm_medium TEXT NOT NULL DEFAULT 'referral',
+    utm_campaign TEXT,
+    utm_content TEXT,
+    is_active INTEGER DEFAULT 1,
+    notes TEXT,
+    created_by INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(created_by) REFERENCES users(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_referral_links_slug ON referral_links(slug);
+CREATE INDEX IF NOT EXISTS idx_referral_links_active ON referral_links(is_active, created_at);
+
+CREATE TABLE IF NOT EXISTS referral_visits (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    referral_link_id INTEGER NOT NULL,
+    slug TEXT NOT NULL,
+    session_hint TEXT,
+    ip_hash TEXT,
+    user_agent TEXT,
+    referrer TEXT,
+    target_path TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(referral_link_id) REFERENCES referral_links(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_referral_visits_link_created ON referral_visits(referral_link_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_referral_visits_slug_created ON referral_visits(slug, created_at);
+CREATE INDEX IF NOT EXISTS idx_referral_visits_session ON referral_visits(session_hint, created_at);
 
 -- Search events for personalization
 CREATE TABLE IF NOT EXISTS search_events (
@@ -310,7 +452,7 @@ CREATE TABLE IF NOT EXISTS recent_deliveries (
     city TEXT,
     price REAL NOT NULL,
     main_image TEXT,
-    status TEXT DEFAULT 'Снято',
+    status TEXT DEFAULT 'Ð¡Ð½ÑÑ‚Ð¾',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (bike_id) REFERENCES bikes(id) ON DELETE SET NULL
 );
@@ -385,10 +527,10 @@ class DatabaseManager {
             // Run migrations
             await this.runMigrations();
             
-            console.log('✅ Database initialized successfully');
+            console.log('âœ… Database initialized successfully');
             return true;
         } catch (error) {
-            console.error('❌ Database initialization failed:', error);
+            console.error('âŒ Database initialization failed:', error);
             throw error;
         }
     }
@@ -402,7 +544,7 @@ class DatabaseManager {
             
             if (!hasLastLogout) {
                 await this.db.exec('ALTER TABLE users ADD COLUMN last_logout DATETIME');
-                console.log('✅ Added last_logout column to users table');
+                console.log('âœ… Added last_logout column to users table');
             }
 
             const bikesInfo = await this.db.all("PRAGMA table_info(bikes)");
@@ -414,35 +556,108 @@ class DatabaseManager {
 
             if (!hasRankingScore) {
                 await this.db.exec('ALTER TABLE bikes ADD COLUMN ranking_score REAL DEFAULT 0');
-                console.log('✅ Added ranking_score to bikes');
+                console.log('âœ… Added ranking_score to bikes');
             }
             if (!hasRankingUpdatedAt) {
                 await this.db.exec('ALTER TABLE bikes ADD COLUMN ranking_updated_at DATETIME');
-                console.log('✅ Added ranking_updated_at to bikes');
+                console.log('âœ… Added ranking_updated_at to bikes');
             }
             if (!hasIsReserviert) {
                 await this.db.exec("ALTER TABLE bikes ADD COLUMN is_reserviert INTEGER DEFAULT 0");
-                console.log('✅ Added is_reserviert to bikes');
+                console.log('âœ… Added is_reserviert to bikes');
             }
             if (!hasLastCheckedAt) {
                 await this.db.exec("ALTER TABLE bikes ADD COLUMN last_checked_at DATETIME");
-                console.log('✅ Added last_checked_at to bikes');
+                console.log('âœ… Added last_checked_at to bikes');
             }
             if (!hasIsHotOffer) {
                 await this.db.exec("ALTER TABLE bikes ADD COLUMN is_hot_offer INTEGER DEFAULT 0");
-                console.log('✅ Added is_hot_offer to bikes');
+                console.log('âœ… Added is_hot_offer to bikes');
             }
             await this.db.exec('CREATE INDEX IF NOT EXISTS idx_bikes_ranking ON bikes(ranking_score)');
 
-            // Ensure metric_events has user_id column
-            const meInfo = await this.db.all("PRAGMA table_info(metric_events)");
+            // Ensure metric_events has compatible schema and required columns
+            let meInfo = await this.db.all("PRAGMA table_info(metric_events)");
+            const bikeCol = meInfo.find((column) => column.name === 'bike_id');
+            const typeCol = meInfo.find((column) => column.name === 'type');
+            const needsLegacyRebuild = Number(bikeCol?.notnull || 0) === 1 || Number(typeCol?.notnull || 0) === 1;
+
+            if (needsLegacyRebuild) {
+                await this.db.exec('PRAGMA foreign_keys = OFF');
+                try {
+                    await this.db.exec(
+                        `CREATE TABLE IF NOT EXISTS metric_events_new (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            bike_id INTEGER,
+                            event_type TEXT NOT NULL,
+                            value INTEGER DEFAULT 1,
+                            metadata TEXT,
+                            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                            session_id TEXT,
+                            referrer TEXT,
+                            source_path TEXT,
+                            event_id TEXT,
+                            dwell_ms INTEGER,
+                            user_id INTEGER,
+                            person_key TEXT,
+                            FOREIGN KEY (bike_id) REFERENCES bikes(id) ON DELETE CASCADE,
+                            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+                        )`
+                    );
+                    await this.db.exec(
+                        `INSERT INTO metric_events_new (
+                            id, bike_id, event_type, value, metadata, created_at, session_id, referrer, source_path, event_id, dwell_ms, user_id, person_key
+                        )
+                        SELECT
+                            id,
+                            CASE WHEN bike_id IS NULL OR bike_id = 0 THEN NULL ELSE bike_id END,
+                            COALESCE(event_type, type, 'unknown'),
+                            COALESCE(value, 1),
+                            metadata,
+                            COALESCE(created_at, ts, datetime('now')),
+                            session_id,
+                            referrer,
+                            source_path,
+                            event_id,
+                            dwell_ms,
+                            user_id,
+                            person_key
+                        FROM metric_events`
+                    );
+                    await this.db.exec('DROP TABLE metric_events');
+                    await this.db.exec('ALTER TABLE metric_events_new RENAME TO metric_events');
+                } finally {
+                    await this.db.exec('PRAGMA foreign_keys = ON');
+                }
+                meInfo = await this.db.all("PRAGMA table_info(metric_events)");
+                console.log('✅ Rebuilt legacy metric_events schema for nullable bike_id compatibility');
+            }
+
             const hasMeUserId = meInfo.some(column => column.name === 'user_id');
+            const hasMeEventId = meInfo.some(column => column.name === 'event_id');
+            const hasMePersonKey = meInfo.some(column => column.name === 'person_key');
             if (!hasMeUserId) {
                 try {
                     await this.db.exec('ALTER TABLE metric_events ADD COLUMN user_id INTEGER');
-                    console.log('✅ Added user_id to metric_events');
+                    console.log('âœ… Added user_id to metric_events');
                 } catch (e) {
-                    console.log('ℹ️ metric_events user_id already exists or cannot be added:', e.message);
+                    console.log('â„¹ï¸ metric_events user_id already exists or cannot be added:', e.message);
+                }
+            }
+            if (!hasMeEventId) {
+                try {
+                    await this.db.exec('ALTER TABLE metric_events ADD COLUMN event_id TEXT');
+                    console.log('âœ… Added event_id to metric_events');
+                } catch (e) {
+                    console.log('â„¹ï¸ metric_events event_id already exists or cannot be added:', e.message);
+                }
+            }
+            if (!hasMePersonKey) {
+                try {
+                    await this.db.exec('ALTER TABLE metric_events ADD COLUMN person_key TEXT');
+                    console.log('âœ… Added person_key to metric_events');
+                } catch (e) {
+                    console.log('â„¹ï¸ metric_events person_key already exists or cannot be added:', e.message);
                 }
             }
 
@@ -451,22 +666,25 @@ class DatabaseManager {
             if (!hasEventType) {
                 try {
                     await this.db.exec('ALTER TABLE metric_events ADD COLUMN event_type TEXT');
-                    console.log('✅ Added event_type to metric_events');
+                    console.log('âœ… Added event_type to metric_events');
                 } catch (e) {
-                    console.log('ℹ️ metric_events event_type already exists or cannot be added:', e.message);
+                    console.log('â„¹ï¸ metric_events event_type already exists or cannot be added:', e.message);
                 }
             }
             if (hasLegacyType) {
                 try {
                     await this.db.exec('UPDATE metric_events SET event_type = COALESCE(event_type, type) WHERE event_type IS NULL');
                 } catch (e) {
-                    console.log('ℹ️ metric_events event_type backfill failed:', e.message);
+                    console.log('â„¹ï¸ metric_events event_type backfill failed:', e.message);
                 }
             }
             try {
                 await this.db.exec('CREATE INDEX IF NOT EXISTS idx_metric_events_type_created ON metric_events(event_type, created_at)');
+                await this.db.exec('CREATE INDEX IF NOT EXISTS idx_metric_events_event_id ON metric_events(event_id)');
+                await this.db.exec('CREATE INDEX IF NOT EXISTS idx_metric_events_session_created ON metric_events(session_id, created_at)');
+                await this.db.exec('CREATE INDEX IF NOT EXISTS idx_metric_events_person_created ON metric_events(person_key, created_at)');
             } catch (e) {
-                console.log('ℹ️ metric_events index ensure failed:', e.message);
+                console.log('â„¹ï¸ metric_events index ensure failed:', e.message);
             }
 
             // Ensure search_events table exists
@@ -475,10 +693,195 @@ class DatabaseManager {
                 await this.db.exec('CREATE INDEX IF NOT EXISTS idx_search_events_session ON search_events(session_id, ts)');
                 await this.db.exec('CREATE INDEX IF NOT EXISTS idx_search_events_user ON search_events(user_id, ts)');
             } catch (e) {
-                console.log('ℹ️ search_events ensure error:', e.message);
+                console.log('â„¹ï¸ search_events ensure error:', e.message);
+            }
+
+            try {
+                await this.db.exec(
+                    `CREATE TABLE IF NOT EXISTS metrics_session_facts (
+                        session_id TEXT PRIMARY KEY,
+                        person_key TEXT,
+                        user_id INTEGER,
+                        crm_lead_id TEXT,
+                        customer_email_hash TEXT,
+                        customer_phone_hash TEXT,
+                        first_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        last_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        event_count INTEGER DEFAULT 0,
+                        page_views INTEGER DEFAULT 0,
+                        first_clicks INTEGER DEFAULT 0,
+                        catalog_views INTEGER DEFAULT 0,
+                        product_views INTEGER DEFAULT 0,
+                        add_to_cart INTEGER DEFAULT 0,
+                        checkout_starts INTEGER DEFAULT 0,
+                        checkout_steps INTEGER DEFAULT 0,
+                        checkout_validation_errors INTEGER DEFAULT 0,
+                        checkout_submit_attempts INTEGER DEFAULT 0,
+                        checkout_submit_success INTEGER DEFAULT 0,
+                        checkout_submit_failed INTEGER DEFAULT 0,
+                        forms_seen INTEGER DEFAULT 0,
+                        forms_first_input INTEGER DEFAULT 0,
+                        form_submit_attempts INTEGER DEFAULT 0,
+                        form_validation_errors INTEGER DEFAULT 0,
+                        booking_starts INTEGER DEFAULT 0,
+                        booking_success INTEGER DEFAULT 0,
+                        orders INTEGER DEFAULT 0,
+                        dwell_ms_sum INTEGER DEFAULT 0,
+                        first_source_path TEXT,
+                        last_source_path TEXT,
+                        entry_referrer TEXT,
+                        utm_source TEXT,
+                        utm_medium TEXT,
+                        utm_campaign TEXT,
+                        click_id TEXT,
+                        landing_path TEXT,
+                        is_bot INTEGER DEFAULT 0,
+                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL
+                    )`
+                );
+                await this.db.exec('CREATE INDEX IF NOT EXISTS idx_metrics_session_facts_user ON metrics_session_facts(user_id)');
+                await this.db.exec('CREATE INDEX IF NOT EXISTS idx_metrics_session_facts_last_seen ON metrics_session_facts(last_seen_at)');
+                await this.db.exec('CREATE INDEX IF NOT EXISTS idx_metrics_session_facts_utm ON metrics_session_facts(utm_source, utm_medium, utm_campaign)');
+
+                const msfInfo = await this.db.all('PRAGMA table_info(metrics_session_facts)');
+                const msfCols = new Set((msfInfo || []).map((column) => String(column.name || '').toLowerCase()));
+                const ensureMsfCol = async (name, definition) => {
+                    if (!msfCols.has(name)) {
+                        await this.db.exec(`ALTER TABLE metrics_session_facts ADD COLUMN ${name} ${definition}`);
+                    }
+                };
+                await ensureMsfCol('person_key', 'TEXT');
+                await ensureMsfCol('crm_lead_id', 'TEXT');
+                await ensureMsfCol('customer_email_hash', 'TEXT');
+                await ensureMsfCol('customer_phone_hash', 'TEXT');
+                await ensureMsfCol('forms_seen', 'INTEGER DEFAULT 0');
+                await ensureMsfCol('forms_first_input', 'INTEGER DEFAULT 0');
+                await ensureMsfCol('form_submit_attempts', 'INTEGER DEFAULT 0');
+                await ensureMsfCol('form_validation_errors', 'INTEGER DEFAULT 0');
+                await this.db.exec('CREATE INDEX IF NOT EXISTS idx_metrics_session_facts_person ON metrics_session_facts(person_key)');
+            } catch (e) {
+                console.log('metrics_session_facts ensure error:', e.message);
+            }
+
+            try {
+                await this.db.exec(
+                    `CREATE TABLE IF NOT EXISTS metrics_anomalies (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        anomaly_key TEXT NOT NULL,
+                        severity TEXT NOT NULL,
+                        metric_name TEXT NOT NULL,
+                        baseline_value REAL,
+                        current_value REAL,
+                        delta_pct REAL,
+                        details TEXT,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    )`
+                );
+                await this.db.exec('CREATE INDEX IF NOT EXISTS idx_metrics_anomalies_created ON metrics_anomalies(created_at)');
+                await this.db.exec('CREATE INDEX IF NOT EXISTS idx_metrics_anomalies_key ON metrics_anomalies(anomaly_key, created_at)');
+            } catch (e) {
+                console.log('metrics_anomalies ensure error:', e.message);
+            }
+
+            try {
+                await this.db.exec(
+                    `CREATE TABLE IF NOT EXISTS metrics_identity_nodes (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        identity_type TEXT NOT NULL,
+                        identity_value TEXT NOT NULL,
+                        person_key TEXT NOT NULL,
+                        user_id INTEGER,
+                        session_id TEXT,
+                        crm_lead_id TEXT,
+                        first_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        last_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(identity_type, identity_value),
+                        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL
+                    )`
+                );
+                await this.db.exec('CREATE INDEX IF NOT EXISTS idx_metrics_identity_person ON metrics_identity_nodes(person_key)');
+                await this.db.exec('CREATE INDEX IF NOT EXISTS idx_metrics_identity_user ON metrics_identity_nodes(user_id)');
+                await this.db.exec('CREATE INDEX IF NOT EXISTS idx_metrics_identity_lead ON metrics_identity_nodes(crm_lead_id)');
+            } catch (e) {
+                console.log('metrics_identity_nodes ensure error:', e.message);
+            }
+
+            try {
+                await this.db.exec(
+                    `CREATE TABLE IF NOT EXISTS metrics_feature_store (
+                        person_key TEXT PRIMARY KEY,
+                        profile_key TEXT,
+                        user_id INTEGER,
+                        session_id TEXT,
+                        crm_lead_id TEXT,
+                        budget_cluster TEXT DEFAULT 'unknown',
+                        weighted_price REAL DEFAULT 0,
+                        intent_score REAL DEFAULT 0,
+                        recency_half_life_days REAL DEFAULT 7,
+                        recency_decay REAL DEFAULT 1,
+                        discipline_embedding_json TEXT,
+                        brand_embedding_json TEXT,
+                        category_embedding_json TEXT,
+                        last_event_at DATETIME,
+                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL
+                    )`
+                );
+                await this.db.exec('CREATE INDEX IF NOT EXISTS idx_metrics_feature_store_user ON metrics_feature_store(user_id)');
+                await this.db.exec('CREATE INDEX IF NOT EXISTS idx_metrics_feature_store_budget ON metrics_feature_store(budget_cluster)');
+                await this.db.exec('CREATE INDEX IF NOT EXISTS idx_metrics_feature_store_intent ON metrics_feature_store(intent_score)');
+            } catch (e) {
+                console.log('metrics_feature_store ensure error:', e.message);
+            }
+
+            try {
+                await this.db.exec(
+                    `CREATE TABLE IF NOT EXISTS referral_links (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        slug TEXT NOT NULL UNIQUE,
+                        channel_name TEXT NOT NULL,
+                        code_word TEXT,
+                        creator_tag TEXT,
+                        target_path TEXT NOT NULL DEFAULT '/',
+                        utm_source TEXT NOT NULL DEFAULT 'creator',
+                        utm_medium TEXT NOT NULL DEFAULT 'referral',
+                        utm_campaign TEXT,
+                        utm_content TEXT,
+                        is_active INTEGER DEFAULT 1,
+                        notes TEXT,
+                        created_by INTEGER,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY(created_by) REFERENCES users(id) ON DELETE SET NULL
+                    )`
+                );
+                await this.db.exec('CREATE INDEX IF NOT EXISTS idx_referral_links_slug ON referral_links(slug)');
+                await this.db.exec('CREATE INDEX IF NOT EXISTS idx_referral_links_active ON referral_links(is_active, created_at)');
+
+                await this.db.exec(
+                    `CREATE TABLE IF NOT EXISTS referral_visits (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        referral_link_id INTEGER NOT NULL,
+                        slug TEXT NOT NULL,
+                        session_hint TEXT,
+                        ip_hash TEXT,
+                        user_agent TEXT,
+                        referrer TEXT,
+                        target_path TEXT,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY(referral_link_id) REFERENCES referral_links(id) ON DELETE CASCADE
+                    )`
+                );
+                await this.db.exec('CREATE INDEX IF NOT EXISTS idx_referral_visits_link_created ON referral_visits(referral_link_id, created_at)');
+                await this.db.exec('CREATE INDEX IF NOT EXISTS idx_referral_visits_slug_created ON referral_visits(slug, created_at)');
+                await this.db.exec('CREATE INDEX IF NOT EXISTS idx_referral_visits_session ON referral_visits(session_hint, created_at)');
+            } catch (e) {
+                console.log('referral tables ensure error:', e.message);
             }
         } catch (error) {
-            console.error('❌ Migration failed:', error);
+            console.error('âŒ Migration failed:', error);
             // Don't throw error for migrations, just log it
         }
     }
@@ -490,10 +893,10 @@ class DatabaseManager {
                 await this.initialize();
             }
             await this.db.get('SELECT 1');
-            console.log('✅ Database connection successful');
+            console.log('âœ… Database connection successful');
             return true;
         } catch (error) {
-            console.error('❌ Database connection failed:', error);
+            console.error('âŒ Database connection failed:', error);
             throw error;
         }
     }
@@ -519,7 +922,7 @@ class DatabaseManager {
                 return await this.db.run(sql, params);
             }
         } catch (error) {
-            console.error('❌ Query execution failed:', error);
+            console.error('âŒ Query execution failed:', error);
             throw error;
         }
     }

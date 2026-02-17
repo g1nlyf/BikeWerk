@@ -11,7 +11,8 @@ require('ts-node').register({
 });
 
 const dotenv = require('dotenv');
-dotenv.config();
+dotenv.config({ path: path.resolve(__dirname, '.env') });
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 dotenv.config({ path: path.resolve(__dirname, '../telegram-bot/.env') });
 const fs = require('fs');
 const axios = require('axios');
@@ -28,6 +29,24 @@ const UnifiedHunter = require('./scripts/unified-hunter.js');
 const { AIDispatcher } = require('./src/services/aiDispatcher.js');
 const ValuationService = require('./src/services/ValuationService.js');
 const RecommendationService = require('./src/services/RecommendationService.js');
+const { MetricsPipelineService } = require('./src/services/metrics/MetricsPipelineService.js');
+const { ExperimentEngine } = require('./src/services/metrics/ExperimentEngine.js');
+const { PersonalizationEngine } = require('./src/services/metrics/PersonalizationEngine.js');
+const { OperationalIntelligenceService } = require('./src/services/metrics/OperationalIntelligenceService.js');
+const { GrowthAttributionService } = require('./src/services/metrics/GrowthAttributionService.js');
+const { CrmSyncService } = require('./src/services/CrmSyncService.js');
+const { AiRopAutopilotService } = require('./src/services/AiRopAutopilotService.js');
+const { AiSignalService } = require('./src/services/AiSignalService.js');
+const { ManagerKpiService } = require('./src/services/ManagerKpiService.js');
+const {
+    ORDER_STATUS,
+    ALL_ORDER_STATUSES,
+    TRANSITIONS,
+    canTransition,
+    normalizeOrderStatus: normalizeOrderStatusCanonical
+} = require('./src/domain/orderLifecycle.js');
+const { generateDemoMetricsDataset } = require('./src/services/metrics/demoDataGenerator.js');
+const { getGeminiKeyHealth } = require('./src/services/metrics/geminiKeyHealth.js');
 const { geminiClient } = require('../telegram-bot/autocat-klein/dist/autocat-klein/src/lib/geminiClient.js');
 const InquiryGenerator = require('./src/services/InquiryGenerator');
 const cron = require('node-cron');
@@ -35,6 +54,9 @@ const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
 const UnifiedBikeMapper = require('./src/mappers/unified-bike-mapper.js');
 const mapper = UnifiedBikeMapper;
+
+const CRM_PRIMARY_LOGIN_EMAIL = 'hackerios222@gmail.com';
+const CRM_PRIMARY_LOGIN_PASSWORD = '12345678';
 
 // Initialize database manager
 const db = new DatabaseManager();
@@ -74,7 +96,7 @@ const { recomputeAll } = require('./scripts/recompute-ranks.js');
 
 // Schedule: Every hour at :05 - Hot Deals Hunt
 cron.schedule('5 * * * *', async () => {
-    console.log('\n🔔 Hunter Auto-Run Triggered! (every hour)');
+    console.log('\nðŸ”” Hunter Auto-Run Triggered! (every hour)');
     await hourlyHunter.run();
 }, {
     scheduled: true,
@@ -83,26 +105,50 @@ cron.schedule('5 * * * *', async () => {
 
 // Schedule: Every hour at :35 - Recompute Ranks with FMV
 cron.schedule('35 * * * *', async () => {
-    console.log('\n🔄 Recomputing Ranks with FMV...');
+    console.log('\nðŸ”„ Recomputing Ranks with FMV...');
     try {
         // Use FMV-based ranking recompute
         const { execSync } = require('child_process');
         execSync('node scripts/recompute-ranking-fmv.js', { cwd: __dirname, stdio: 'inherit' });
     } catch (e) {
-        console.error('❌ Rank recompute failed:', e.message);
+        console.error('âŒ Rank recompute failed:', e.message);
     }
 }, {
     scheduled: true,
     timezone: "Europe/Berlin"
 });
-console.log('✅ Hunter scheduled (every hour at :05)');
-console.log('✅ Rank Recompute scheduled (every hour at :35)');
+console.log('âœ… Hunter scheduled (every hour at :05)');
+console.log('âœ… Rank Recompute scheduled (every hour at :35)');
+
+if (String(process.env.ENABLE_METRICS_AUTO_OPTIMIZER || '0') === '1') {
+    cron.schedule('17 */6 * * *', async () => {
+        try {
+            const res = await metricsOps.autoOptimizeExperiments({
+                windowDays: 14,
+                minAssignments: 120,
+                dryRun: false
+            });
+            const applied = Array.isArray(res?.decisions)
+                ? res.decisions.filter((d) => d.action === 'reweighted').length
+                : 0;
+            console.log(`[MetricsAutoOptimize] completed, applied=${applied}`);
+        } catch (error) {
+            console.error('[MetricsAutoOptimize] failed:', error.message || error);
+        }
+    }, {
+        scheduled: true,
+        timezone: 'Europe/Berlin'
+    });
+    console.log('âœ… Metrics Auto-Optimizer scheduled (every 6h at :17)');
+}
 
 const bikesDB = new BikesDatabase();
 try {
-    const keyCount = Array.isArray(geminiClient?.keyStates) ? geminiClient.keyStates.length : 0;
-    if (keyCount < 2) {
-        console.warn(`⚠️ Gemini key pool is small (${keyCount}). Set GEMINI_API_KEYS to avoid 429/quota issues.`);
+    const keyHealth = getGeminiKeyHealth();
+    if (!keyHealth.hasAny) {
+        console.warn('âš ï¸ Gemini keys are not configured. Set GEMINI_API_KEYS or GEMINI_API_KEY.');
+    } else if (keyHealth.keyCount < 2) {
+        console.warn(`âš ï¸ Gemini key pool is small (${keyHealth.keyCount}). Set GEMINI_API_KEYS for safer quota handling.`);
     }
 } catch { }
 const chatGeminiClient = {
@@ -110,14 +156,114 @@ const chatGeminiClient = {
 };
 const aiDispatcher = new AIDispatcher(bikesDB, chatGeminiClient);
 const recommendationService = new RecommendationService(db);
+const metricsPipeline = new MetricsPipelineService(db, {
+    onBikeMetricsUpdated: async (bikeId) => {
+        await computeRankingForBike(bikeId);
+    }
+});
+const experimentEngine = new ExperimentEngine(db);
+const personalizationEngine = new PersonalizationEngine(db, {
+    metricsPipeline,
+    experimentEngine,
+    geminiClient: chatGeminiClient
+});
+const metricsOps = new OperationalIntelligenceService(db, {
+    geminiClient: chatGeminiClient
+});
+const growthAttribution = new GrowthAttributionService(db, {
+    baseUrl: process.env.PUBLIC_URL || 'http://localhost:5175'
+});
+const managerKpiService = new ManagerKpiService(db);
+
+if (String(process.env.ENABLE_METRICS_ANOMALY_DETECTOR || '1') === '1') {
+    cron.schedule('11 * * * *', async () => {
+        try {
+            const result = await metricsOps.detectAndStoreAnomalies({
+                lookbackHours: 72,
+                baselineHours: 24
+            });
+            const created = Array.isArray(result?.created) ? result.created.length : 0;
+            if (created > 0) {
+                console.warn(`[MetricsAnomalyDetector] created alerts: ${created}`);
+            }
+        } catch (error) {
+            console.error('[MetricsAnomalyDetector] failed:', error.message || error);
+        }
+    }, {
+        scheduled: true,
+        timezone: 'Europe/Berlin'
+    });
+    console.log('âœ… Metrics Anomaly Detector scheduled (hourly at :11)');
+}
+
+if (String(process.env.ENABLE_METRICS_DAILY_ALERTS || '1') === '1') {
+    cron.schedule('11 8 * * *', async () => {
+        try {
+            const digest = await metricsOps.runDailyAnomalyDigest({
+                lookbackHours: 168,
+                baselineHours: 24
+            });
+            const alerts = Array.isArray(digest?.alerts) ? digest.alerts.length : 0;
+            if (alerts > 0) {
+                console.warn(`[MetricsDailyDigest] alerts=${alerts}`);
+            }
+        } catch (error) {
+            console.error('[MetricsDailyDigest] failed:', error.message || error);
+        }
+    }, {
+        scheduled: true,
+        timezone: 'Europe/Berlin'
+    });
+    console.log('âœ… Metrics Daily Digest scheduled (daily at 08:11)');
+}
 
 // Initialize Supabase client (requires env vars; never ship hardcoded keys).
-const supabaseUrl = process.env.SUPABASE_URL || null;
-const supabaseKey =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.SUPABASE_KEY ||
-    null;
-const supabase = (supabaseUrl && supabaseKey) ? createClient(supabaseUrl, supabaseKey) : null;
+const LOCAL_DB_ONLY = ['1', 'true', 'yes', 'on'].includes(String(process.env.LOCAL_DB_ONLY || '1').trim().toLowerCase());
+const supabaseUrl = LOCAL_DB_ONLY ? null : (process.env.SUPABASE_URL || null);
+const supabaseKey = LOCAL_DB_ONLY
+    ? null
+    : (
+        process.env.SUPABASE_SERVICE_ROLE_KEY ||
+        process.env.SUPABASE_KEY ||
+        null
+    );
+const supabase = (!LOCAL_DB_ONLY && supabaseUrl && supabaseKey) ? createClient(supabaseUrl, supabaseKey) : null;
+if (LOCAL_DB_ONLY) {
+    console.warn('[DB MODE] LOCAL_DB_ONLY=1 -> Supabase disabled, SQLite is the only runtime source');
+}
+const crmSyncService = new CrmSyncService({ supabase, db });
+const aiSignalService = new AiSignalService({ db });
+const aiRopAutopilot = new AiRopAutopilotService({ supabase, db, crmSyncService, aiSignalService });
+
+if (String(process.env.ENABLE_AI_ROP_AUTOPILOT || '1') === '1') {
+    if (aiRopAutopilot.start()) {
+        console.log('✅ AI-ROP autopilot started');
+    } else {
+        console.warn('⚠️ AI-ROP autopilot was not started');
+    }
+}
+
+if (!LOCAL_DB_ONLY && String(process.env.ENABLE_CRM_HOURLY_SYNC || '1') === '1' && crmSyncService) {
+    cron.schedule('*/10 * * * *', async () => {
+        try {
+            const result = await crmSyncService.syncFromSupabaseToLocal({
+                includeEvents: true,
+                mode: 'incremental',
+                pageSize: 500,
+                maxPages: 60
+            });
+            if (!result?.success) {
+                console.warn('[CRM Sync] incremental sync completed with warnings');
+            }
+        } catch (error) {
+            console.error('[CRM Sync] incremental sync failed:', error?.message || error);
+        }
+    }, {
+        scheduled: true,
+        timezone: 'Europe/Berlin'
+    });
+    console.log('✅ CRM incremental sync scheduled (every 10 minutes)');
+}
 
 // CRM integration
 const { CRMApi, initializeCRM } = require('./scripts/crm-api.js');
@@ -131,7 +277,7 @@ const { CRMApi, initializeCRM } = require('./scripts/crm-api.js');
 // But _request method checks: if (this.db) { LOCAL MODE }
 // This means if 'db' is passed, it ALWAYS uses local mode.
 // We must NOT pass 'db' if we want to use Supabase.
-const useSupabase = Boolean(supabaseUrl && supabaseKey);
+const useSupabase = Boolean(!LOCAL_DB_ONLY && supabaseUrl && supabaseKey);
 const crmApi = initializeCRM(supabaseUrl, supabaseKey, useSupabase ? null : db);
 const PUBLIC_URL = process.env.PUBLIC_URL || 'http://localhost:5175';
 
@@ -140,13 +286,14 @@ const PORT = process.env.PORT || 8082;
 // SECURITY: No default secrets - fail fast if not configured
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
-    console.error('❌ FATAL: JWT_SECRET environment variable is required');
+    console.error('âŒ FATAL: JWT_SECRET environment variable is required');
     process.exit(1);
 }
 const CODE_EXPIRATION_MINUTES = Number(process.env.CODE_EXPIRATION_MINUTES || 10);
 const MAX_VERIFICATION_ATTEMPTS = Number(process.env.MAX_VERIFICATION_ATTEMPTS || 3);
 const RESEND_COOLDOWN_SECONDS = Number(process.env.RESEND_COOLDOWN_SECONDS || 60);
 const RATE_LIMIT_PER_HOUR = Number(process.env.RATE_LIMIT_PER_HOUR || 5);
+const AUTH_RATE_LIMIT_MAX = Number(process.env.AUTH_RATE_LIMIT_MAX || 5);
 
 const { EmailAuthService } = require('./src/services/EmailAuthService');
 const emailAuthService = new EmailAuthService(db);
@@ -157,17 +304,86 @@ const ALLOWED_ORIGINS = [
     'https://www.bikewerk.ru',
     'https://api.bikewerk.ru',
     'https://eubike.ru',
+    'https://www.eubike.ru',
     'http://localhost:5173',
     'http://localhost:5174',
     'http://localhost:5175',
+    'http://localhost:5176',
+    'http://localhost:5177',
     'http://localhost:3000'
 ];
+
+const EXTRA_ALLOWED_HEADERS = [
+    'x-admin-secret',
+    'x-webhook-secret',
+    'x-telegram-init-data',
+    'x-session-id',
+    'x-source-path',
+    'x-utm-source',
+    'x-utm-medium',
+    'x-utm-campaign',
+    'x-utm-term',
+    'x-utm-content',
+    'x-utm-last-source',
+    'x-utm-last-medium',
+    'x-utm-last-campaign',
+    'x-click-id',
+    'x-landing-path',
+    'x-crm-lead-id',
+    'x-customer-email-hash',
+    'x-customer-phone-hash',
+    'x-identity-key',
+    'x-public-origin'
+];
+
+const isAllowedLocalhostOrigin = (origin) => /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(String(origin || ''));
+const isAllowedPublicHost = (host) => {
+    const normalized = String(host || '').toLowerCase();
+    if (!normalized) return false;
+    return normalized === 'bikewerk.ru'
+        || normalized.endsWith('.bikewerk.ru')
+        || normalized === 'eubike.ru'
+        || normalized.endsWith('.eubike.ru')
+        || normalized === 'localhost'
+        || normalized === '127.0.0.1';
+};
+const normalizeOriginForPublicBase = (value) => {
+    const raw = String(value || '').trim();
+    if (!raw) return null;
+    try {
+        const parsed = new URL(raw);
+        const protocol = String(parsed.protocol || '').toLowerCase();
+        if (protocol !== 'http:' && protocol !== 'https:') return null;
+        if (!isAllowedPublicHost(parsed.hostname)) return null;
+        return `${parsed.protocol}//${parsed.host}`.replace(/\/+$/, '');
+    } catch {
+        return null;
+    }
+};
+const resolveRequestPublicBaseUrl = (req) => {
+    const direct = normalizeOriginForPublicBase(req?.headers?.['x-public-origin']);
+    if (direct) return direct;
+
+    const origin = normalizeOriginForPublicBase(req?.headers?.origin);
+    if (origin) return origin;
+
+    const referer = String(req?.headers?.referer || req?.headers?.referrer || '').trim();
+    if (referer) {
+        try {
+            const refOrigin = normalizeOriginForPublicBase(new URL(referer).origin);
+            if (refOrigin) return refOrigin;
+        } catch {
+            // ignore malformed referer
+        }
+    }
+    return String(PUBLIC_URL || 'http://localhost:5175').replace(/\/+$/, '');
+};
 
 const corsOptions = {
     origin: (origin, callback) => {
         // Allow requests with no origin (mobile apps, Postman, curl)
         if (!origin) return callback(null, true);
-        if (ALLOWED_ORIGINS.includes(origin)) {
+        if (ALLOWED_ORIGINS.includes(origin) || isAllowedLocalhostOrigin(origin)) {
             callback(null, true);
         } else {
             console.warn(`CORS blocked origin: ${origin}`);
@@ -176,7 +392,7 @@ const corsOptions = {
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-admin-secret', 'x-webhook-secret', 'x-telegram-init-data']
+    allowedHeaders: ['Content-Type', 'Authorization', ...EXTRA_ALLOWED_HEADERS]
 };
 
 app.use(cors(corsOptions));
@@ -192,7 +408,7 @@ app.disable('x-powered-by');
 // Rate limiter for auth endpoints (prevent brute force)
 const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 5, // 5 attempts per window
+    max: Number.isFinite(AUTH_RATE_LIMIT_MAX) && AUTH_RATE_LIMIT_MAX > 0 ? AUTH_RATE_LIMIT_MAX : 5,
     message: { error: 'Too many authentication attempts, please try again in 15 minutes' },
     standardHeaders: true,
     legacyHeaders: false
@@ -203,7 +419,7 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // ========================================
-// 🛡️ AUTH MIDDLEWARE
+// ðŸ›¡ï¸ AUTH MIDDLEWARE
 // ========================================
 
 // JWT middleware for protected routes
@@ -272,7 +488,7 @@ const requireManagerRole = (req, res, next) => {
 };
 
 // ========================================
-// 🔐 AUTH ROUTES
+// ðŸ” AUTH ROUTES
 // ========================================
 
 app.post('/api/auth/register', authLimiter, async (req, res) => {
@@ -306,10 +522,14 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
 app.post('/api/auth/login', authLimiter, async (req, res) => {
     try {
         const { email, phone, login, password } = req.body;
-        const loginValue = String(login || email || phone || '').trim();
-        if (!loginValue || !password) return res.status(400).json({ error: 'Missing fields' });
+        const loginValueRaw = String(login || email || phone || '').trim();
+        const loginValueEmail = loginValueRaw.toLowerCase();
+        if (!loginValueRaw || !password) return res.status(400).json({ error: 'Missing fields' });
 
-        const users = await db.query('SELECT * FROM users WHERE email = ? OR phone = ? LIMIT 1', [loginValue, loginValue]);
+        const users = await db.query(
+            'SELECT * FROM users WHERE LOWER(email) = ? OR phone = ? LIMIT 1',
+            [loginValueEmail, loginValueRaw]
+        );
         const user = users[0];
 
         if (!user || !(await bcrypt.compare(password, user.password))) {
@@ -330,7 +550,7 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
 });
 
 // ========================================
-// 🔐 EMAIL CODE AUTH (SendGrid)
+// ðŸ” EMAIL CODE AUTH (SendGrid)
 // ========================================
 
 const sendCodeLimiter = rateLimit({
@@ -357,7 +577,7 @@ app.post('/api/auth/send-code', sendCodeLimiter, async (req, res) => {
     try {
         const { email } = req.body || {};
         if (!isValidEmail(email)) {
-            return res.status(400).json({ success: false, error: 'Некорректный email' });
+            return res.status(400).json({ success: false, error: 'ÐÐµÐºÐ¾Ñ€Ñ€ÐµÐºÑ‚Ð½Ñ‹Ð¹ email' });
         }
 
         const ipAddress = req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress || null;
@@ -371,7 +591,7 @@ app.post('/api/auth/send-code', sendCodeLimiter, async (req, res) => {
         return res.json(result);
     } catch (e) {
         console.error('send-code error:', e);
-        return res.status(500).json({ success: false, error: 'Внутренняя ошибка сервера' });
+        return res.status(500).json({ success: false, error: 'Ð’Ð½ÑƒÑ‚Ñ€ÐµÐ½Ð½ÑÑ Ð¾ÑˆÐ¸Ð±ÐºÐ° ÑÐµÑ€Ð²ÐµÑ€Ð°' });
     }
 });
 
@@ -379,10 +599,10 @@ app.post('/api/auth/verify-code', async (req, res) => {
     try {
         const { email, code } = req.body || {};
         if (!isValidEmail(email) || !code || typeof code !== 'string') {
-            return res.status(400).json({ success: false, error: 'Неверные параметры' });
+            return res.status(400).json({ success: false, error: 'ÐÐµÐ²ÐµÑ€Ð½Ñ‹Ðµ Ð¿Ð°Ñ€Ð°Ð¼ÐµÑ‚Ñ€Ñ‹' });
         }
         if (!/^\d{4,8}$/.test(code.trim())) {
-            return res.status(400).json({ success: false, error: 'Неверный формат кода' });
+            return res.status(400).json({ success: false, error: 'ÐÐµÐ²ÐµÑ€Ð½Ñ‹Ð¹ Ñ„Ð¾Ñ€Ð¼Ð°Ñ‚ ÐºÐ¾Ð´Ð°' });
         }
 
         const ipAddress = req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress || null;
@@ -399,7 +619,7 @@ app.post('/api/auth/verify-code', async (req, res) => {
         return res.json(result);
     } catch (e) {
         console.error('verify-code error:', e);
-        return res.status(500).json({ success: false, error: 'Внутренняя ошибка сервера' });
+        return res.status(500).json({ success: false, error: 'Ð’Ð½ÑƒÑ‚Ñ€ÐµÐ½Ð½ÑÑ Ð¾ÑˆÐ¸Ð±ÐºÐ° ÑÐµÑ€Ð²ÐµÑ€Ð°' });
     }
 });
 
@@ -407,7 +627,7 @@ app.post('/api/auth/resend-code', resendCodeLimiter, async (req, res) => {
     try {
         const { email } = req.body || {};
         if (!isValidEmail(email)) {
-            return res.status(400).json({ success: false, error: 'Некорректный email' });
+            return res.status(400).json({ success: false, error: 'ÐÐµÐºÐ¾Ñ€Ñ€ÐµÐºÑ‚Ð½Ñ‹Ð¹ email' });
         }
 
         const ipAddress = req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress || null;
@@ -421,12 +641,12 @@ app.post('/api/auth/resend-code', resendCodeLimiter, async (req, res) => {
         return res.json(result);
     } catch (e) {
         console.error('resend-code error:', e);
-        return res.status(500).json({ success: false, error: 'Внутренняя ошибка сервера' });
+        return res.status(500).json({ success: false, error: 'Ð’Ð½ÑƒÑ‚Ñ€ÐµÐ½Ð½ÑÑ Ð¾ÑˆÐ¸Ð±ÐºÐ° ÑÐµÑ€Ð²ÐµÑ€Ð°' });
     }
 });
 
 // ========================================
-// 🔐 REGISTRATION WITH EMAIL VERIFICATION
+// ðŸ” REGISTRATION WITH EMAIL VERIFICATION
 // ========================================
 
 // Step 1: Create pending user + send verification code
@@ -435,13 +655,13 @@ app.post('/api/auth/register-pending', sendCodeLimiter, async (req, res) => {
         const { name, email, password } = req.body || {};
 
         if (!name || typeof name !== 'string' || name.trim().length < 1) {
-            return res.status(400).json({ success: false, error: 'Укажите имя' });
+            return res.status(400).json({ success: false, error: 'Ð£ÐºÐ°Ð¶Ð¸Ñ‚Ðµ Ð¸Ð¼Ñ' });
         }
         if (!isValidEmail(email)) {
-            return res.status(400).json({ success: false, error: 'Некорректный email' });
+            return res.status(400).json({ success: false, error: 'ÐÐµÐºÐ¾Ñ€Ñ€ÐµÐºÑ‚Ð½Ñ‹Ð¹ email' });
         }
         if (!password || typeof password !== 'string' || password.length < 8) {
-            return res.status(400).json({ success: false, error: 'Пароль должен содержать минимум 8 символов' });
+            return res.status(400).json({ success: false, error: 'ÐŸÐ°Ñ€Ð¾Ð»ÑŒ Ð´Ð¾Ð»Ð¶ÐµÐ½ ÑÐ¾Ð´ÐµÑ€Ð¶Ð°Ñ‚ÑŒ Ð¼Ð¸Ð½Ð¸Ð¼ÑƒÐ¼ 8 ÑÐ¸Ð¼Ð²Ð¾Ð»Ð¾Ð²' });
         }
 
         const emailNorm = email.trim().toLowerCase();
@@ -449,7 +669,7 @@ app.post('/api/auth/register-pending', sendCodeLimiter, async (req, res) => {
         // Check if user already exists and verified
         const existing = await db.query('SELECT id, email_verified FROM users WHERE email = ?', [emailNorm]);
         if (existing.length > 0 && existing[0].email_verified === 1) {
-            return res.status(400).json({ success: false, error: 'Этот email уже зарегистрирован. Войдите или восстановите пароль.' });
+            return res.status(400).json({ success: false, error: 'Ð­Ñ‚Ð¾Ñ‚ email ÑƒÐ¶Ðµ Ð·Ð°Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ð¸Ñ€Ð¾Ð²Ð°Ð½. Ð’Ð¾Ð¹Ð´Ð¸Ñ‚Ðµ Ð¸Ð»Ð¸ Ð²Ð¾ÑÑÑ‚Ð°Ð½Ð¾Ð²Ð¸Ñ‚Ðµ Ð¿Ð°Ñ€Ð¾Ð»ÑŒ.' });
         }
 
         const hashedPassword = await bcrypt.hash(password, 10);
@@ -480,14 +700,14 @@ app.post('/api/auth/register-pending', sendCodeLimiter, async (req, res) => {
 
         return res.json({
             success: true,
-            message: 'Код подтверждения отправлен на email',
+            message: 'ÐšÐ¾Ð´ Ð¿Ð¾Ð´Ñ‚Ð²ÐµÑ€Ð¶Ð´ÐµÐ½Ð¸Ñ Ð¾Ñ‚Ð¿Ñ€Ð°Ð²Ð»ÐµÐ½ Ð½Ð° email',
             expiresIn: codeResult.expiresIn,
             resendAvailableIn: codeResult.resendAvailableIn,
             attemptsLeft: codeResult.attemptsLeft
         });
     } catch (e) {
         console.error('register-pending error:', e);
-        return res.status(500).json({ success: false, error: 'Внутренняя ошибка сервера' });
+        return res.status(500).json({ success: false, error: 'Ð’Ð½ÑƒÑ‚Ñ€ÐµÐ½Ð½ÑÑ Ð¾ÑˆÐ¸Ð±ÐºÐ° ÑÐµÑ€Ð²ÐµÑ€Ð°' });
     }
 });
 
@@ -497,10 +717,10 @@ app.post('/api/auth/confirm-registration', async (req, res) => {
         const { email, code } = req.body || {};
 
         if (!isValidEmail(email)) {
-            return res.status(400).json({ success: false, error: 'Некорректный email' });
+            return res.status(400).json({ success: false, error: 'ÐÐµÐºÐ¾Ñ€Ñ€ÐµÐºÑ‚Ð½Ñ‹Ð¹ email' });
         }
         if (!code || typeof code !== 'string' || !/^\d{4,8}$/.test(code.trim())) {
-            return res.status(400).json({ success: false, error: 'Неверный формат кода' });
+            return res.status(400).json({ success: false, error: 'ÐÐµÐ²ÐµÑ€Ð½Ñ‹Ð¹ Ñ„Ð¾Ñ€Ð¼Ð°Ñ‚ ÐºÐ¾Ð´Ð°' });
         }
 
         const emailNorm = email.trim().toLowerCase();
@@ -521,7 +741,7 @@ app.post('/api/auth/confirm-registration', async (req, res) => {
         const user = users[0];
 
         if (!user) {
-            return res.status(400).json({ success: false, error: 'Пользователь не найден' });
+            return res.status(400).json({ success: false, error: 'ÐŸÐ¾Ð»ÑŒÐ·Ð¾Ð²Ð°Ñ‚ÐµÐ»ÑŒ Ð½Ðµ Ð½Ð°Ð¹Ð´ÐµÐ½' });
         }
 
         // Generate JWT token
@@ -548,12 +768,12 @@ app.post('/api/auth/confirm-registration', async (req, res) => {
         });
     } catch (e) {
         console.error('confirm-registration error:', e);
-        return res.status(500).json({ success: false, error: 'Внутренняя ошибка сервера' });
+        return res.status(500).json({ success: false, error: 'Ð’Ð½ÑƒÑ‚Ñ€ÐµÐ½Ð½ÑÑ Ð¾ÑˆÐ¸Ð±ÐºÐ° ÑÐµÑ€Ð²ÐµÑ€Ð°' });
     }
 });
 
 // ========================================
-// 🔑 PASSWORD RESET
+// ðŸ”‘ PASSWORD RESET
 // ========================================
 
 // Step 1: Request password reset (send code)
@@ -562,7 +782,7 @@ app.post('/api/auth/password-reset/request', sendCodeLimiter, async (req, res) =
         const { email } = req.body || {};
 
         if (!isValidEmail(email)) {
-            return res.status(400).json({ success: false, error: 'Некорректный email' });
+            return res.status(400).json({ success: false, error: 'ÐÐµÐºÐ¾Ñ€Ñ€ÐµÐºÑ‚Ð½Ñ‹Ð¹ email' });
         }
 
         const emailNorm = email.trim().toLowerCase();
@@ -573,7 +793,7 @@ app.post('/api/auth/password-reset/request', sendCodeLimiter, async (req, res) =
             // For security, don't reveal if email exists or not
             return res.json({
                 success: true,
-                message: 'Если email зарегистрирован, код отправлен',
+                message: 'Ð•ÑÐ»Ð¸ email Ð·Ð°Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ð¸Ñ€Ð¾Ð²Ð°Ð½, ÐºÐ¾Ð´ Ð¾Ñ‚Ð¿Ñ€Ð°Ð²Ð»ÐµÐ½',
                 expiresIn: 600,
                 resendAvailableIn: 60
             });
@@ -590,13 +810,13 @@ app.post('/api/auth/password-reset/request', sendCodeLimiter, async (req, res) =
 
         return res.json({
             success: true,
-            message: 'Код для сброса пароля отправлен на email',
+            message: 'ÐšÐ¾Ð´ Ð´Ð»Ñ ÑÐ±Ñ€Ð¾ÑÐ° Ð¿Ð°Ñ€Ð¾Ð»Ñ Ð¾Ñ‚Ð¿Ñ€Ð°Ð²Ð»ÐµÐ½ Ð½Ð° email',
             expiresIn: codeResult.expiresIn,
             resendAvailableIn: codeResult.resendAvailableIn
         });
     } catch (e) {
         console.error('password-reset/request error:', e);
-        return res.status(500).json({ success: false, error: 'Внутренняя ошибка сервера' });
+        return res.status(500).json({ success: false, error: 'Ð’Ð½ÑƒÑ‚Ñ€ÐµÐ½Ð½ÑÑ Ð¾ÑˆÐ¸Ð±ÐºÐ° ÑÐµÑ€Ð²ÐµÑ€Ð°' });
     }
 });
 
@@ -606,13 +826,13 @@ app.post('/api/auth/password-reset/confirm', async (req, res) => {
         const { email, code, newPassword } = req.body || {};
 
         if (!isValidEmail(email)) {
-            return res.status(400).json({ success: false, error: 'Некорректный email' });
+            return res.status(400).json({ success: false, error: 'ÐÐµÐºÐ¾Ñ€Ñ€ÐµÐºÑ‚Ð½Ñ‹Ð¹ email' });
         }
         if (!code || typeof code !== 'string' || !/^\d{4,8}$/.test(code.trim())) {
-            return res.status(400).json({ success: false, error: 'Неверный формат кода' });
+            return res.status(400).json({ success: false, error: 'ÐÐµÐ²ÐµÑ€Ð½Ñ‹Ð¹ Ñ„Ð¾Ñ€Ð¼Ð°Ñ‚ ÐºÐ¾Ð´Ð°' });
         }
         if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 8) {
-            return res.status(400).json({ success: false, error: 'Пароль должен содержать минимум 8 символов' });
+            return res.status(400).json({ success: false, error: 'ÐŸÐ°Ñ€Ð¾Ð»ÑŒ Ð´Ð¾Ð»Ð¶ÐµÐ½ ÑÐ¾Ð´ÐµÑ€Ð¶Ð°Ñ‚ÑŒ Ð¼Ð¸Ð½Ð¸Ð¼ÑƒÐ¼ 8 ÑÐ¸Ð¼Ð²Ð¾Ð»Ð¾Ð²' });
         }
 
         const emailNorm = email.trim().toLowerCase();
@@ -637,7 +857,7 @@ app.post('/api/auth/password-reset/confirm', async (req, res) => {
         const user = users[0];
 
         if (!user) {
-            return res.status(400).json({ success: false, error: 'Пользователь не найден' });
+            return res.status(400).json({ success: false, error: 'ÐŸÐ¾Ð»ÑŒÐ·Ð¾Ð²Ð°Ñ‚ÐµÐ»ÑŒ Ð½Ðµ Ð½Ð°Ð¹Ð´ÐµÐ½' });
         }
 
         // Generate JWT token (auto-login after reset)
@@ -649,7 +869,7 @@ app.post('/api/auth/password-reset/confirm', async (req, res) => {
 
         return res.json({
             success: true,
-            message: 'Пароль успешно изменён',
+            message: 'ÐŸÐ°Ñ€Ð¾Ð»ÑŒ ÑƒÑÐ¿ÐµÑˆÐ½Ð¾ Ð¸Ð·Ð¼ÐµÐ½Ñ‘Ð½',
             token,
             user: {
                 id: user.id,
@@ -661,7 +881,7 @@ app.post('/api/auth/password-reset/confirm', async (req, res) => {
         });
     } catch (e) {
         console.error('password-reset/confirm error:', e);
-        return res.status(500).json({ success: false, error: 'Внутренняя ошибка сервера' });
+        return res.status(500).json({ success: false, error: 'Ð’Ð½ÑƒÑ‚Ñ€ÐµÐ½Ð½ÑÑ Ð¾ÑˆÐ¸Ð±ÐºÐ° ÑÐµÑ€Ð²ÐµÑ€Ð°' });
     }
 });
 
@@ -1072,13 +1292,10 @@ app.get('/api/admin/hunter/logs', adminAuth, async (req, res) => {
 
 app.post('/api/admin/labs/hunt-trigger', adminAuth, async (req, res) => {
     try {
-        // Trigger AutoHunter immediately
-        if (autoHunter) {
-            // Assuming AutoHunter has a method to force run or we just reset its timer
-            // For now, let's just log and simulate
-            console.log('🔫 Emergency Hunt Triggered via API');
-            // In a real implementation: autoHunter.forceRun();
-        }
+        console.log('Emergency Hunt Triggered via API');
+        hourlyHunter.run().catch((error) => {
+            console.error('HourlyHunter trigger failed:', error.message);
+        });
         res.json({ success: true, message: "Hunt triggered successfully" });
     } catch (e) {
         res.status(500).json({ success: false, error: e.message });
@@ -1315,7 +1532,7 @@ app.post('/api/valuation/calculate', async (req, res) => {
         });
 
         if (!fmvData) {
-            return res.json({ success: false, message: 'Недостаточно данных для точной оценки.' });
+            return res.json({ success: false, message: 'ÐÐµÐ´Ð¾ÑÑ‚Ð°Ñ‚Ð¾Ñ‡Ð½Ð¾ Ð´Ð°Ð½Ð½Ñ‹Ñ… Ð´Ð»Ñ Ñ‚Ð¾Ñ‡Ð½Ð¾Ð¹ Ð¾Ñ†ÐµÐ½ÐºÐ¸.' });
         }
 
         // 2. Find Cheaper Alternatives (Upsell)
@@ -1384,7 +1601,7 @@ app.get('/api/admin/alerts', adminAuth, async (req, res) => {
 });
 
 // ========================================
-// 📦 ORDER MANAGEMENT & EUPHORIA TRIGGERS
+// ðŸ“¦ ORDER MANAGEMENT & EUPHORIA TRIGGERS
 // ========================================
 
 app.post('/api/orders/create', authenticateToken, async (req, res) => {
@@ -1509,92 +1726,71 @@ function pickAvailableMainImage(bikeId, mainImage, fallbackList = []) {
 // Admin role check removed per requirements
 
 // ========================================
-// 📊 ANALYTICS & RANKING ROUTES
+// ðŸ“Š ANALYTICS & RANKING ROUTES
 // ========================================
 
-app.post('/api/analytics/events', async (req, res) => {
-    try {
-        const { events } = req.body;
-        if (!Array.isArray(events) || events.length === 0) return res.json({ success: true });
+const safeHeaderValue = (req, key) => {
+    const raw = req?.headers?.[key];
+    if (raw == null) return null;
+    const value = String(raw).trim();
+    if (!value) return null;
+    return value.slice(0, 256);
+};
 
-        // Batch insert with prepared statements (SAFE from SQL injection)
-        for (const e of events) {
-            const metadata = e.metadata ? JSON.stringify(e.metadata) : '';
+const isLikelyBotRequest = (req) => {
+    const ua = String(req?.headers?.['user-agent'] || '').toLowerCase();
+    if (!ua) return false;
+    return /(bot|crawler|spider|headless|curl|wget|python-requests|postmanruntime|axios)/i.test(ua);
+};
+
+const buildMetricsContext = (req, source, overrides = {}) => ({
+    source,
+    sessionId: safeHeaderValue(req, 'x-session-id'),
+    userId: req.user?.id || null,
+    crmLeadId: safeHeaderValue(req, 'x-crm-lead-id'),
+    customerEmailHash: safeHeaderValue(req, 'x-customer-email-hash'),
+    customerPhoneHash: safeHeaderValue(req, 'x-customer-phone-hash'),
+    identityKey: safeHeaderValue(req, 'x-identity-key'),
+    referrer: safeHeaderValue(req, 'referer'),
+    sourcePath: safeHeaderValue(req, 'x-source-path'),
+    userAgent: safeHeaderValue(req, 'user-agent'),
+    isBot: isLikelyBotRequest(req),
+    attribution: {
+        utm_source: safeHeaderValue(req, 'x-utm-source'),
+        utm_medium: safeHeaderValue(req, 'x-utm-medium'),
+        utm_campaign: safeHeaderValue(req, 'x-utm-campaign'),
+        utm_term: safeHeaderValue(req, 'x-utm-term'),
+        utm_content: safeHeaderValue(req, 'x-utm-content'),
+        utm_last_source: safeHeaderValue(req, 'x-utm-last-source'),
+        utm_last_medium: safeHeaderValue(req, 'x-utm-last-medium'),
+        utm_last_campaign: safeHeaderValue(req, 'x-utm-last-campaign'),
+        click_id: safeHeaderValue(req, 'x-click-id'),
+        landing_path: safeHeaderValue(req, 'x-landing-path')
+    },
+    ...overrides
+});
+
+const ingestMetricsEvents = async (req, res, source) => {
+    try {
+        const { events } = req.body || {};
+        const result = await metricsPipeline.ingestEvents(events, buildMetricsContext(req, source));
+        if (result.reason === 'invalid_payload') {
+            return res.status(400).json({ error: 'Invalid events payload' });
+        }
+        return res.json({ success: true, ...result });
+    } catch (error) {
+        try {
             await db.query(
-                `INSERT INTO metric_events (bike_id, event_type, value, metadata, created_at) VALUES (?, ?, ?, ?, datetime('now'))`,
-                [e.bikeId, e.type, 1, metadata]
+                'INSERT INTO system_logs (level, source, message, stack) VALUES (?, ?, ?, ?)',
+                ['error', 'metrics_ingest', String(error.message || error), error.stack || '']
             );
-        }
-
-        // Update real-time metrics (simplified)
-        for (const e of events) {
-            // Upsert metrics
-            let col = '';
-            if (e.type === 'impression') col = 'impressions';
-            else if (e.type === 'click') col = 'detail_clicks';
-            else if (e.type === 'hover') col = 'hovers';
-            else if (e.type === 'gallery_swipe') col = 'gallery_swipes';
-            else if (e.type === 'favorite') col = 'favorites';
-            else if (e.type === 'cart_add') col = 'add_to_cart';
-            else if (e.type === 'share') col = 'shares';
-            else if (e.type === 'scroll_stop') col = 'scroll_stops';
-
-            if (col) {
-                // Check if row exists
-                const exists = await db.query('SELECT bike_id FROM bike_behavior_metrics WHERE bike_id = ?', [e.bikeId]);
-                if (exists.length === 0) {
-                    await db.query(`INSERT INTO bike_behavior_metrics (bike_id, ${col}) VALUES (?, 1)`, [e.bikeId]);
-                } else {
-                    await db.query(`UPDATE bike_behavior_metrics SET ${col} = ${col} + 1 WHERE bike_id = ?`, [e.bikeId]);
-                }
-            }
-        }
-
-        res.json({ success: true });
-    } catch (error) {
-        console.error('Analytics error:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        } catch { }
+        return res.status(500).json({ error: 'Internal server error' });
     }
-});
+};
 
-// Alias for frontend compatibility
-app.post('/api/behavior/events', async (req, res) => {
-    try {
-        const { events } = req.body;
-        if (!Array.isArray(events) || events.length === 0) return res.json({ success: true });
-
-        for (const e of events) {
-            let col = '';
-            let val = 1;
-
-            // Map event types to DB columns
-            if (e.type === 'view' || e.type === 'detail_open') col = 'detail_clicks';
-            else if (e.type === 'scroll' || e.type === 'gallery_swipe') col = 'gallery_swipes';
-            else if (e.type === 'dwell') { col = 'dwell_time_ms'; val = e.ms || 0; }
-            else if (e.type === 'favorite') col = 'favorites';
-            else if (e.type === 'cart_add') col = 'add_to_cart';
-            else if (e.type === 'share') col = 'shares';
-            else if (e.type === 'impression') col = 'impressions';
-
-            if (col) {
-                const exists = await db.query('SELECT bike_id FROM bike_behavior_metrics WHERE bike_id = ?', [e.bikeId]);
-                if (exists.length === 0) {
-                    await db.query(`INSERT INTO bike_behavior_metrics (bike_id, ${col}) VALUES (?, ?)`, [e.bikeId, val]);
-                } else {
-                    await db.query(`UPDATE bike_behavior_metrics SET ${col} = ${col} + ? WHERE bike_id = ?`, [val, e.bikeId]);
-                }
-            }
-
-            // Log raw event
-            await db.query('INSERT INTO metric_events (bike_id, event_type, value, metadata, created_at) VALUES (?, ?, ?, ?, datetime("now"))',
-                [e.bikeId, e.type, val, e.metadata ? JSON.stringify(e.metadata) : null]);
-        }
-        res.json({ success: true });
-    } catch (error) {
-        console.error('Behavior events error:', error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
+app.post('/api/analytics/events', async (req, res) => ingestMetricsEvents(req, res, 'legacy_analytics'));
+app.post('/api/behavior/events', async (req, res) => ingestMetricsEvents(req, res, 'frontend_behavior'));
 
 // Trigger Ranking Recalculation (Can be called by CRON or Admin)
 app.post('/api/admin/ranking/recalc', adminAuth, async (req, res) => {
@@ -1680,15 +1876,15 @@ app.post('/api/admin/generate-negotiation', adminAuth, async (req, res) => {
         const openers = [
             'noch da?',
             'ist das Rad noch zu haben?',
-            'würde das Bike gerne nehmen.',
-            'hätte Interesse.',
-            'schönes Bike!'
+            'wÃ¼rde das Bike gerne nehmen.',
+            'hÃ¤tte Interesse.',
+            'schÃ¶nes Bike!'
         ];
 
         const questions = [
             'Kannst mir noch Bild von der Seriennummer schicken?',
             'Gibt es Rechnung dazu?',
-            'Wann könnte ich es anschauen?',
+            'Wann kÃ¶nnte ich es anschauen?',
             'Wie ist der Zustand von der Kette?',
             'Letzte Preis?'
         ];
@@ -1703,7 +1899,7 @@ app.post('/api/admin/generate-negotiation', adminAuth, async (req, res) => {
         if (context === 'initial') {
             message = `${r(greetings)} ${r(openers)} ${r(questions)} ${r(closers)}`;
         } else if (context === 'offer') {
-            message = `${r(greetings)} würde dir ${Math.round(bike.price * 0.9)}€ anbieten. Komme heute noch vorbei. Deal? ${r(closers)}`;
+            message = `${r(greetings)} wÃ¼rde dir ${Math.round(bike.price * 0.9)}â‚¬ anbieten. Komme heute noch vorbei. Deal? ${r(closers)}`;
         } else {
             message = `${r(greetings)} ${r(openers)} ${r(closers)}`;
         }
@@ -1824,82 +2020,12 @@ app.post('/api/admin/audit/:id/resolve', adminAuth, async (req, res) => {
 // Personalized Recommendations
 app.post('/api/recommendations/personalized', optionalAuth, async (req, res) => {
     try {
-        const { profile } = req.body; // { disciplines: {}, brands: {}, priceSensitivity: { weightedAverage: ... } }
-        const limit = 12;
-
-        let query = `
-            SELECT 
-                bikes.*,
-                GROUP_CONCAT(DISTINCT COALESCE(bike_images.local_path, bike_images.image_url) ORDER BY bike_images.image_order) as images
-            FROM bikes 
-            LEFT JOIN bike_images ON bikes.id = bike_images.bike_id
-            WHERE bikes.is_active = TRUE
-        `;
-        const params = [];
-
-        // If we have profile data, build smart query
-        if (profile && profile.disciplines) {
-            const topDisciplines = Object.entries(profile.disciplines)
-                .sort(([, a], [, b]) => (Number(b) - Number(a)))
-                .slice(0, 2)
-                .map(([k]) => k);
-
-            if (topDisciplines.length > 0) {
-                // We construct a query that prioritizes these disciplines but doesn't exclude others completely
-                // We use CASE WHEN in ORDER BY
-                const placeholders = topDisciplines.map(() => '?').join(',');
-                // We filter loosely: Must be in top disciplines OR have high rank
-                // Actually, "Picked for you" should be specific.
-                // Let's filter by Discipline OR Brand
-
-                const topBrands = Object.entries(profile.brands || {})
-                    .sort(([, a], [, b]) => (Number(b) - Number(a)))
-                    .slice(0, 2)
-                    .map(([k]) => k);
-
-                let conditions = [];
-                // Discipline condition
-                if (topDisciplines.length > 0) {
-                    const dPlaceholders = topDisciplines.map(() => '?').join(',');
-                    conditions.push(`bikes.discipline IN (${dPlaceholders})`);
-                    params.push(...topDisciplines);
-                }
-
-                // Brand condition
-                if (topBrands.length > 0) {
-                    const bPlaceholders = topBrands.map(() => '?').join(',');
-                    conditions.push(`bikes.brand IN (${bPlaceholders})`);
-                    params.push(...topBrands);
-                }
-
-                if (conditions.length > 0) {
-                    query += ` AND (${conditions.join(' OR ')})`;
-                }
-
-                // Price targeting
-                if (profile.priceSensitivity && profile.priceSensitivity.weightedAverage > 0) {
-                    const target = profile.priceSensitivity.weightedAverage;
-                    const min = target * 0.6;
-                    const max = target * 1.4;
-                    query += ` AND bikes.price BETWEEN ? AND ?`;
-                    params.push(min, max);
-                }
-            }
-        }
-
-        query += ` GROUP BY bikes.id ORDER BY bikes.rank DESC LIMIT ?`;
-        params.push(limit);
-
-        const bikes = await db.query(query, params);
-
-        // Post-processing images
-        bikes.forEach(bike => {
-            bike.images = filterExistingImages(bike.images ? bike.images.split(',') : []);
-            bike.image = pickAvailableMainImage(bike.id, bike.main_image, bike.images);
-            bike.main_image = bike.image; // Ensure main_image reflects the valid picked image
+        const payload = req.body || {};
+        const result = await personalizationEngine.getPersonalizedRecommendations(payload, {
+            userId: req.user?.id || null,
+            sessionId: req.headers['x-session-id'] ? String(req.headers['x-session-id']) : null
         });
-
-        res.json({ success: true, bikes });
+        res.json(result);
     } catch (error) {
         console.error('Personalized recs error:', error);
         res.status(500).json({ error: 'Internal server error' });
@@ -1907,7 +2033,7 @@ app.post('/api/recommendations/personalized', optionalAuth, async (req, res) => 
 });
 
 // ========================================
-// 📊 MARKET ANALYSIS ROUTES
+// ðŸ“Š MARKET ANALYSIS ROUTES
 // ========================================
 
 // Get benchmarks (RF vs EU)
@@ -1932,12 +2058,12 @@ app.get('/api/market/benchmarks', async (req, res) => {
 app.get('/api/market/history/trends', async (req, res) => {
     try {
         const trends = [
-            { month: 'Янв', avg_price: 4200 },
-            { month: 'Фев', avg_price: 4150 },
-            { month: 'Мар', avg_price: 4300 },
-            { month: 'Апр', avg_price: 4250 },
-            { month: 'Май', avg_price: 4100 },
-            { month: 'Июн', avg_price: 4050 }
+            { month: 'Ð¯Ð½Ð²', avg_price: 4200 },
+            { month: 'Ð¤ÐµÐ²', avg_price: 4150 },
+            { month: 'ÐœÐ°Ñ€', avg_price: 4300 },
+            { month: 'ÐÐ¿Ñ€', avg_price: 4250 },
+            { month: 'ÐœÐ°Ð¹', avg_price: 4100 },
+            { month: 'Ð˜ÑŽÐ½', avg_price: 4050 }
         ];
         res.json(trends);
     } catch (error) {
@@ -2001,7 +2127,7 @@ app.get('/api/market/raw-data', async (req, res) => {
 });
 
 // ========================================
-// 🔐 AUTHENTICATION ROUTES - DUPLICATES REMOVED
+// ðŸ” AUTHENTICATION ROUTES - DUPLICATES REMOVED
 // ========================================
 // NOTE: /api/auth/register and /api/auth/login duplicates removed
 // Active routes are at lines ~244 and ~267
@@ -2235,7 +2361,7 @@ app.post('/api/auth/logout', authenticateToken, async (req, res) => {
 });
 
 // ========================================
-// 📱 TELEGRAM CLIENT BOT ROUTES
+// ðŸ“± TELEGRAM CLIENT BOT ROUTES
 // ========================================
 
 app.post('/api/tg/consume-link', async (req, res) => {
@@ -2359,29 +2485,292 @@ async function loadFavoriteBikeIdSet(userId, bikeIds) {
 }
 
 // ========================================
-// 🚲 BIKES ROUTES
+// ðŸš² BIKES ROUTES
 // ========================================
 
 // Category aliases for backwards compatibility with old data
 const CATEGORY_ALIASES = {
-    // Russian → normalized
-    'Горный': 'mtb', 'Горные велосипеды': 'mtb',
-    'Шоссейный': 'road', 'Шоссе': 'road',
-    'Гравийный': 'gravel', 'Гревел': 'gravel',
-    'Электро': 'emtb', 'Электровелосипеды': 'emtb', 'Электро-горный велосипед': 'emtb',
-    'Детский': 'kids', 'Детские': 'kids',
-    // English variants → normalized
+    // Russian â†’ normalized
+    'Ð“Ð¾Ñ€Ð½Ñ‹Ð¹': 'mtb', 'Ð“Ð¾Ñ€Ð½Ñ‹Ðµ Ð²ÐµÐ»Ð¾ÑÐ¸Ð¿ÐµÐ´Ñ‹': 'mtb',
+    'Ð¨Ð¾ÑÑÐµÐ¹Ð½Ñ‹Ð¹': 'road', 'Ð¨Ð¾ÑÑÐµ': 'road',
+    'Ð“Ñ€Ð°Ð²Ð¸Ð¹Ð½Ñ‹Ð¹': 'gravel', 'Ð“Ñ€ÐµÐ²ÐµÐ»': 'gravel',
+    'Ð­Ð»ÐµÐºÑ‚Ñ€Ð¾': 'emtb', 'Ð­Ð»ÐµÐºÑ‚Ñ€Ð¾Ð²ÐµÐ»Ð¾ÑÐ¸Ð¿ÐµÐ´Ñ‹': 'emtb', 'Ð­Ð»ÐµÐºÑ‚Ñ€Ð¾-Ð³Ð¾Ñ€Ð½Ñ‹Ð¹ Ð²ÐµÐ»Ð¾ÑÐ¸Ð¿ÐµÐ´': 'emtb',
+    'Ð”ÐµÑ‚ÑÐºÐ¸Ð¹': 'kids', 'Ð”ÐµÑ‚ÑÐºÐ¸Ðµ': 'kids',
+    // English variants â†’ normalized
     'Mountain': 'mtb', 'Mountain Bike': 'mtb', 'Mountainbike': 'mtb', 'Mountainbikes': 'mtb',
     'Road': 'road', 'Gravel': 'gravel',
     'E-Mountainbike': 'emtb', 'ebike': 'emtb', 'eBike': 'emtb', 'eMTB': 'emtb',
     'Kids': 'kids'
+    ,
+    // UTF-safe Russian aliases (unicode escapes to avoid encoding drift in source files)
+    '\u0413\u043e\u0440\u043d\u044b\u0439': 'mtb',
+    '\u0413\u043e\u0440\u043d\u044b\u0435 \u0432\u0435\u043b\u043e\u0441\u0438\u043f\u0435\u0434\u044b': 'mtb',
+    '\u0428\u043e\u0441\u0441\u0435': 'road',
+    '\u0428\u043e\u0441\u0441\u0435\u0439\u043d\u044b\u0439': 'road',
+    '\u0413\u0440\u0435\u0432\u0435\u043b': 'gravel',
+    '\u0413\u0440\u044d\u0432\u0435\u043b': 'gravel',
+    '\u0413\u0440\u0430\u0432\u0438\u0439\u043d\u044b\u0439': 'gravel',
+    '\u042d\u043b\u0435\u043a\u0442\u0440\u043e': 'emtb',
+    '\u042d\u043b\u0435\u043a\u0442\u0440\u043e\u0432\u0435\u043b\u043e\u0441\u0438\u043f\u0435\u0434\u044b': 'emtb',
+    '\u042d\u043b\u0435\u043a\u0442\u0440\u043e-\u0433\u043e\u0440\u043d\u044b\u0439 \u0432\u0435\u043b\u043e\u0441\u0438\u043f\u0435\u0434': 'emtb',
+    '\u0414\u0435\u0442\u0441\u043a\u0438\u0435': 'kids',
+    '\u0414\u0435\u0442\u0441\u043a\u0438\u0439': 'kids',
+    // Extra legacy English aliases seen in scraped rows
+    'E bike': 'emtb',
+    'E-Bike': 'emtb',
+    'E Bikes': 'emtb',
+    'Electric Bike': 'emtb',
+    'Electric Bikes': 'emtb',
+    // Common misclassified values in our DB (hunter sometimes writes subcategory into category)
+    'Trail': 'mtb',
+    'Enduro': 'mtb',
+    'Downhill': 'mtb',
+    'DH': 'mtb',
+    'Cross country': 'mtb',
+    'XC': 'mtb'
 };
 
 // Normalize category input using aliases
 function normalizeCategory(cat) {
     if (!cat) return null;
-    const normalized = CATEGORY_ALIASES[cat] || cat.toLowerCase();
-    return normalized;
+    const raw = String(cat).trim();
+    const direct = CATEGORY_ALIASES[raw];
+    if (direct) return direct;
+
+    const lower = raw.toLowerCase();
+    const lowerAlias = CATEGORY_ALIASES[lower];
+    if (lowerAlias) return lowerAlias;
+
+    for (const [alias, normalized] of Object.entries(CATEGORY_ALIASES || {})) {
+        if (String(alias).trim().toLowerCase() === lower) return String(normalized).toLowerCase();
+    }
+
+    return lower;
+}
+
+function parseListParam(value) {
+    if (value == null) return [];
+    const raw = Array.isArray(value) ? value : [value];
+    const out = [];
+    for (const v of raw) {
+        if (v == null) continue;
+        for (const part of String(v).split(',')) {
+            const s = String(part).trim();
+            if (s) out.push(s);
+        }
+    }
+    return out;
+}
+
+function toLowerTrimmedList(value) {
+    return parseListParam(value).map(v => String(v).trim().toLowerCase()).filter(Boolean);
+}
+
+function normalizeSizeToken(value) {
+    return String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/["']/g, '')
+        .replace(/\s+/g, '');
+}
+
+function normalizeWheelToken(value) {
+    return String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/["']/g, '')
+        .replace(/\s+/g, '')
+        .replace(',', '.')
+        .replace(/in$/i, '')
+        .replace(/Ð´ÑŽÐ¹Ð¼(Ð¾Ð²)?$/i, '');
+}
+
+function canonicalizeFrameMaterial(value) {
+    const v = String(value || '').trim().toLowerCase();
+    if (!v) return '';
+    if (v === 'aluminium') return 'aluminum';
+    if (v === 'alu') return 'aluminum';
+    if (v === 'unknown') return 'unknown';
+    return v;
+}
+
+function getCategoryDbVariants(normalizedCategory) {
+    const norm = String(normalizedCategory || '').trim().toLowerCase();
+    if (!norm) return [];
+    const variants = new Set([norm, norm.toUpperCase()]);
+    for (const [k, v] of Object.entries(CATEGORY_ALIASES || {})) {
+        if (String(v || '').toLowerCase() === norm) variants.add(String(k));
+    }
+    return Array.from(variants);
+}
+
+function buildCatalogWhereAndParams(query) {
+    const whereConditions = ['bikes.is_active = TRUE'];
+    const params = [];
+
+    const category = query?.category;
+    const minPrice = query?.minPrice;
+    const maxPrice = query?.maxPrice;
+    const status = query?.status;
+    const hot = query?.hot;
+    const discipline = query?.discipline;
+    const sub_category = query?.sub_category;
+
+    // Category filter with normalization + DB variants for legacy rows.
+    if (category) {
+        const normalizedCategory = normalizeCategory(category);
+        const variants = getCategoryDbVariants(normalizedCategory);
+        if (variants.length > 0) {
+            const placeholders = variants.map(() => '?').join(', ');
+            whereConditions.push(`(LOWER(bikes.category) = ? OR bikes.category IN (${placeholders}))`);
+            params.push(String(normalizedCategory).toLowerCase(), ...variants);
+        } else {
+            whereConditions.push('LOWER(bikes.category) = ?');
+            params.push(String(normalizedCategory).toLowerCase());
+        }
+    }
+
+    // Brand filter (single/multi), case-insensitive.
+    const brands = toLowerTrimmedList(query?.brand ?? query?.brands);
+    if (brands.length > 0) {
+        const placeholders = brands.map(() => '?').join(', ');
+        whereConditions.push(`LOWER(bikes.brand) IN (${placeholders})`);
+        params.push(...brands);
+    }
+
+    // Price range.
+    if (minPrice != null && String(minPrice).trim() !== '') {
+        whereConditions.push('bikes.price >= ?');
+        params.push(parseFloat(minPrice));
+    }
+    if (maxPrice != null && String(maxPrice).trim() !== '') {
+        whereConditions.push('bikes.price <= ?');
+        params.push(parseFloat(maxPrice));
+    }
+
+    // Hot offers.
+    if (hot === 'true') {
+        whereConditions.push('(bikes.is_hot = 1 OR bikes.is_hot_offer = 1)');
+    }
+
+    // Search query (support `search` and `q`).
+    const q = typeof query?.search === 'string' ? query.search : (typeof query?.q === 'string' ? query.q : null);
+    if (q) {
+        whereConditions.push('(bikes.name LIKE ? OR bikes.brand LIKE ? OR bikes.model LIKE ? OR bikes.description LIKE ?)');
+        const s = `%${q}%`;
+        params.push(s, s, s, s);
+    }
+
+    // Condition filter (new/used).
+    if (typeof status === 'string') {
+        if (status === 'new') whereConditions.push('bikes.is_new = 1');
+        else if (status === 'used') whereConditions.push('bikes.is_new = 0');
+    }
+
+    // Sub-category filter with fallback chain.
+    if (sub_category) {
+        const subCats = toLowerTrimmedList(sub_category);
+        if (subCats.length > 0) {
+            const placeholders = subCats.map(() => '?').join(', ');
+            whereConditions.push(`(LOWER(bikes.sub_category) IN (${placeholders}) OR LOWER(bikes.discipline) IN (${placeholders}))`);
+            params.push(...subCats, ...subCats);
+        }
+    }
+
+    // Discipline filter (legacy support). Only if no sub_category filter.
+    if (discipline && !sub_category) {
+        const ds = toLowerTrimmedList(discipline);
+        if (ds.length > 0) {
+            const placeholders = ds.map(() => '?').join(', ');
+            whereConditions.push(`LOWER(bikes.discipline) IN (${placeholders})`);
+            params.push(...ds);
+        }
+    }
+
+    // Size filter (supports bikes.size + bikes.frame_size), case-insensitive.
+    const sizes = parseListParam(query?.size ?? query?.sizes).map(normalizeSizeToken).filter(Boolean);
+    if (sizes.length > 0) {
+        const placeholders = sizes.map(() => '?').join(', ');
+        // Normalize DB values by stripping spaces/quotes for better matching (e.g. "45CM" vs "45 cm").
+        whereConditions.push(`(LOWER(REPLACE(REPLACE(TRIM(COALESCE(bikes.size, '')), ' ', ''), '\"', '')) IN (${placeholders}) OR LOWER(REPLACE(REPLACE(TRIM(COALESCE(bikes.frame_size, '')), ' ', ''), '\"', '')) IN (${placeholders}))`);
+        params.push(...sizes, ...sizes);
+    }
+
+    // Wheel filter (supports bikes.wheel_diameter + bikes.wheel_size), case-insensitive.
+    const wheels = parseListParam(query?.wheel ?? query?.wheels).map(normalizeWheelToken).filter(Boolean);
+    if (wheels.length > 0) {
+        const placeholders = wheels.map(() => '?').join(', ');
+        whereConditions.push(`(LOWER(REPLACE(REPLACE(TRIM(COALESCE(bikes.wheel_diameter, '')), ' ', ''), '\"', '')) IN (${placeholders}) OR LOWER(REPLACE(REPLACE(TRIM(COALESCE(bikes.wheel_size, '')), ' ', ''), '\"', '')) IN (${placeholders}))`);
+        params.push(...wheels, ...wheels);
+    }
+
+    // Year range.
+    const yearMinRaw = query?.yearMin ?? query?.minYear ?? query?.year_from;
+    const yearMaxRaw = query?.yearMax ?? query?.maxYear ?? query?.year_to;
+    const yearMin = yearMinRaw != null && String(yearMinRaw).trim() !== '' ? parseInt(yearMinRaw, 10) : null;
+    const yearMax = yearMaxRaw != null && String(yearMaxRaw).trim() !== '' ? parseInt(yearMaxRaw, 10) : null;
+    if (Number.isFinite(yearMin)) {
+        whereConditions.push('bikes.year >= ?');
+        params.push(yearMin);
+    }
+    if (Number.isFinite(yearMax)) {
+        whereConditions.push('bikes.year <= ?');
+        params.push(yearMax);
+    }
+
+    // Additional filters (case-insensitive multi-select).
+    const frameMaterials = parseListParam(query?.frame_material ?? query?.frameMaterials).map(canonicalizeFrameMaterial).filter(Boolean);
+    if (frameMaterials.length > 0) {
+        const placeholders = frameMaterials.map(() => '?').join(', ');
+        whereConditions.push(`LOWER(COALESCE(bikes.frame_material, '')) IN (${placeholders})`);
+        params.push(...frameMaterials);
+    }
+
+    const brakesTypes = toLowerTrimmedList(query?.brakes_type ?? query?.brakesTypes);
+    if (brakesTypes.length > 0) {
+        const wantsDisc = brakesTypes.includes('disc');
+        const wantsRim = brakesTypes.includes('rim');
+        const exact = brakesTypes.filter(t => t !== 'disc' && t !== 'rim');
+        const parts = [];
+        if (wantsDisc) parts.push(`LOWER(COALESCE(bikes.brakes_type, '')) LIKE '%disc%'`);
+        if (wantsRim) parts.push(`LOWER(COALESCE(bikes.brakes_type, '')) LIKE '%rim%'`);
+        if (exact.length > 0) {
+            const placeholders = exact.map(() => '?').join(', ');
+            parts.push(`LOWER(COALESCE(bikes.brakes_type, '')) IN (${placeholders})`);
+            params.push(...exact);
+        }
+        if (parts.length > 0) whereConditions.push(`(${parts.join(' OR ')})`);
+    }
+
+    const shiftingTypes = toLowerTrimmedList(query?.shifting_type ?? query?.shiftingTypes);
+    if (shiftingTypes.length > 0) {
+        const placeholders = shiftingTypes.map(() => '?').join(', ');
+        whereConditions.push(`LOWER(COALESCE(bikes.shifting_type, '')) IN (${placeholders})`);
+        params.push(...shiftingTypes);
+    }
+
+    const sellerTypes = toLowerTrimmedList(query?.seller_type ?? query?.sellerTypes);
+    if (sellerTypes.length > 0) {
+        const placeholders = sellerTypes.map(() => '?').join(', ');
+        whereConditions.push(`LOWER(COALESCE(bikes.seller_type, '')) IN (${placeholders})`);
+        params.push(...sellerTypes);
+    }
+
+    const shippingOptions = toLowerTrimmedList(query?.shipping_option ?? query?.shippingOptions ?? query?.shipping);
+    if (shippingOptions.length > 0) {
+        const placeholders = shippingOptions.map(() => '?').join(', ');
+        whereConditions.push(`LOWER(COALESCE(bikes.shipping_option, '')) IN (${placeholders})`);
+        params.push(...shippingOptions);
+    }
+
+    const deliveryOptions = toLowerTrimmedList(query?.delivery_option ?? query?.deliveryOptions);
+    if (deliveryOptions.length > 0) {
+        const placeholders = deliveryOptions.map(() => '?').join(', ');
+        whereConditions.push(`LOWER(COALESCE(bikes.delivery_option, '')) IN (${placeholders})`);
+        params.push(...deliveryOptions);
+    }
+
+    return { whereClause: whereConditions.join(' AND '), whereConditions, params };
 }
 
 // Get all bikes with filters
@@ -2531,7 +2920,7 @@ app.get('/api/bikes', optionalAuth, async (req, res) => {
             console.error('Get bikes error:', error);
             // Fallback for rare SQLITE_CORRUPT on complex GROUP_CONCAT query
             if (error && (error.code === 'SQLITE_CORRUPT' || /database disk image is malformed/i.test(error.message || ''))) {
-                console.warn('⚠️ Falling back to simplified bikes query without image/favorites joins due to SQLITE_CORRUPT');
+                console.warn('âš ï¸ Falling back to simplified bikes query without image/favorites joins due to SQLITE_CORRUPT');
                 const fallbackQuery = `
                     SELECT 
                         bikes.*
@@ -2681,7 +3070,6 @@ app.get('/api/catalog/bikes', optionalAuth, async (req, res) => {
     try {
         const {
             category,
-            brand,
             minPrice,
             maxPrice,
             search,
@@ -2697,14 +3085,18 @@ app.get('/api/catalog/bikes', optionalAuth, async (req, res) => {
         // Extract profile data from query if present
         // Format: profile_disciplines=Enduro,Trail&profile_brands=Specialized,Canyon
         const { profile_disciplines, profile_brands } = req.query;
-        const userDisciplines = profile_disciplines ? (Array.isArray(profile_disciplines) ? profile_disciplines : String(profile_disciplines).split(',')) : [];
-        const userBrands = profile_brands ? (Array.isArray(profile_brands) ? profile_brands : String(profile_brands).split(',')) : [];
+        const userDisciplines = toLowerTrimmedList(profile_disciplines);
+        const userBrands = toLowerTrimmedList(profile_brands);
 
         const sortBy = (function () {
             if (sort === 'rank') return 'ranking_score';  // Use ranking_score for proper sorting
             if (sort === 'price') return 'price';
             if (sort === 'new') return 'is_new';
             if (sort === 'recent') return 'created_at';
+            if (sort === 'year') return 'year';
+            if (sort === 'hotness') return 'hotness_score';
+            if (sort === 'views') return 'views_count';
+            if (sort === 'discount') return '__discount';
             return 'ranking_score';
         })();
 
@@ -2714,50 +3106,14 @@ app.get('/api/catalog/bikes', optionalAuth, async (req, res) => {
             ? String(sortOrder).toUpperCase()
             : 'DESC';
 
-        let whereConditions = ['bikes.is_active = TRUE'];
-        let queryParams = [];
+        // Build WHERE clause (all filters, including multi-select).
+        const { whereClause, whereConditions, params: whereParams } = buildCatalogWhereAndParams({
+            ...req.query,
+            // keep backwards-compatible: allow `search` already; `q` is handled in helper.
+            search: typeof search === 'string' ? search : req.query?.q
+        });
 
-        // Category filter with normalization
-        if (category) {
-            const normalizedCategory = normalizeCategory(category);
-            whereConditions.push('bikes.category = ?');
-            queryParams.push(normalizedCategory);
-        }
-        if (brand) { whereConditions.push('bikes.brand = ?'); queryParams.push(brand); }
-        if (minPrice) { whereConditions.push('bikes.price >= ?'); queryParams.push(parseFloat(minPrice)); }
-        if (hot === 'true') { whereConditions.push('(bikes.is_hot = 1 OR bikes.is_hot_offer = 1)'); }
-        if (maxPrice) { whereConditions.push('bikes.price <= ?'); queryParams.push(parseFloat(maxPrice)); }
-        if (search) {
-            whereConditions.push('(bikes.name LIKE ? OR bikes.brand LIKE ? OR bikes.model LIKE ? OR bikes.description LIKE ?)');
-            const s = `%${search}%`; queryParams.push(s, s, s, s);
-        }
-        if (typeof status === 'string') {
-            if (status === 'new') { whereConditions.push('bikes.is_new = 1'); }
-            else if (status === 'used') { whereConditions.push('bikes.is_new = 0'); }
-        }
-
-        // Sub-category filter with fallback chain
-        const sub_category = req.query.sub_category;
-        if (sub_category) {
-            const subCats = Array.isArray(sub_category) ? sub_category : [sub_category];
-            const placeholders = subCats.map(() => '?').join(', ');
-            whereConditions.push(`(bikes.sub_category IN (${placeholders}) OR bikes.discipline IN (${placeholders}))`);
-            queryParams.push(...subCats, ...subCats);
-        }
-
-        // Discipline filter (legacy support)
-        if (discipline && !sub_category) {
-            if (Array.isArray(discipline)) {
-                const placeholders = discipline.map(() => '?').join(', ');
-                whereConditions.push(`bikes.discipline IN (${placeholders})`);
-                queryParams.push(...discipline);
-            } else {
-                whereConditions.push('bikes.discipline = ?');
-                queryParams.push(discipline);
-            }
-        }
-
-        const whereClause = whereConditions.join(' AND ');
+        const queryParams = [...whereParams];
 
         // Construct Order Clause
         // Use ranking_score with tiebreaker by created_at
@@ -2775,13 +3131,13 @@ app.get('/api/catalog/bikes', optionalAuth, async (req, res) => {
 
                 if (userDisciplines.length > 0) {
                     const dPlaceholders = userDisciplines.map(() => '?').join(',');
-                    boostParts.push(`CASE WHEN bikes.discipline IN (${dPlaceholders}) THEN 0.15 ELSE 0 END`);
+                    boostParts.push(`CASE WHEN LOWER(bikes.discipline) IN (${dPlaceholders}) THEN 0.15 ELSE 0 END`);
                     boostParams.push(...userDisciplines);
                 }
 
                 if (userBrands.length > 0) {
                     const bPlaceholders = userBrands.map(() => '?').join(',');
-                    boostParts.push(`CASE WHEN bikes.brand IN (${bPlaceholders}) THEN 0.05 ELSE 0 END`);
+                    boostParts.push(`CASE WHEN LOWER(bikes.brand) IN (${bPlaceholders}) THEN 0.05 ELSE 0 END`);
                     boostParams.push(...userBrands);
                 }
 
@@ -2792,6 +3148,9 @@ app.get('/api/catalog/bikes', optionalAuth, async (req, res) => {
             }
         } else if (sortBy === 'price') {
             orderClause = `bikes.price ${validatedSortOrder}, bikes.ranking_score DESC`;
+        } else if (sortBy === '__discount') {
+            // Discount = original_price - price. Sort direction controlled by sortOrder.
+            orderClause = `(COALESCE(bikes.original_price, 0) - COALESCE(bikes.price, 0)) ${validatedSortOrder}, bikes.ranking_score DESC`;
         } else {
             orderClause = `bikes.${sortBy} ${validatedSortOrder}, bikes.ranking_score DESC`;
         }
@@ -2825,21 +3184,21 @@ app.get('/api/catalog/bikes', optionalAuth, async (req, res) => {
             const specs = specsById.get(bike.id) || [];
             bike.specs = specs;
             if (!bike.year || bike.year === 0) {
-                const ySpec = specs.find(s => (s.label || '').toLowerCase() === 'год выпуска');
+                const ySpec = specs.find(s => (s.label || '').toLowerCase() === 'Ð³Ð¾Ð´ Ð²Ñ‹Ð¿ÑƒÑÐºÐ°');
                 const yVal = ySpec && ySpec.value ? String(ySpec.value) : '';
                 const yMatch = yVal.match(/(19\d{2}|20\d{2})/);
                 if (yMatch) bike.year = parseInt(yMatch[1], 10);
             }
             if (!bike.size || String(bike.size).trim() === '') {
-                const sSpec = specs.find(s => (s.label || '').toLowerCase() === 'размер рамы');
+                const sSpec = specs.find(s => (s.label || '').toLowerCase() === 'Ñ€Ð°Ð·Ð¼ÐµÑ€ Ñ€Ð°Ð¼Ñ‹');
                 const sVal = sSpec && sSpec.value ? String(sSpec.value).trim() : '';
-                if (sVal && sVal.toLowerCase() !== 'не указан') bike.size = sVal;
+                if (sVal && sVal.toLowerCase() !== 'Ð½Ðµ ÑƒÐºÐ°Ð·Ð°Ð½') bike.size = sVal;
             }
             if (!bike.wheel_diameter || String(bike.wheel_diameter).trim() === '') {
                 const wdVals = specs
-                    .filter(s => (s.label || '').toLowerCase() === 'диаметр колес')
+                    .filter(s => (s.label || '').toLowerCase() === 'Ð´Ð¸Ð°Ð¼ÐµÑ‚Ñ€ ÐºÐ¾Ð»ÐµÑ')
                     .map(s => s.value)
-                    .filter(v => v && String(v).trim() !== '' && String(v).toLowerCase() !== 'не указан');
+                    .filter(v => v && String(v).trim() !== '' && String(v).toLowerCase() !== 'Ð½Ðµ ÑƒÐºÐ°Ð·Ð°Ð½');
                 if (wdVals.length > 0) bike.wheel_diameter = String(wdVals[0]).trim();
             }
             bike.images = filterExistingImages(bike.images ? bike.images.split(',') : []);
@@ -2854,12 +3213,7 @@ app.get('/api/catalog/bikes', optionalAuth, async (req, res) => {
         }
 
         const countQuery = `SELECT COUNT(*) as total FROM bikes WHERE ${whereClause}`;
-        // Count query uses only the first part of params (WHERE clause)
-        // The queryParams array has [WHERE_PARAMS..., BOOST_PARAMS..., LIMIT, OFFSET]
-        // We need to slice only the WHERE_PARAMS.
-        const numWhereParams = whereConditions.reduce((acc, cond) => acc + (cond.match(/\?/g) || []).length, 0);
-        const countParams = queryParams.slice(0, numWhereParams);
-        const [countResult] = await db.query(countQuery, countParams);
+        const [countResult] = await db.query(countQuery, whereParams);
         const total = Number(countResult?.total ?? bikes.length);
 
         // Map to Unified Format
@@ -2892,6 +3246,165 @@ app.get('/api/catalog/bikes', optionalAuth, async (req, res) => {
     }
 });
 
+// Catalog facets for building filter UI (brands/sizes/wheels/material/etc.)
+app.get('/api/catalog/facets', optionalAuth, async (req, res) => {
+    try {
+        const { whereClause, params: whereParams } = buildCatalogWhereAndParams(req.query || {});
+
+        const dedupBy = (arr, keyFn) => {
+            const m = new Map();
+            for (const v of arr) {
+                const k = String(keyFn(v) ?? '').toLowerCase();
+                if (!k) continue;
+                if (!m.has(k)) m.set(k, v);
+            }
+            return Array.from(m.values());
+        };
+
+        const normalizeSizeForFacet = (v) => {
+            const t = normalizeSizeToken(v);
+            if (!t) return '';
+            const m = t.match(/^(\d{2})cm$/);
+            if (m) return `${m[1]} cm`;
+            if (/^[a-z]{1,4}$/i.test(t)) return t.toUpperCase();
+            return String(v).trim();
+        };
+
+        const normalizeWheelForFacet = (v) => {
+            const t = normalizeWheelToken(v);
+            if (!t) return '';
+            if (t === '700c' || t === '650b') return t;
+            const m = t.match(/^(27\.5|29|26|28|24|20)$/);
+            if (m) return m[1];
+            return String(v).trim();
+        };
+
+        const normalizeBrakesForFacet = (v) => {
+            const t = String(v || '').trim().toLowerCase();
+            if (!t) return '';
+            if (t.includes('disc')) return 'disc';
+            if (t.includes('rim')) return 'rim';
+            return t;
+        };
+
+        const distinctList = async (sql, params) => {
+            const rows = await db.query(sql, params);
+            const byLower = new Map();
+            for (const r of rows || []) {
+                const v = r?.v;
+                if (v == null) continue;
+                const s = String(v).trim();
+                if (!s) continue;
+                const key = s.toLowerCase();
+                if (!byLower.has(key)) byLower.set(key, s);
+            }
+            return Array.from(byLower.values());
+        };
+
+        const brands = await distinctList(
+            `SELECT DISTINCT brand as v FROM bikes WHERE ${whereClause} AND brand IS NOT NULL AND TRIM(brand) != '' ORDER BY brand LIMIT 200`,
+            whereParams
+        );
+
+        const subCategories = await distinctList(
+            `SELECT DISTINCT sub_category as v FROM bikes WHERE ${whereClause} AND sub_category IS NOT NULL AND TRIM(sub_category) != '' ORDER BY sub_category LIMIT 200`,
+            whereParams
+        );
+
+        const sizesRaw = await distinctList(
+            `SELECT DISTINCT size as v FROM bikes WHERE ${whereClause} AND size IS NOT NULL AND TRIM(size) != '' ORDER BY size LIMIT 200`,
+            whereParams
+        );
+        const frameSizesRaw = await distinctList(
+            `SELECT DISTINCT frame_size as v FROM bikes WHERE ${whereClause} AND frame_size IS NOT NULL AND TRIM(frame_size) != '' ORDER BY frame_size LIMIT 200`,
+            whereParams
+        );
+        const sizes = dedupBy(
+            [...sizesRaw, ...frameSizesRaw].map(normalizeSizeForFacet).filter(Boolean),
+            (x) => normalizeSizeToken(x)
+        );
+
+        const wheelsRaw = await distinctList(
+            `SELECT DISTINCT wheel_diameter as v FROM bikes WHERE ${whereClause} AND wheel_diameter IS NOT NULL AND TRIM(wheel_diameter) != '' ORDER BY wheel_diameter LIMIT 200`,
+            whereParams
+        );
+        const wheelSizesRaw = await distinctList(
+            `SELECT DISTINCT wheel_size as v FROM bikes WHERE ${whereClause} AND wheel_size IS NOT NULL AND TRIM(wheel_size) != '' ORDER BY wheel_size LIMIT 200`,
+            whereParams
+        );
+        const wheels = dedupBy(
+            [...wheelsRaw, ...wheelSizesRaw].map(normalizeWheelForFacet).filter(Boolean),
+            (x) => normalizeWheelToken(x)
+        );
+
+        const frameMaterialsRaw = await distinctList(
+            `SELECT DISTINCT frame_material as v FROM bikes WHERE ${whereClause} AND frame_material IS NOT NULL AND TRIM(frame_material) != '' ORDER BY frame_material LIMIT 200`,
+            whereParams
+        );
+        const frameMaterials = dedupBy(
+            frameMaterialsRaw.map(canonicalizeFrameMaterial).filter(Boolean),
+            (x) => canonicalizeFrameMaterial(x)
+        );
+
+        const brakesTypesRaw = await distinctList(
+            `SELECT DISTINCT brakes_type as v FROM bikes WHERE ${whereClause} AND brakes_type IS NOT NULL AND TRIM(brakes_type) != '' ORDER BY brakes_type LIMIT 200`,
+            whereParams
+        );
+        const brakesTypes = dedupBy(
+            brakesTypesRaw.map(normalizeBrakesForFacet).filter(Boolean),
+            (x) => x
+        );
+
+        const shiftingTypes = await distinctList(
+            `SELECT DISTINCT shifting_type as v FROM bikes WHERE ${whereClause} AND shifting_type IS NOT NULL AND TRIM(shifting_type) != '' ORDER BY shifting_type LIMIT 200`,
+            whereParams
+        );
+
+        const sellerTypes = await distinctList(
+            `SELECT DISTINCT seller_type as v FROM bikes WHERE ${whereClause} AND seller_type IS NOT NULL AND TRIM(seller_type) != '' ORDER BY seller_type LIMIT 200`,
+            whereParams
+        );
+
+        const shippingOptions = await distinctList(
+            `SELECT DISTINCT shipping_option as v FROM bikes WHERE ${whereClause} AND shipping_option IS NOT NULL AND TRIM(shipping_option) != '' ORDER BY shipping_option LIMIT 200`,
+            whereParams
+        );
+
+        const deliveryOptions = await distinctList(
+            `SELECT DISTINCT delivery_option as v FROM bikes WHERE ${whereClause} AND delivery_option IS NOT NULL AND TRIM(delivery_option) != '' ORDER BY delivery_option LIMIT 200`,
+            whereParams
+        );
+
+        const yearRow = (await db.query(
+            `SELECT MIN(year) as min_year, MAX(year) as max_year FROM bikes WHERE ${whereClause} AND year IS NOT NULL AND year != 0`,
+            whereParams
+        ))?.[0] || null;
+
+        res.json({
+            success: true,
+            facets: {
+                brands,
+                sub_categories: subCategories,
+                sizes,
+                wheels,
+                frame_materials: frameMaterials,
+                brakes_types: brakesTypes,
+                shifting_types: shiftingTypes,
+                seller_types: sellerTypes,
+                shipping_options: shippingOptions,
+                delivery_options: deliveryOptions,
+                years: {
+                    min: yearRow && yearRow.min_year != null ? Number(yearRow.min_year) : null,
+                    max: yearRow && yearRow.max_year != null ? Number(yearRow.max_year) : null
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Get catalog facets error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // Chat Message Endpoint
 app.post('/api/chat/message', async (req, res) => {
     try {
@@ -2903,13 +3416,13 @@ app.post('/api/chat/message', async (req, res) => {
         if (!text) return res.status(400).json({ error: 'Message text required' });
         if (!sessionId) return res.status(400).json({ error: 'sessionId required' });
 
-        console.log(`💬 Chat request from ${sessionId}: "${text}"`);
+        console.log(`ðŸ’¬ Chat request from ${sessionId}: "${text}"`);
 
         const result = await aiDispatcher.handleUserMessage(sessionId, text);
 
         const ms = Date.now() - startedAt;
         const preview = (result?.text || '').slice(0, 120);
-        console.log(`🤖 Chat response for ${sessionId} (${ms}ms): "${preview}${(result?.text || '').length > 120 ? '…' : ''}"`);
+        console.log(`ðŸ¤– Chat response for ${sessionId} (${ms}ms): "${preview}${(result?.text || '').length > 120 ? 'â€¦' : ''}"`);
 
         res.json({ text: result.text, options: result.options, sentiment: result.sentiment });
     } catch (error) {
@@ -2969,8 +3482,8 @@ app.post('/api/admin/chats/:userId/reply', adminAuth, async (req, res) => {
     }
 });
 
-// Personalized recommendations
-app.post('/api/recommendations/personalized', optionalAuth, async (req, res) => {
+// Legacy personalized recommendations (kept for debugging only)
+app.post('/api/recommendations/personalized-legacy', optionalAuth, async (req, res) => {
     try {
         const { limit = 60, offset = 0, profile } = req.body;
 
@@ -3053,21 +3566,21 @@ app.post('/api/recommendations/personalized', optionalAuth, async (req, res) => 
             bike.specs = specs;
             // Basic spec mapping for convenience
             if (!bike.year || bike.year === 0) {
-                const ySpec = specs.find(s => (s.label || '').toLowerCase() === 'год выпуска');
+                const ySpec = specs.find(s => (s.label || '').toLowerCase() === 'Ð³Ð¾Ð´ Ð²Ñ‹Ð¿ÑƒÑÐºÐ°');
                 const yVal = ySpec && ySpec.value ? String(ySpec.value) : '';
                 const yMatch = yVal.match(/(19\d{2}|20\d{2})/);
                 if (yMatch) bike.year = parseInt(yMatch[1], 10);
             }
             if (!bike.size || String(bike.size).trim() === '') {
-                const sSpec = specs.find(s => (s.label || '').toLowerCase() === 'размер рамы');
+                const sSpec = specs.find(s => (s.label || '').toLowerCase() === 'Ñ€Ð°Ð·Ð¼ÐµÑ€ Ñ€Ð°Ð¼Ñ‹');
                 const sVal = sSpec && sSpec.value ? String(sSpec.value).trim() : '';
-                if (sVal && sVal.toLowerCase() !== 'не указан') bike.size = sVal;
+                if (sVal && sVal.toLowerCase() !== 'Ð½Ðµ ÑƒÐºÐ°Ð·Ð°Ð½') bike.size = sVal;
             }
             if (!bike.wheel_diameter || String(bike.wheel_diameter).trim() === '') {
                 const wdVals = specs
-                    .filter(s => (s.label || '').toLowerCase() === 'диаметр колес')
+                    .filter(s => (s.label || '').toLowerCase() === 'Ð´Ð¸Ð°Ð¼ÐµÑ‚Ñ€ ÐºÐ¾Ð»ÐµÑ')
                     .map(s => s.value)
-                    .filter(v => v && String(v).trim() !== '' && String(v).toLowerCase() !== 'не указан');
+                    .filter(v => v && String(v).trim() !== '' && String(v).toLowerCase() !== 'Ð½Ðµ ÑƒÐºÐ°Ð·Ð°Ð½');
                 if (wdVals.length > 0) bike.wheel_diameter = String(wdVals[0]).trim();
             }
 
@@ -3121,7 +3634,7 @@ app.get('/api/metrics/bikes/:id', async (req, res) => {
 });
 
 
-// Гостевой эндпоинт CRM: создание заявки (Lead)
+// Ð“Ð¾ÑÑ‚ÐµÐ²Ð¾Ð¹ ÑÐ½Ð´Ð¿Ð¾Ð¸Ð½Ñ‚ CRM: ÑÐ¾Ð·Ð´Ð°Ð½Ð¸Ðµ Ð·Ð°ÑÐ²ÐºÐ¸ (Lead)
 app.post('/api/v1/crm/applications', optionalAuth, async (req, res) => {
     try {
         const { name, contact_method, contact_value, notes, bike_url, budget } = req.body || {};
@@ -3139,6 +3652,23 @@ app.post('/api/v1/crm/applications', optionalAuth, async (req, res) => {
         const created = Array.isArray(result) ? result[0] : result;
         const lead_id = created?.id || payload.id;
 
+        try {
+            await metricsPipeline.ingestEvents(
+                [{
+                    type: 'lead_created',
+                    metadata: {
+                        crm_lead_id: lead_id || null,
+                        contact_method: payload.contact_method || null
+                    }
+                }],
+                buildMetricsContext(req, 'crm_application', {
+                    crmLeadId: lead_id ? String(lead_id) : null,
+                    customerEmail: payload.contact_method === 'email' ? payload.contact_value : null,
+                    customerPhone: payload.contact_method === 'phone' ? payload.contact_value : null
+                })
+            );
+        } catch { }
+
         const tracking_url = `${PUBLIC_URL}/order-tracking/${lead_id}`;
         return res.json({ success: true, lead_id, tracking_url });
     } catch (error) {
@@ -3150,15 +3680,91 @@ app.post('/api/v1/crm/applications', optionalAuth, async (req, res) => {
 // [MODIFIED] Robust Quick Order Endpoint
 app.post('/api/v1/crm/orders/quick', optionalAuth, async (req, res) => {
     try {
-        console.log('🚀 CRM: Quick Order Request:', req.body);
+        console.log('ðŸš€ CRM: Quick Order Request:', req.body);
+        const metricSessionId = req.headers['x-session-id'] ? String(req.headers['x-session-id']) : null;
+        const metricUserId = req.user?.id || null;
+        const metricReferrer = req.headers.referer ? String(req.headers.referer) : null;
+        const metricSourcePath = req.headers['x-source-path'] ? String(req.headers['x-source-path']) : '/checkout';
+        const metricAttribution = {
+            utm_source: safeHeaderValue(req, 'x-utm-source'),
+            utm_medium: safeHeaderValue(req, 'x-utm-medium'),
+            utm_campaign: safeHeaderValue(req, 'x-utm-campaign'),
+            utm_last_source: safeHeaderValue(req, 'x-utm-last-source'),
+            utm_last_medium: safeHeaderValue(req, 'x-utm-last-medium'),
+            utm_last_campaign: safeHeaderValue(req, 'x-utm-last-campaign'),
+            click_id: safeHeaderValue(req, 'x-click-id'),
+            landing_path: safeHeaderValue(req, 'x-landing-path')
+        };
+        const bikeId = req.body.items?.[0]?.bike_id ? Number(req.body.items?.[0]?.bike_id) : null;
+        const rawCustomerEmail = req.body?.customer?.email || req.body?.customer?.contact_value || null;
+        const rawCustomerPhone = req.body?.customer?.phone || req.body?.phone || null;
+        const crmLeadId = req.body?.lead_id || req.body?.leadId || null;
+
+        try {
+            await metricsPipeline.ingestEvents(
+                [{
+                    type: 'booking_start',
+                    bikeId,
+                    metadata: {
+                        source: 'crm_orders_quick',
+                        attribution: metricAttribution,
+                        crm_lead_id: crmLeadId || null
+                    }
+                }],
+                buildMetricsContext(req, 'crm_orders_quick', {
+                    sessionId: metricSessionId,
+                    userId: metricUserId,
+                    referrer: metricReferrer,
+                    sourcePath: metricSourcePath,
+                    crmLeadId: crmLeadId ? String(crmLeadId) : null,
+                    customerEmail: rawCustomerEmail,
+                    customerPhone: rawCustomerPhone
+                })
+            );
+        } catch { }
 
         // 1. Create Order in CRM (Primary System)
         const result = await crmApi.createQuickOrder(req.body);
 
+        try {
+            await metricsPipeline.ingestEvents(
+                [
+                    {
+                        type: 'booking_success',
+                        bikeId,
+                        metadata: {
+                            source: 'crm_orders_quick',
+                            order_id: result?.order_id || null,
+                            attribution: metricAttribution,
+                            crm_lead_id: crmLeadId || null
+                        }
+                    },
+                    {
+                        type: 'order',
+                        bikeId,
+                        metadata: {
+                            source: 'crm_orders_quick',
+                            order_id: result?.order_id || null,
+                            attribution: metricAttribution,
+                            crm_lead_id: crmLeadId || null
+                        }
+                    }
+                ],
+                buildMetricsContext(req, 'crm_orders_quick', {
+                    sessionId: metricSessionId,
+                    userId: metricUserId,
+                    referrer: metricReferrer,
+                    sourcePath: metricSourcePath,
+                    crmLeadId: crmLeadId ? String(crmLeadId) : null,
+                    customerEmail: rawCustomerEmail,
+                    customerPhone: rawCustomerPhone
+                })
+            );
+        } catch { }
+
         // 2. [NEW] Guarantee "Verify Bike" Task (Task Queue Bridge)
         // Even if CRM fails partially, we want the bot to know about the intent if possible.
         // If result has order_id, we link it.
-        const bikeId = req.body.items?.[0]?.bike_id;
         if (bikeId) {
             try {
                 // Check if task already exists to avoid dupes (idempotency)
@@ -3176,17 +3782,80 @@ app.post('/api/v1/crm/orders/quick', optionalAuth, async (req, res) => {
                             source: 'quick_order'
                         })]
                     );
-                    console.log('✅ Task Queue: VERIFY_BIKE pushed for bike', bikeId);
+                    console.log('âœ… Task Queue: VERIFY_BIKE pushed for bike', bikeId);
                 }
             } catch (taskError) {
-                console.error('⚠️ Task Queue Error:', taskError);
+                console.error('âš ï¸ Task Queue Error:', taskError);
                 // Non-blocking error, order still succeeds
             }
         }
 
         return res.json(result);
     } catch (error) {
-        console.error('❌ Quick order critical failure:', error);
+        console.error('âŒ Quick order critical failure:', error);
+        const metricSessionId = req.headers['x-session-id'] ? String(req.headers['x-session-id']) : null;
+        const metricUserId = req.user?.id || null;
+        const metricReferrer = req.headers.referer ? String(req.headers.referer) : null;
+        const metricSourcePath = req.headers['x-source-path'] ? String(req.headers['x-source-path']) : '/checkout';
+        const metricAttribution = {
+            utm_source: safeHeaderValue(req, 'x-utm-source'),
+            utm_medium: safeHeaderValue(req, 'x-utm-medium'),
+            utm_campaign: safeHeaderValue(req, 'x-utm-campaign'),
+            utm_last_source: safeHeaderValue(req, 'x-utm-last-source'),
+            utm_last_medium: safeHeaderValue(req, 'x-utm-last-medium'),
+            utm_last_campaign: safeHeaderValue(req, 'x-utm-last-campaign'),
+            click_id: safeHeaderValue(req, 'x-click-id'),
+            landing_path: safeHeaderValue(req, 'x-landing-path')
+        };
+        const bikeId = req.body.items?.[0]?.bike_id ? Number(req.body.items?.[0]?.bike_id) : null;
+        const rawCustomerEmail = req.body?.customer?.email || req.body?.customer?.contact_value || null;
+        const rawCustomerPhone = req.body?.customer?.phone || req.body?.phone || null;
+        const crmLeadId = req.body?.lead_id || req.body?.leadId || null;
+
+        try {
+            await metricsPipeline.ingestEvents(
+                [{
+                    type: 'booking_failed',
+                    bikeId,
+                    metadata: {
+                        source: 'crm_orders_quick',
+                        error: String(error?.message || 'unknown'),
+                        attribution: metricAttribution,
+                        crm_lead_id: crmLeadId || null
+                    }
+                }],
+                buildMetricsContext(req, 'crm_orders_quick', {
+                    sessionId: metricSessionId,
+                    userId: metricUserId,
+                    referrer: metricReferrer,
+                    sourcePath: metricSourcePath,
+                    crmLeadId: crmLeadId ? String(crmLeadId) : null,
+                    customerEmail: rawCustomerEmail,
+                    customerPhone: rawCustomerPhone
+                })
+            );
+        } catch { }
+
+        const isComplianceLimitError =
+            String(error?.code || '').toUpperCase() === 'BIKE_PRICE_LIMIT_EXCEEDED' ||
+            String(error?.message || '').toUpperCase().includes('BIKE_PRICE_LIMIT_EXCEEDED');
+        const isComplianceMinError =
+            String(error?.code || '').toUpperCase() === 'BIKE_PRICE_BELOW_MINIMUM' ||
+            String(error?.message || '').toUpperCase().includes('BIKE_PRICE_BELOW_MINIMUM');
+        if (isComplianceLimitError) {
+            return res.status(400).json({
+                success: false,
+                code: 'BIKE_PRICE_LIMIT_EXCEEDED',
+                error: 'Bike price exceeds €5,000 compliance limit'
+            });
+        }
+        if (isComplianceMinError) {
+            return res.status(400).json({
+                success: false,
+                code: 'BIKE_PRICE_BELOW_MINIMUM',
+                error: 'Bike price below €500 minimum policy'
+            });
+        }
 
         // [NEW] Emergency Lead Save
         // If everything fails, save as raw lead to not lose the customer
@@ -3204,7 +3873,7 @@ app.post('/api/v1/crm/orders/quick', optionalAuth, async (req, res) => {
     }
 });
 
-// Эндпоинт для лидов (Leads)
+// Ð­Ð½Ð´Ð¿Ð¾Ð¸Ð½Ñ‚ Ð´Ð»Ñ Ð»Ð¸Ð´Ð¾Ð² (Leads)
 app.post('/api/v1/crm/leads', optionalAuth, async (req, res) => {
     try {
         const { name, contact_method, contact_value, bike_interest, notes, bike_url, bike_snapshot } = req.body || {};
@@ -3219,10 +3888,27 @@ app.post('/api/v1/crm/leads', optionalAuth, async (req, res) => {
             status: 'new'
         };
 
-        console.log('🚀 CRM: Creating website lead...', payload);
+        console.log('ðŸš€ CRM: Creating website lead...', payload);
         const result = await crmApi.createApplication(payload);
         const created = Array.isArray(result) ? result[0] : result;
         const lead_id = created?.id || payload.id;
+
+        try {
+            await metricsPipeline.ingestEvents(
+                [{
+                    type: 'lead_created',
+                    metadata: {
+                        crm_lead_id: lead_id || null,
+                        contact_method: payload.contact_method || null
+                    }
+                }],
+                buildMetricsContext(req, 'crm_lead', {
+                    crmLeadId: lead_id ? String(lead_id) : null,
+                    customerEmail: payload.contact_method === 'email' ? payload.contact_value : null,
+                    customerPhone: payload.contact_method === 'phone' ? payload.contact_value : null
+                })
+            );
+        } catch { }
 
         return res.json({ success: true, lead_id });
     } catch (error) {
@@ -3243,21 +3929,7 @@ const KNOWN_LEAD_STATUSES = new Set([
     'rejected'
 ]);
 
-const KNOWN_ORDER_STATUSES = new Set([
-    'awaiting_payment',
-    'awaiting_deposit',
-    'deposit_paid',
-    'pending_manager',
-    'under_inspection',
-    'ready_for_shipment',
-    'in_transit',
-    'delivered',
-    'closed',
-    'cancelled',
-    'refunded',
-    'paid_out',
-    'full_paid'
-]);
+const KNOWN_ORDER_STATUSES = new Set(ALL_ORDER_STATUSES);
 
 function isValidLeadId(input) {
     const value = String(input || '').trim();
@@ -3285,6 +3957,20 @@ function isSupabaseEnumError(error, enumName) {
     return text.includes('invalid input value for enum') && text.includes(String(enumName || '').toLowerCase());
 }
 
+function isMissingCustomersColumnError(error) {
+    const text = `${error?.message || ''} ${error?.details || ''} ${error?.hint || ''}`.toLowerCase();
+    if (!text) return false;
+    return (
+        text.includes("column of 'customers'") ||
+        text.includes('column customers_1.') ||
+        text.includes('column customers.')
+    );
+}
+
+function isMissingCustomersCityError(error) {
+    return isMissingCustomersColumnError(error);
+}
+
 function normalizeLeadStatus(input) {
     if (input == null) return null;
     const normalized = String(input).trim().toLowerCase();
@@ -3293,10 +3979,7 @@ function normalizeLeadStatus(input) {
 }
 
 function normalizeOrderStatus(input) {
-    if (input == null) return null;
-    const normalized = String(input).trim().toLowerCase();
-    if (!normalized || normalized.length > 50) return null;
-    return KNOWN_ORDER_STATUSES.has(normalized) ? normalized : null;
+    return normalizeOrderStatusCanonical(input);
 }
 
 function parseOrderSnapshotSafe(rawSnapshot) {
@@ -3317,6 +4000,36 @@ function getOrderBikeNameFromSnapshot(orderRow) {
     if (title) return String(title);
     const composed = [snapshot.brand, snapshot.model].filter(Boolean).join(' ').trim();
     return composed || null;
+}
+
+function getOrderBikeUrlFromSnapshot(orderRow) {
+    const snapshot = parseOrderSnapshotSafe(orderRow?.bike_snapshot);
+    if (!snapshot || typeof snapshot !== 'object') return null;
+
+    const candidates = [
+        snapshot.bike_url,
+        snapshot.source_url,
+        snapshot.url,
+        snapshot.listing_url,
+        snapshot.offer_url,
+        snapshot.original_url,
+        snapshot.link,
+        snapshot?.links?.listing,
+        snapshot?.links?.source,
+        snapshot?.source?.url,
+        snapshot?.source?.link,
+        snapshot?.internal?.source_url,
+        snapshot?.internal?.source_link
+    ];
+
+    for (const raw of candidates) {
+        if (typeof raw !== 'string') continue;
+        const value = raw.trim();
+        if (!value) continue;
+        if (/^https?:\/\//i.test(value)) return value;
+        if (value.startsWith('//')) return `https:${value}`;
+    }
+    return null;
 }
 
 function getOrderTotalRubFromSnapshot(orderRow) {
@@ -3353,6 +4066,16 @@ function getOrderSnapshotContact(orderRow) {
     };
 }
 
+function normalizePreferredChannel(rawValue, fallback = 'telegram') {
+    const value = String(rawValue || '').trim().toLowerCase();
+    if (!value) return fallback;
+    if (value === 'email') return 'email';
+    if (value === 'telegram' || value.startsWith('telegram:')) return 'telegram';
+    // Some Supabase schemas reject "phone" for preferred_channel_enum.
+    if (value === 'phone' || value === 'call' || value === 'whatsapp' || value === 'sms') return 'telegram';
+    return fallback;
+}
+
 function mergeOrderCustomerWithSnapshot(customer, orderRow) {
     const snapshotContact = getOrderSnapshotContact(orderRow);
     const payload = customer ? { ...customer } : {};
@@ -3360,9 +4083,553 @@ function mergeOrderCustomerWithSnapshot(customer, orderRow) {
     payload.email = payload.email || null;
     payload.phone = payload.phone || null;
     payload.contact_value = payload.contact_value || snapshotContact.contact_value || null;
-    payload.preferred_channel = payload.preferred_channel || snapshotContact.contact_method || null;
+    payload.preferred_channel = normalizePreferredChannel(payload.preferred_channel || snapshotContact.contact_method || null, null);
     payload.city = payload.city || payload.country || snapshotContact.city || null;
     return payload;
+}
+
+function makeEntityId(prefix) {
+    return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function normalizeTouchpointChannel(raw) {
+    const value = String(raw || '').trim().toLowerCase();
+    if (!value) return 'whatsapp';
+    if (['whatsapp', 'telegram', 'email', 'phone', 'sms', 'other'].includes(value)) return value;
+    return 'other';
+}
+
+function normalizeTouchpointDirection(raw) {
+    const value = String(raw || '').trim().toLowerCase();
+    if (value === 'inbound') return 'inbound';
+    if (value === 'system') return 'system';
+    return 'outbound';
+}
+
+function normalizeTouchpointType(raw) {
+    const value = String(raw || '').trim().toLowerCase();
+    if (!value) return 'message';
+    if (
+        [
+            'message',
+            'call',
+            'note',
+            'status_update',
+            'payment_reminder',
+            'document',
+            'support',
+            'other'
+        ].includes(value)
+    ) {
+        return value;
+    }
+    return 'other';
+}
+
+function normalizeHolacracySeverity(raw) {
+    const value = String(raw || '').trim().toLowerCase();
+    if (['critical', 'high', 'medium', 'low'].includes(value)) return value;
+    return 'medium';
+}
+
+function normalizeHolacracyTensionStatus(raw) {
+    const value = String(raw || '').trim().toLowerCase();
+    if (['open', 'in_progress', 'blocked', 'resolved', 'cancelled'].includes(value)) return value;
+    return 'open';
+}
+
+function normalizeHolacracyTensionType(raw) {
+    const value = String(raw || '').trim().toLowerCase();
+    if (
+        [
+            'process_gap',
+            'role_gap',
+            'sla_risk',
+            'client_risk',
+            'quality_risk',
+            'compliance_risk',
+            'capacity_risk',
+            'other'
+        ].includes(value)
+    ) {
+        return value;
+    }
+    return 'process_gap';
+}
+
+function computeTensionDueAtExpression(severity) {
+    if (severity === 'critical') return "datetime('now', '+15 minutes')";
+    if (severity === 'high') return "datetime('now', '+2 hours')";
+    if (severity === 'medium') return "datetime('now', '+24 hours')";
+    return "datetime('now', '+72 hours')";
+}
+
+function isAdminRequest(req) {
+    return String(req.user?.role || '').toLowerCase() === 'admin';
+}
+
+async function resolveLocalOrderByIdOrCode(orderIdRaw) {
+    const orderId = String(orderIdRaw || '').trim();
+    if (!orderId) return null;
+    const rows = await db.query(
+        'SELECT id, order_code, customer_id, lead_id, status, assigned_manager, created_at, updated_at FROM orders WHERE id = ? OR order_code = ? LIMIT 1',
+        [orderId, orderId]
+    );
+    return rows?.[0] || null;
+}
+
+async function logManagerActivityEvent({ managerId, orderId = null, leadId = null, customerId = null, eventType, eventPayload = null, channel = null, actionResult = null, isSlaHit = null }) {
+    if (!managerId || !eventType) return;
+    try {
+        await db.query(
+            `INSERT INTO manager_activity_events
+             (id, manager_id, order_id, lead_id, customer_id, event_type, event_payload, channel, action_result, is_sla_hit, event_at, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+            [
+                makeEntityId('MAE'),
+                String(managerId),
+                orderId ? String(orderId) : null,
+                leadId ? String(leadId) : null,
+                customerId ? String(customerId) : null,
+                String(eventType),
+                eventPayload ? JSON.stringify(eventPayload) : null,
+                channel ? String(channel) : null,
+                actionResult ? String(actionResult) : null,
+                isSlaHit == null ? null : Number(isSlaHit ? 1 : 0)
+            ]
+        );
+    } catch (error) {
+        console.warn('manager_activity_events insert warning:', error?.message || error);
+    }
+}
+
+function extractOrderFinancials(orderRow) {
+    const snapshot = parseOrderSnapshotSafe(orderRow?.bike_snapshot) || {};
+    const bookingMeta = snapshot?.booking_meta || {};
+    const financials = snapshot?.financials || bookingMeta?.financials || {};
+    const finalPriceEur = Number(orderRow?.final_price_eur || financials?.final_price_eur || 0) || 0;
+    const totalPriceRub = Number(orderRow?.total_price_rub || financials?.total_price_rub || bookingMeta?.total_price_rub || 0) || 0;
+    const bikePriceEur = Number(financials?.bike_price_eur || snapshot?.price || 0) || 0;
+    const shippingCostEur = Number(financials?.shipping_cost_eur || 0) || 0;
+    const warehouseFeeEur = Number(financials?.warehouse_fee_eur || 0) || 0;
+    const paymentCommissionEur = Number(financials?.payment_commission_eur || 0) || 0;
+    const serviceFeeEur = Number(financials?.service_fee_eur || 0) || 0;
+    const marginTotalEur = Number(financials?.margin_total_eur || serviceFeeEur || 0) || 0;
+    const estimatedCostEur = bikePriceEur + shippingCostEur + warehouseFeeEur + paymentCommissionEur;
+    const category = String(snapshot?.category || snapshot?.discipline || snapshot?.brand || 'unknown');
+    return {
+        finalPriceEur,
+        totalPriceRub,
+        bikePriceEur,
+        shippingCostEur,
+        warehouseFeeEur,
+        paymentCommissionEur,
+        serviceFeeEur,
+        marginTotalEur,
+        estimatedCostEur,
+        category
+    };
+}
+
+function isCanceledOrderStatus(statusRaw) {
+    const status = normalizeOrderStatus(statusRaw) || String(statusRaw || '').toLowerCase();
+    return status === ORDER_STATUS.CANCELLED;
+}
+
+function isRealizedRevenueStatus(statusRaw) {
+    const status = normalizeOrderStatus(statusRaw) || String(statusRaw || '').toLowerCase();
+    return status === ORDER_STATUS.DELIVERED || status === ORDER_STATUS.CLOSED;
+}
+
+function adminV2Round(value, precision = 2) {
+    const numValue = Number(value || 0);
+    if (!Number.isFinite(numValue)) return 0;
+    const factor = Math.pow(10, Math.max(0, precision));
+    return Math.round(numValue * factor) / factor;
+}
+
+function adminV2ParseWindowDays(raw, fallback = 30) {
+    if (raw == null) return fallback;
+    const text = String(raw).trim().toLowerCase();
+    if (!text) return fallback;
+    if (text.endsWith('d')) {
+        const parsed = Number(text.slice(0, -1));
+        if (Number.isFinite(parsed) && parsed > 0) return Math.max(1, Math.min(365, Math.round(parsed)));
+    }
+    const numeric = Number(text);
+    if (Number.isFinite(numeric) && numeric > 0) return Math.max(1, Math.min(365, Math.round(numeric)));
+    return fallback;
+}
+
+function adminV2ExpectedServiceFee(bikePriceEur) {
+    const price = Number(bikePriceEur || 0);
+    if (!Number.isFinite(price) || price <= 0) return 0;
+    if (price <= 1000) return 180;
+    if (price <= 1500) return 230;
+    if (price <= 2200) return 300;
+    if (price <= 3000) return 380;
+    if (price <= 4000) return 500;
+    if (price <= 5000) return 650;
+    return price * 0.1;
+}
+
+function adminV2RiskBand(score) {
+    const safe = Number(score || 0);
+    if (safe >= 75) return 'critical';
+    if (safe >= 55) return 'high';
+    if (safe >= 35) return 'medium';
+    return 'low';
+}
+
+function adminV2BuildDealRisk(orderRow) {
+    const financial = extractOrderFinancials(orderRow);
+    const status = normalizeOrderStatus(orderRow?.status) || String(orderRow?.status || '').toLowerCase();
+    const reasons = [];
+    let score = 5;
+
+    if (isCanceledOrderStatus(status)) {
+        score += 35;
+        reasons.push('Отмененный/возвратный статус');
+    }
+
+    const createdAtTs = Date.parse(String(orderRow?.created_at || ''));
+    if (Number.isFinite(createdAtTs)) {
+        const ageHours = (Date.now() - createdAtTs) / (1000 * 60 * 60);
+        if (ageHours > 72 && (status === ORDER_STATUS.BOOKED || status === ORDER_STATUS.FULL_PAYMENT_PENDING || status === ORDER_STATUS.RESERVE_PAYMENT_PENDING)) {
+            score += 22;
+            reasons.push('Длительное ожидание без движения');
+        }
+        if (ageHours > 120 && (status === ORDER_STATUS.BOOKED || status === ORDER_STATUS.SELLER_CHECK_IN_PROGRESS)) {
+            score += 14;
+            reasons.push('Застревание в ранних этапах');
+        }
+    }
+
+    if (financial.marginTotalEur <= 0) {
+        score += 32;
+        reasons.push('Отрицательная/нулевая маржа');
+    } else if (financial.marginTotalEur < 120) {
+        score += 15;
+        reasons.push('Низкая маржа по заказу');
+    }
+
+    const expectedServiceFee = adminV2ExpectedServiceFee(financial.bikePriceEur);
+    const actualServiceFee = financial.serviceFeeEur > 0 ? financial.serviceFeeEur : financial.marginTotalEur;
+    const marginLeakEur = Math.max(0, expectedServiceFee - actualServiceFee);
+    if (marginLeakEur > 80) {
+        score += 24;
+        reasons.push('Критичная утечка сервисной маржи');
+    } else if (marginLeakEur > 40) {
+        score += 12;
+        reasons.push('Утечка сервисной маржи');
+    }
+
+    const contact = getOrderSnapshotContact(orderRow);
+    if (!contact?.contact_value) {
+        score += 9;
+        reasons.push('Нет надежного контактного канала');
+    }
+
+    if (financial.finalPriceEur >= 3500) {
+        score += 8;
+        reasons.push('Высокий чек (нужен контроль SLA)');
+    }
+
+    const clamped = Math.max(0, Math.min(100, Math.round(score)));
+    return {
+        score: clamped,
+        band: adminV2RiskBand(clamped),
+        reasons,
+        marginLeakEur: adminV2Round(marginLeakEur),
+        expectedServiceFeeEur: adminV2Round(expectedServiceFee),
+        actualServiceFeeEur: adminV2Round(actualServiceFee)
+    };
+}
+
+function adminV2BuildCashflowForecast(dailyRows = [], realizedRatePct = 0) {
+    const safeRows = Array.isArray(dailyRows) ? dailyRows : [];
+    const lastRows = safeRows.slice(-14);
+    const dayCount = Math.max(1, lastRows.length);
+    const avgDailyRevenue = lastRows.reduce((sum, row) => sum + Number(row?.revenue || 0), 0) / dayCount;
+    const avgDailyMargin = lastRows.reduce((sum, row) => sum + Number(row?.margin || 0), 0) / dayCount;
+    const realizationFactor = Math.max(0.45, Math.min(1, Number(realizedRatePct || 0) / 100 || 0.7));
+    const baseRevenue30 = avgDailyRevenue * 30 * realizationFactor;
+    const baseMargin30 = avgDailyMargin * 30 * realizationFactor;
+
+    return {
+        horizon_days: 30,
+        assumptions: {
+            avg_daily_revenue_eur: adminV2Round(avgDailyRevenue),
+            avg_daily_margin_eur: adminV2Round(avgDailyMargin),
+            realization_factor: adminV2Round(realizationFactor, 3)
+        },
+        scenarios: {
+            conservative: {
+                revenue_eur: adminV2Round(baseRevenue30 * 0.82),
+                margin_eur: adminV2Round(baseMargin30 * 0.8)
+            },
+            base: {
+                revenue_eur: adminV2Round(baseRevenue30),
+                margin_eur: adminV2Round(baseMargin30)
+            },
+            aggressive: {
+                revenue_eur: adminV2Round(baseRevenue30 * 1.16),
+                margin_eur: adminV2Round(baseMargin30 * 1.18)
+            }
+        }
+    };
+}
+
+function adminV2BuildCeoNarrative(input = {}) {
+    const bookedRevenue = Number(input.bookedRevenue || 0);
+    const realizedRevenue = Number(input.realizedRevenue || 0);
+    const marginPct = Number(input.marginPct || 0);
+    const bookingSuccessPct = Number(input.bookingSuccessPct || 0);
+    const churnRiskPct = Number(input.churnRiskPct || 0);
+    const marginLeakOrders = Number(input.marginLeakOrders || 0);
+
+    const revenueGap = Math.max(0, bookedRevenue - realizedRevenue);
+    const marginText = marginPct >= 18
+        ? 'Маржинальность в здоровой зоне.'
+        : (marginPct >= 10 ? 'Маржинальность под давлением, нужен контроль структуры чека.' : 'Маржинальность критично проседает.');
+    const conversionText = bookingSuccessPct >= 35
+        ? 'Воронка закрывается стабильно.'
+        : (bookingSuccessPct >= 20 ? 'Воронка требует оптимизации последней мили.' : 'Провал конверсии на завершающих этапах.');
+    const churnText = churnRiskPct >= 35
+        ? 'Высокий риск потери сессий, приоритет — активация ретаргета.'
+        : 'Уровень оттока управляемый.';
+
+    return [
+        `Выручка в работе: €${adminV2Round(bookedRevenue)}, реализовано: €${adminV2Round(realizedRevenue)}. Нереализованный разрыв: €${adminV2Round(revenueGap)}.`,
+        marginText,
+        conversionText,
+        churnText,
+        marginLeakOrders > 0
+            ? `Обнаружено заказов с потенциальной утечкой маржи: ${marginLeakOrders}. Нужен адресный разбор тарифов и логистики.`
+            : 'Критичных утечек маржи по текущему окну не обнаружено.'
+    ].join(' ');
+}
+
+function adminV2PctChange(currentValue, previousValue) {
+    const current = Number(currentValue || 0);
+    const previous = Number(previousValue || 0);
+    if (!Number.isFinite(current) || !Number.isFinite(previous)) return 0;
+    if (Math.abs(previous) < 1e-9) {
+        if (Math.abs(current) < 1e-9) return 0;
+        return current > 0 ? 100 : -100;
+    }
+    return ((current - previous) / Math.abs(previous)) * 100;
+}
+
+function adminV2OrderLane(statusRaw) {
+    const status = normalizeOrderStatus(statusRaw) || String(statusRaw || '').trim().toLowerCase();
+    if (status === ORDER_STATUS.CANCELLED) return 'cancelled';
+    if (status === ORDER_STATUS.DELIVERED || status === ORDER_STATUS.CLOSED) return 'delivered';
+    if (status === ORDER_STATUS.WAREHOUSE_REPACKED || status === ORDER_STATUS.SHIPPED_TO_RUSSIA) return 'shipping';
+    if (status === ORDER_STATUS.BOOKED || status === ORDER_STATUS.RESERVE_PAYMENT_PENDING) return 'waiting_manager';
+    return 'processing';
+}
+
+function adminV2IsFinalStatus(statusRaw) {
+    const status = normalizeOrderStatus(statusRaw) || String(statusRaw || '').trim().toLowerCase();
+    return status === ORDER_STATUS.DELIVERED
+        || status === ORDER_STATUS.CLOSED
+        || status === ORDER_STATUS.CANCELLED;
+}
+
+function adminV2BuildKanbanSummary(orderRows = []) {
+    const laneMeta = {
+        waiting_manager: { label: 'Waiting Manager', subtitle: 'New and waiting for manager touch' },
+        processing: { label: 'Processing', subtitle: 'Inspection, payment and prep stages' },
+        shipping: { label: 'Shipping', subtitle: 'Ready for shipment and in transit' },
+        delivered: { label: 'Delivered', subtitle: 'Delivered and closed deals' },
+        cancelled: { label: 'Cancelled/Refund', subtitle: 'Cancelled or refunded deals' }
+    };
+    const laneOrder = ['waiting_manager', 'processing', 'shipping', 'delivered', 'cancelled'];
+    const lanes = new Map(
+        laneOrder.map((id) => [id, {
+            lane: id,
+            label: laneMeta[id].label,
+            subtitle: laneMeta[id].subtitle,
+            orders: 0,
+            amount_eur: 0,
+            stalled_orders: 0,
+            avg_age_hours: 0
+        }])
+    );
+
+    const nowTs = Date.now();
+    const ages = new Map(laneOrder.map((id) => [id, []]));
+    for (const row of Array.isArray(orderRows) ? orderRows : []) {
+        const laneId = adminV2OrderLane(row?.status);
+        const lane = lanes.get(laneId) || lanes.get('processing');
+        if (!lane) continue;
+        const financial = extractOrderFinancials(row);
+        lane.orders += 1;
+        lane.amount_eur = adminV2Round(Number(lane.amount_eur || 0) + Number(financial.finalPriceEur || 0));
+
+        const createdTs = Date.parse(String(row?.created_at || ''));
+        if (Number.isFinite(createdTs)) {
+            const ageHours = Math.max(0, (nowTs - createdTs) / (1000 * 60 * 60));
+            const bucket = ages.get(lane.lane);
+            if (Array.isArray(bucket)) bucket.push(ageHours);
+            if (ageHours >= 72 && !adminV2IsFinalStatus(row?.status)) {
+                lane.stalled_orders += 1;
+            }
+        }
+    }
+
+    const normalizedLanes = laneOrder.map((id) => {
+        const lane = lanes.get(id);
+        const laneAges = ages.get(id) || [];
+        const avgAge = laneAges.length
+            ? laneAges.reduce((sum, value) => sum + value, 0) / laneAges.length
+            : 0;
+        return {
+            ...lane,
+            avg_age_hours: adminV2Round(avgAge, 1)
+        };
+    });
+
+    const totalOrders = normalizedLanes.reduce((sum, lane) => sum + Number(lane.orders || 0), 0);
+    const totalAmount = normalizedLanes.reduce((sum, lane) => sum + Number(lane.amount_eur || 0), 0);
+
+    return {
+        lanes: normalizedLanes,
+        totals: {
+            orders: totalOrders,
+            amount_eur: adminV2Round(totalAmount)
+        }
+    };
+}
+
+function adminV2BuildManagerSnapshot(orderRows = []) {
+    const managerMap = new Map();
+    const nowTs = Date.now();
+    for (const row of Array.isArray(orderRows) ? orderRows : []) {
+        const managerId = String(row?.assigned_manager || 'unassigned').trim() || 'unassigned';
+        if (!managerMap.has(managerId)) {
+            managerMap.set(managerId, {
+                manager: managerId,
+                orders_total: 0,
+                active_orders: 0,
+                delivered_orders: 0,
+                stalled_orders: 0,
+                revenue_eur: 0,
+                margin_eur: 0
+            });
+        }
+        const manager = managerMap.get(managerId);
+        const status = normalizeOrderStatus(row?.status) || String(row?.status || '').toLowerCase();
+        const financial = extractOrderFinancials(row);
+        manager.orders_total += 1;
+        manager.revenue_eur = adminV2Round(Number(manager.revenue_eur || 0) + Number(financial.finalPriceEur || 0));
+        manager.margin_eur = adminV2Round(Number(manager.margin_eur || 0) + Number(financial.marginTotalEur || 0));
+        if (status === ORDER_STATUS.DELIVERED || status === ORDER_STATUS.CLOSED) manager.delivered_orders += 1;
+        if (!adminV2IsFinalStatus(status)) manager.active_orders += 1;
+
+        const createdTs = Date.parse(String(row?.created_at || ''));
+        if (Number.isFinite(createdTs)) {
+            const ageHours = (nowTs - createdTs) / (1000 * 60 * 60);
+            if (ageHours >= 72 && !adminV2IsFinalStatus(status)) manager.stalled_orders += 1;
+        }
+    }
+
+    return Array.from(managerMap.values())
+        .sort((a, b) => Number(b.revenue_eur || 0) - Number(a.revenue_eur || 0))
+        .slice(0, 12);
+}
+
+function adminV2BuildSimpleCopilot(input = {}) {
+    const marginPct = Number(input.marginPct || 0);
+    const bookingSuccessPct = Number(input.bookingSuccessPct || 0);
+    const alertCount = Number(input.alertCount || 0);
+    const revenueDeltaPct = Number(input.revenueDeltaPct || 0);
+    const waitingManagerOrders = Number(input.waitingManagerOrders || 0);
+    const totalOrders = Math.max(1, Number(input.totalOrders || 0));
+    const cancelledOrders = Number(input.cancelledOrders || 0);
+    const actionCenterCount = Number(input.actionCenterCount || 0);
+
+    let pulseScore = 100;
+    if (marginPct < 10) pulseScore -= 24;
+    else if (marginPct < 15) pulseScore -= 12;
+    if (bookingSuccessPct < 20) pulseScore -= 16;
+    else if (bookingSuccessPct < 30) pulseScore -= 8;
+    if (alertCount > 0) pulseScore -= Math.min(18, alertCount * 2);
+    if (revenueDeltaPct < 0) pulseScore -= Math.min(14, Math.abs(revenueDeltaPct) * 0.6);
+
+    const waitingShare = waitingManagerOrders / totalOrders;
+    if (waitingShare >= 0.3) pulseScore -= 14;
+    else if (waitingShare >= 0.2) pulseScore -= 8;
+
+    const cancelledShare = cancelledOrders / totalOrders;
+    if (cancelledShare >= 0.16) pulseScore -= 14;
+    else if (cancelledShare >= 0.1) pulseScore -= 8;
+
+    if (actionCenterCount >= 5) pulseScore -= 8;
+    pulseScore = Math.max(0, Math.min(100, Math.round(pulseScore)));
+
+    const status = pulseScore >= 76 ? 'green' : (pulseScore >= 56 ? 'yellow' : 'red');
+    const summary = pulseScore >= 76
+        ? 'Бизнес-пульс стабилен: масштабируйте каналы роста.'
+        : (pulseScore >= 56
+            ? 'Есть зоны риска: выровняйте воронку и скорость обработки заказов.'
+            : 'Критичный режим: сначала разберите финансы, SLA и проблемные сделки.');
+
+    const suggestions = [];
+    if (marginPct < 15) {
+        suggestions.push({
+            priority: 'high',
+            title: 'Поднять маржинальность',
+            reason: `Маржа ${adminV2Round(marginPct, 1)}% ниже целевого коридора.`,
+            next_step: 'Проверьте Margin Leak и пересоберите сервисный тариф по низкомаржинальным заказам.',
+            target: '/admin#finance'
+        });
+    }
+    if (waitingManagerOrders > 0) {
+        suggestions.push({
+            priority: waitingShare >= 0.3 ? 'critical' : 'medium',
+            title: 'Разгрузить очередь менеджеров',
+            reason: `В ожидании менеджера: ${waitingManagerOrders} заказов.`,
+            next_step: 'Назначьте ответственных и закройте старые карточки в mini-CRM.',
+            target: '/admin#mini-crm'
+        });
+    }
+    if (revenueDeltaPct < 0) {
+        suggestions.push({
+            priority: 'high',
+            title: 'Остановить просадку выручки',
+            reason: `Выручка ниже прошлого периода на ${adminV2Round(Math.abs(revenueDeltaPct), 1)}%.`,
+            next_step: 'Проверьте топ-каналы и быстро запустите ретаргет на горячую аудиторию.',
+            target: '/admin#traffic'
+        });
+    }
+    if (alertCount > 0) {
+        suggestions.push({
+            priority: 'medium',
+            title: 'Закрыть алерты по SLA',
+            reason: `Активных алертов: ${alertCount}.`,
+            next_step: 'Откройте Action Center и назначьте владельцев по каждому сигналу.',
+            target: '/admin#action-center'
+        });
+    }
+    if (!suggestions.length) {
+        suggestions.push({
+            priority: 'medium',
+            title: 'Ускорить рост',
+            reason: 'Критичных рисков не обнаружено.',
+            next_step: 'Проведите A/B тест на checkout и новый партнерский оффер.',
+            target: '/admin#traffic'
+        });
+    }
+
+    return {
+        mode: 'mock',
+        pulse_score: pulseScore,
+        status,
+        summary,
+        suggestions: suggestions.slice(0, 5)
+    };
 }
 
 async function handleLeadUpdate(req, res, leadIdParam) {
@@ -3461,6 +4728,33 @@ async function handleLeadUpdate(req, res, leadIdParam) {
     }
 
     try {
+        const localLeadRows = await db.query('SELECT id FROM leads WHERE id = ? LIMIT 1', [leadId]);
+        if (localLeadRows?.length) {
+            const payload = {};
+            if (normalizedStatus != null) payload.status = normalizedStatus;
+            if (notes != null) payload.customer_comment = String(notes);
+            if (contact_email != null) {
+                payload.contact_method = 'email';
+                payload.contact_value = String(contact_email);
+            } else if (contact_phone != null) {
+                payload.contact_method = 'phone';
+                payload.contact_value = String(contact_phone);
+            }
+            if (contact_name != null) {
+                payload.customer_comment = `${payload.customer_comment || ''}\n[manager_contact_name] ${String(contact_name)}`.trim();
+            }
+
+            const keys = Object.keys(payload);
+            if (!keys.length) {
+                return res.status(400).json({ success: false, error: 'No fields to update' });
+            }
+
+            const updates = keys.map(k => `${k} = ?`).join(', ');
+            await db.query(`UPDATE leads SET ${updates}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [...keys.map(k => payload[k]), leadId]);
+            const rows = await db.query('SELECT * FROM leads WHERE id = ? LIMIT 1', [leadId]);
+            return res.json({ success: true, lead: rows?.[0] || null });
+        }
+
         const existingRows = await db.query('SELECT id FROM applications WHERE id = ? LIMIT 1', [leadId]);
         if (!existingRows?.length) {
             return res.status(404).json({ success: false, error: 'Lead not found' });
@@ -3498,7 +4792,7 @@ app.put('/api/v1/crm/leads/:id', authenticateToken, requireManagerRole, async (r
 
 
 // ========================================
-// 🧭 CRM MANAGER API (Sprint 1)
+// ðŸ§­ CRM MANAGER API (Sprint 1)
 // ========================================
 
 // List managers/admins for assignment
@@ -3522,26 +4816,73 @@ app.get('/api/v1/crm/managers', authenticateToken, requireManagerRole, async (re
     }
 });
 
+function resolveCrmOrderScope(req) {
+    const role = String(req.user?.role || '').toLowerCase();
+    const actorId = String(req.user?.id || '').trim();
+    const requestedScope = String(req.query?.scope || '').trim().toLowerCase();
+    const isAdmin = role === 'admin';
+    const scope = isAdmin ? (requestedScope === 'mine' ? 'mine' : 'all') : 'mine';
+    return { role, actorId, isAdmin, scope };
+}
+
+function isOrderVisibleToActor(orderAssignedManager, actorId, isAdmin) {
+    if (isAdmin) return true;
+    const assigned = String(orderAssignedManager || '').trim();
+    if (!assigned) return false;
+    return String(actorId || '').trim() === assigned;
+}
+
 // Dashboard stats (counts + revenue)
 app.get('/api/v1/crm/dashboard/stats', authenticateToken, requireManagerRole, async (req, res) => {
     try {
+        const { actorId, scope } = resolveCrmOrderScope(req);
+        const mineOnly = scope === 'mine';
+        if (mineOnly && !actorId) {
+            return res.status(401).json({ success: false, error: 'Manager context is missing' });
+        }
         let rows = [];
         let leadRows = [];
         if (supabase) {
-            const { data, error } = await supabase
+            let ordersQuery = supabase
                 .from('orders')
-                .select('status, final_price_eur, total_price_rub, created_at');
+                .select('status, final_price_eur, total_price_rub, created_at, assigned_manager');
+            if (mineOnly) {
+                ordersQuery = ordersQuery.eq('assigned_manager', actorId);
+            }
+            const { data, error } = await ordersQuery;
             if (error) throw error;
             rows = data || [];
 
-            const { data: leadData, error: leadError } = await supabase
-                .from('leads')
-                .select('status');
+            const { data: leadData, error: leadError } = await supabase.from('leads').select('*');
             if (leadError) throw leadError;
             leadRows = leadData || [];
         } else {
-            rows = await db.query('SELECT status, final_price_eur, created_at FROM orders');
-            leadRows = await db.query('SELECT status FROM applications');
+            if (mineOnly) {
+                rows = await db.query(
+                    'SELECT status, final_price_eur, total_price_rub, created_at, assigned_manager FROM orders WHERE CAST(assigned_manager AS TEXT) = ?',
+                    [actorId]
+                );
+            } else {
+                rows = await db.query('SELECT status, final_price_eur, total_price_rub, created_at, assigned_manager FROM orders');
+            }
+            try {
+                leadRows = await db.query('SELECT * FROM leads');
+            } catch {
+                leadRows = await db.query('SELECT * FROM applications');
+            }
+        }
+
+        if (mineOnly) {
+            leadRows = (leadRows || []).filter((lead) => {
+                const candidates = [
+                    lead?.assigned_manager,
+                    lead?.manager_id,
+                    lead?.assigned_to,
+                    lead?.user_id,
+                    lead?.owner_id
+                ];
+                return candidates.some((value) => String(value || '').trim() === actorId);
+            });
         }
 
         const now = Date.now();
@@ -3563,6 +4904,8 @@ app.get('/api/v1/crm/dashboard/stats', authenticateToken, requireManagerRole, as
             pending_manager_leads: 0,
             under_inspection: 0,
             deposit_paid: 0,
+            seller_check_in_progress: 0,
+            reserve_paid: 0,
             delivered: 0,
             closed: 0,
             cancelled: 0,
@@ -3576,17 +4919,25 @@ app.get('/api/v1/crm/dashboard/stats', authenticateToken, requireManagerRole, as
         };
 
         for (const row of rows) {
-            const status = String(row.status || 'unknown');
+            const status = normalizeOrderStatus(row.status) || String(row.status || 'unknown').toLowerCase();
             stats.total_orders += 1;
             stats.by_status[status] = (stats.by_status[status] || 0) + 1;
 
-            if (status === 'pending_manager' || status === 'awaiting_manager' || status === 'new') stats.pending_manager_orders += 1;
-            if (status === 'under_inspection') stats.under_inspection += 1;
-            if (status === 'deposit_paid') stats.deposit_paid += 1;
-            if (status === 'delivered') stats.delivered += 1;
-            if (status === 'closed') stats.closed += 1;
-            if (status === 'cancelled') stats.cancelled += 1;
-            if (status === 'refunded') stats.refunded += 1;
+            if (status === ORDER_STATUS.BOOKED || status === ORDER_STATUS.RESERVE_PAYMENT_PENDING) stats.pending_manager_orders += 1;
+            if (status === ORDER_STATUS.SELLER_CHECK_IN_PROGRESS) {
+                stats.seller_check_in_progress += 1;
+                stats.under_inspection += 1;
+            }
+            if (status === ORDER_STATUS.RESERVE_PAID) {
+                stats.reserve_paid += 1;
+                stats.deposit_paid += 1;
+            }
+            if (status === ORDER_STATUS.DELIVERED) stats.delivered += 1;
+            if (status === ORDER_STATUS.CLOSED) stats.closed += 1;
+            if (status === ORDER_STATUS.CANCELLED) {
+                stats.cancelled += 1;
+                stats.refunded += 1;
+            }
 
             const createdAt = row.created_at ? new Date(row.created_at).getTime() : null;
             if (createdAt) {
@@ -3610,7 +4961,7 @@ app.get('/api/v1/crm/dashboard/stats', authenticateToken, requireManagerRole, as
             }
         }
 
-        stats.active_orders = stats.total_orders - (stats.closed + stats.cancelled + stats.refunded + stats.delivered);
+        stats.active_orders = stats.total_orders - (stats.closed + stats.cancelled + stats.delivered);
         stats.daily_orders = dayBuckets;
         const pendingLeadStates = new Set(['new', 'in_progress', 'contacted', 'qualified', 'pending_manager']);
         stats.pending_manager_leads = (leadRows || []).reduce((count, lead) => {
@@ -3619,21 +4970,28 @@ app.get('/api/v1/crm/dashboard/stats', authenticateToken, requireManagerRole, as
         }, 0);
         stats.pending_manager = stats.pending_manager_orders + stats.pending_manager_leads;
 
-        const successfulStates = new Set(['delivered', 'closed', 'paid_out', 'full_paid']);
+        const successfulStates = new Set([ORDER_STATUS.DELIVERED, ORDER_STATUS.CLOSED]);
         const successfulOrders = rows.reduce((count, row) => {
-            const status = String(row?.status || '').trim().toLowerCase();
+            const status = normalizeOrderStatus(row?.status) || String(row?.status || '').trim().toLowerCase();
             return successfulStates.has(status) ? count + 1 : count;
         }, 0);
 
         if (stats.total_orders < 5) {
             stats.conversion_rate = null;
-            stats.conversion_note = 'н/д (недостаточно данных)';
+            stats.conversion_note = 'Ð½/Ð´ (Ð½ÐµÐ´Ð¾ÑÑ‚Ð°Ñ‚Ð¾Ñ‡Ð½Ð¾ Ð´Ð°Ð½Ð½Ñ‹Ñ…)';
         } else {
             stats.conversion_rate = parseFloat(((successfulOrders / stats.total_orders) * 100).toFixed(1));
             stats.conversion_note = null;
         }
 
-        return res.json({ success: true, stats });
+        return res.json({
+            success: true,
+            scope: {
+                mode: mineOnly ? 'mine' : 'all',
+                actor_id: actorId || null
+            },
+            stats
+        });
     } catch (error) {
         console.error('CRM dashboard stats error:', error);
         return res.status(500).json({ success: false, error: 'Failed to load stats' });
@@ -3648,6 +5006,7 @@ app.get('/api/v1/crm/dashboard/stats', authenticateToken, requireManagerRole, as
 app.get('/api/v1/crm/orders', authenticateToken, requireManagerRole, async (req, res) => {
     try {
         console.log('GET /api/v1/crm/orders query:', req.query);
+        const { actorId, scope, isAdmin } = resolveCrmOrderScope(req);
         const {
             status,
             manager,
@@ -3665,12 +5024,13 @@ app.get('/api/v1/crm/orders', authenticateToken, requireManagerRole, async (req,
         const limitInt = Math.max(1, Math.min(200, parseInt(limit)));
         const offsetInt = Math.max(0, parseInt(offset));
         const statusList = status ? String(status).split(',').map(s => s.trim()).filter(Boolean) : [];
+        const mineOnly = scope === 'mine';
+        if (mineOnly && !actorId) {
+            return res.status(401).json({ success: false, error: 'Manager context is missing' });
+        }
+        const managerFilter = mineOnly ? actorId : (manager ? String(manager).trim() : '');
 
-        // Valid order statuses supported by Supabase ENUM
-        const VALID_ORDER_STATUSES = [
-            'new', 'pending_manager', 'under_inspection', 'awaiting_payment', 'awaiting_deposit', 'deposit_paid',
-            'full_paid', 'ready_for_shipment', 'in_transit', 'delivered', 'cancelled', 'refunded', 'closed'
-        ];
+        const VALID_ORDER_STATUSES = ALL_ORDER_STATUSES;
 
         const sortBy = ['created_at', 'final_price_eur', 'order_code', 'status'].includes(String(sort_by || ''))
             ? String(sort_by)
@@ -3686,9 +5046,9 @@ app.get('/api/v1/crm/orders', authenticateToken, requireManagerRole, async (req,
                     params.push(...validStatuses);
                 }
             }
-            if (manager) {
+            if (managerFilter) {
                 where.push('o.assigned_manager = ?');
-                params.push(String(manager));
+                params.push(managerFilter);
             }
             if (date_from) {
                 where.push('o.created_at >= ?');
@@ -3734,27 +5094,53 @@ app.get('/api/v1/crm/orders', authenticateToken, requireManagerRole, async (req,
             );
             const totalCount = Number(countRows?.[0]?.total || 0);
 
-            const rowsLocal = await db.query(
-                `SELECT
-                    o.id,
-                    o.order_code,
-                    o.status,
-                    o.final_price_eur,
-                    o.created_at,
-                    o.assigned_manager,
-                    o.bike_snapshot,
-                    c.full_name,
-                    c.email,
-                    c.phone,
-                    c.country,
-                    c.city
-                 FROM orders o
-                 LEFT JOIN customers c ON c.id = o.customer_id
-                 ${whereSql}
-                 ORDER BY ${sortColumn} ${sortDirection}
-                 LIMIT ? OFFSET ?`,
-                [...params, limitInt, offsetInt]
-            );
+            let rowsLocal = [];
+            try {
+                rowsLocal = await db.query(
+                    `SELECT
+                        o.id,
+                        o.order_code,
+                        o.status,
+                        o.final_price_eur,
+                        o.created_at,
+                        o.assigned_manager,
+                        o.bike_snapshot,
+                        c.full_name,
+                        c.email,
+                        c.phone,
+                        c.country,
+                        c.city
+                     FROM orders o
+                     LEFT JOIN customers c ON c.id = o.customer_id
+                     ${whereSql}
+                     ORDER BY ${sortColumn} ${sortDirection}
+                     LIMIT ? OFFSET ?`,
+                    [...params, limitInt, offsetInt]
+                );
+            } catch (localSelectErr) {
+                const text = String(localSelectErr?.message || localSelectErr || '').toLowerCase();
+                if (!text.includes('no such column') || !text.includes('city')) throw localSelectErr;
+                rowsLocal = await db.query(
+                    `SELECT
+                        o.id,
+                        o.order_code,
+                        o.status,
+                        o.final_price_eur,
+                        o.created_at,
+                        o.assigned_manager,
+                        o.bike_snapshot,
+                        c.full_name,
+                        c.email,
+                        c.phone,
+                        c.country
+                     FROM orders o
+                     LEFT JOIN customers c ON c.id = o.customer_id
+                     ${whereSql}
+                     ORDER BY ${sortColumn} ${sortDirection}
+                     LIMIT ? OFFSET ?`,
+                    [...params, limitInt, offsetInt]
+                );
+            }
 
             const orders = (rowsLocal || []).map((o) => ({
                 order_id: o.id,
@@ -3782,35 +5168,47 @@ app.get('/api/v1/crm/orders', authenticateToken, requireManagerRole, async (req,
         if (supabase) {
             try {
             const safeSearch = q ? String(q).trim().toLowerCase() : '';
-            let query = supabase
-                .from('orders')
-                .select('id, order_code, status, final_price_eur, total_price_rub, created_at, assigned_manager, bike_name, bike_snapshot, customers(full_name, email, phone, country, city, contact_value, preferred_channel)', { count: 'exact' })
-                .order(sortBy, { ascending: sortAsc });
+            const customerSelectVariants = [
+                'customers(full_name, email, phone, country, city, contact_value, preferred_channel)',
+                'customers(full_name, email, phone, country, contact_value, preferred_channel)',
+                'customers(full_name, email, phone, country)'
+            ];
+            const makeSupabaseOrdersQuery = (customerSelect) => {
+                let query = supabase
+                    .from('orders')
+                    .select(`id, order_code, status, final_price_eur, total_price_rub, created_at, assigned_manager, bike_name, bike_snapshot, ${customerSelect}`, { count: 'exact' })
+                    .order(sortBy, { ascending: sortAsc });
 
-            // Filter valid statuses only
-            if (statusList.length) {
-                const validStatuses = statusList.filter(s => VALID_ORDER_STATUSES.includes(s));
-                if (validStatuses.length) {
-                    console.log('Filtering by status:', validStatuses);
-                    query = query.in('status', validStatuses);
-                } else {
-                    console.log('No valid statuses found in filter, ignoring status filter');
+                if (statusList.length) {
+                    const validStatuses = statusList.filter(s => VALID_ORDER_STATUSES.includes(s));
+                    if (validStatuses.length) {
+                        console.log('Filtering by status:', validStatuses);
+                        query = query.in('status', validStatuses);
+                    } else {
+                        console.log('No valid statuses found in filter, ignoring status filter');
+                    }
                 }
+                if (managerFilter) query = query.eq('assigned_manager', managerFilter);
+                if (date_from) query = query.gte('created_at', String(date_from));
+                if (date_to) query = query.lte('created_at', String(date_to));
+                if (min_amount) query = query.gte('final_price_eur', Number(min_amount));
+                if (max_amount) query = query.lte('final_price_eur', Number(max_amount));
+                if (safeSearch) {
+                    // Use server-side fuzzy matching for fields that are unreliable in SQL filters (JSON snapshot and nested customer fields).
+                    const fetchLimit = Math.max(limitInt + offsetInt + 120, 200);
+                    query = query.limit(Math.min(fetchLimit, 1000));
+                } else {
+                    query = query.range(offsetInt, offsetInt + limitInt - 1);
+                }
+                return query;
+            };
+            let response = await makeSupabaseOrdersQuery(customerSelectVariants[0]);
+            let selectIdx = 0;
+            while (response.error && isMissingCustomersColumnError(response.error) && selectIdx < customerSelectVariants.length - 1) {
+                selectIdx += 1;
+                response = await makeSupabaseOrdersQuery(customerSelectVariants[selectIdx]);
             }
-            if (manager) query = query.eq('assigned_manager', String(manager));
-            if (date_from) query = query.gte('created_at', String(date_from));
-            if (date_to) query = query.lte('created_at', String(date_to));
-            if (min_amount) query = query.gte('final_price_eur', Number(min_amount));
-            if (max_amount) query = query.lte('final_price_eur', Number(max_amount));
-            if (safeSearch) {
-                // Use server-side fuzzy matching for fields that are unreliable in SQL filters (JSON snapshot and nested customer fields).
-                const fetchLimit = Math.max(limitInt + offsetInt + 120, 200);
-                query = query.limit(Math.min(fetchLimit, 1000));
-            } else {
-                query = query.range(offsetInt, offsetInt + limitInt - 1);
-            }
-
-            const { data, error, count } = await query;
+            const { data, error, count } = response;
             if (error) {
                 console.error('Supabase orders query error:', error);
                 throw error;
@@ -3873,6 +5271,11 @@ app.get('/api/v1/crm/orders', authenticateToken, requireManagerRole, async (req,
                 if (localFallback.totalCount > 0) {
                     return res.json({
                         success: true,
+                        scope: {
+                            mode: mineOnly ? 'mine' : 'all',
+                            actor_id: actorId || null,
+                            can_view_all: Boolean(isAdmin)
+                        },
                         orders: localFallback.orders,
                         total: localFallback.totalCount,
                         pagination: { total: localFallback.totalCount, limit: limitInt, offset: offsetInt }
@@ -3882,6 +5285,11 @@ app.get('/api/v1/crm/orders', authenticateToken, requireManagerRole, async (req,
 
             return res.json({
                 success: true,
+                scope: {
+                    mode: mineOnly ? 'mine' : 'all',
+                    actor_id: actorId || null,
+                    can_view_all: Boolean(isAdmin)
+                },
                 orders,
                 total: totalCount,
                 pagination: { total: totalCount, limit: limitInt, offset: offsetInt }
@@ -3896,6 +5304,11 @@ app.get('/api/v1/crm/orders', authenticateToken, requireManagerRole, async (req,
 
         return res.json({
             success: true,
+            scope: {
+                mode: mineOnly ? 'mine' : 'all',
+                actor_id: actorId || null,
+                can_view_all: Boolean(isAdmin)
+            },
             orders: localData.orders,
             total: localData.totalCount,
             pagination: { total: localData.totalCount, limit: limitInt, offset: offsetInt }
@@ -3924,6 +5337,7 @@ function buildCsv(headers, rows) {
 // Export orders (CSV/Excel)
 app.get('/api/v1/crm/orders/export', authenticateToken, requireManagerRole, async (req, res) => {
     try {
+        const { actorId, scope } = resolveCrmOrderScope(req);
         const {
             status,
             manager,
@@ -3936,6 +5350,11 @@ app.get('/api/v1/crm/orders/export', authenticateToken, requireManagerRole, asyn
         } = req.query;
 
         const statusList = status ? String(status).split(',').map(s => s.trim()).filter(Boolean) : [];
+        const mineOnly = scope === 'mine';
+        if (mineOnly && !actorId) {
+            return res.status(401).json({ success: false, error: 'Manager context is missing' });
+        }
+        const managerFilter = mineOnly ? actorId : (manager ? String(manager).trim() : '');
 
         let orders = [];
         if (supabase) {
@@ -3945,7 +5364,7 @@ app.get('/api/v1/crm/orders/export', authenticateToken, requireManagerRole, asyn
                 .order('created_at', { ascending: false });
 
             if (statusList.length) query = query.in('status', statusList);
-            if (manager) query = query.eq('assigned_manager', String(manager));
+            if (managerFilter) query = query.eq('assigned_manager', managerFilter);
             if (date_from) query = query.gte('created_at', String(date_from));
             if (date_to) query = query.lte('created_at', String(date_to));
             if (min_amount) query = query.gte('final_price_eur', Number(min_amount));
@@ -3967,9 +5386,9 @@ app.get('/api/v1/crm/orders/export', authenticateToken, requireManagerRole, asyn
                 where.push(`o.status IN (${statusList.map(() => '?').join(',')})`);
                 params.push(...statusList);
             }
-            if (manager) {
+            if (managerFilter) {
                 where.push('o.assigned_manager = ?');
-                params.push(String(manager));
+                params.push(managerFilter);
             }
             if (date_from) {
                 where.push('o.created_at >= ?');
@@ -3993,15 +5412,29 @@ app.get('/api/v1/crm/orders/export', authenticateToken, requireManagerRole, asyn
                 params.push(safeQ, safeQ, safeQ, safeQ, safeQ);
             }
             const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
-            orders = await db.query(
-                `SELECT o.id, o.order_code, o.status, o.final_price_eur, o.created_at, o.assigned_manager, o.bike_snapshot, o.old_uuid_id,
-                        c.full_name, c.city
-                 FROM orders o
-                 LEFT JOIN customers c ON c.id = o.customer_id
-                 ${whereSql}
-                 ORDER BY o.created_at DESC`,
-                params
-            );
+            try {
+                orders = await db.query(
+                    `SELECT o.id, o.order_code, o.status, o.final_price_eur, o.created_at, o.assigned_manager, o.bike_snapshot, o.old_uuid_id,
+                            c.full_name, c.city
+                     FROM orders o
+                     LEFT JOIN customers c ON c.id = o.customer_id
+                     ${whereSql}
+                     ORDER BY o.created_at DESC`,
+                    params
+                );
+            } catch (localExportErr) {
+                const text = String(localExportErr?.message || localExportErr || '').toLowerCase();
+                if (!text.includes('no such column') || !text.includes('city')) throw localExportErr;
+                orders = await db.query(
+                    `SELECT o.id, o.order_code, o.status, o.final_price_eur, o.created_at, o.assigned_manager, o.bike_snapshot, o.old_uuid_id,
+                            c.full_name, c.country
+                     FROM orders o
+                     LEFT JOIN customers c ON c.id = o.customer_id
+                     ${whereSql}
+                     ORDER BY o.created_at DESC`,
+                    params
+                );
+            }
         }
 
         const orderIds = orders.map(o => o.id);
@@ -4089,7 +5522,8 @@ app.patch('/api/v1/crm/orders/bulk/status', authenticateToken, requireManagerRol
     try {
         const { order_ids, new_status, status, note } = req.body || {};
         const effectiveStatus = normalizeOrderStatus(new_status || status);
-        if (!Array.isArray(order_ids) || order_ids.length === 0) {
+        const requestedIds = Array.isArray(order_ids) ? Array.from(new Set(order_ids.map((value) => String(value).trim()).filter(Boolean))) : [];
+        if (requestedIds.length === 0) {
             return res.status(400).json({ success: false, error: 'order_ids required' });
         }
 
@@ -4101,61 +5535,219 @@ app.patch('/api/v1/crm/orders/bulk/status', authenticateToken, requireManagerRol
             });
         }
 
-        if (supabase) {
-            const ids = Array.from(new Set(order_ids.map(String)));
-            const byId = await supabase.from('orders').select('id').in('id', ids);
-            const byCode = await supabase.from('orders').select('id').in('order_code', ids);
-            if (byId.error || byCode.error) {
-                const queryError = byId.error || byCode.error;
-                if (isSupabaseConnectivityError(queryError)) {
-                    return res.status(503).json({ success: false, error: 'Order service temporarily unavailable' });
+        const validateTransitions = (rows = []) => {
+            const invalidTransitions = [];
+            for (const row of rows) {
+                const fromStatus = normalizeOrderStatus(row?.status) || String(row?.status || '').trim().toLowerCase();
+                if (!fromStatus) {
+                    invalidTransitions.push({
+                        order_id: row?.id || null,
+                        order_code: row?.order_code || null,
+                        from_status: row?.status || null,
+                        to_status: effectiveStatus,
+                        allowed_next_statuses: []
+                    });
+                    continue;
                 }
-                return res.status(503).json({ success: false, error: 'Order service temporarily unavailable' });
-            }
-            const finalIds = Array.from(new Set([...(byId.data || []), ...(byCode.data || [])].map(o => o.id)));
-
-            if (!finalIds.length) return res.status(404).json({ success: false, error: 'Orders not found' });
-
-            const { error } = await supabase.from('orders').update({ status: String(effectiveStatus) }).in('id', finalIds);
-            if (error) {
-                if (isSupabaseConnectivityError(error)) {
-                    return res.status(503).json({ success: false, error: 'Order service temporarily unavailable' });
-                }
-                if (isSupabaseEnumError(error, 'order_status_enum')) {
-                    return res.status(400).json({
-                        success: false,
-                        error: 'Invalid order status',
-                        allowed_statuses: Array.from(KNOWN_ORDER_STATUSES)
+                if (!canTransition(fromStatus, effectiveStatus)) {
+                    invalidTransitions.push({
+                        order_id: row?.id || null,
+                        order_code: row?.order_code || null,
+                        from_status: fromStatus,
+                        to_status: effectiveStatus,
+                        allowed_next_statuses: Array.isArray(TRANSITIONS[fromStatus]) ? TRANSITIONS[fromStatus] : []
                     });
                 }
-                throw error;
             }
+            return invalidTransitions;
+        };
 
-            try {
-                const events = finalIds.map(id => ({
-                    order_id: id,
-                    old_status: null,
-                    new_status: String(effectiveStatus),
-                    changed_by: req.user?.id || null,
-                    change_notes: note || 'Bulk status update'
-                }));
-                await supabase.from('order_status_events').insert(events);
-            } catch (e) {
-                console.warn('Bulk status events failed:', e.message || e);
+        try {
+            const placeholders = requestedIds.map(() => '?').join(',');
+            const localRows = await db.query(
+                `SELECT id, order_code, status
+                 FROM orders
+                 WHERE id IN (${placeholders}) OR order_code IN (${placeholders})`,
+                [...requestedIds, ...requestedIds]
+            );
+
+            if (Array.isArray(localRows) && localRows.length > 0) {
+                const invalidTransitions = validateTransitions(localRows);
+                if (invalidTransitions.length > 0) {
+                    return res.status(400).json({
+                        success: false,
+                        error: 'Invalid status transition in bulk update',
+                        invalid_transitions: invalidTransitions.slice(0, 50)
+                    });
+                }
+
+                const targetIds = Array.from(new Set(localRows.map((row) => String(row.id)).filter(Boolean)));
+                if (targetIds.length > 0) {
+                    const idPlaceholders = targetIds.map(() => '?').join(',');
+                    await db.query(
+                        `UPDATE orders SET status = ? WHERE id IN (${idPlaceholders})`,
+                        [String(effectiveStatus), ...targetIds]
+                    );
+
+                    const eventValues = localRows.map(() => '(?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)').join(',');
+                    const eventParams = [];
+                    for (const row of localRows) {
+                        eventParams.push(
+                            `OSE-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                            row.id,
+                            row.status || null,
+                            String(effectiveStatus),
+                            note || 'Bulk status update',
+                            req.user?.id || null
+                        );
+                    }
+                    try {
+                        await db.query(
+                            `INSERT INTO order_status_events (id, order_id, old_status, new_status, change_notes, changed_by, created_at)
+                             VALUES ${eventValues}`,
+                            eventParams
+                        );
+                    } catch (eventError) {
+                        const eventErrorText = String(eventError?.message || eventError || '');
+                        if (/no such column:\s*change_notes/i.test(eventErrorText)) {
+                            const fallbackValues = localRows.map(() => '(?, ?, ?, ?, ?, CURRENT_TIMESTAMP)').join(',');
+                            const fallbackParams = [];
+                            for (const row of localRows) {
+                                fallbackParams.push(
+                                    `OSE-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                                    row.id,
+                                    row.status || null,
+                                    String(effectiveStatus),
+                                    req.user?.id || null
+                                );
+                            }
+                            await db.query(
+                                `INSERT INTO order_status_events (id, order_id, old_status, new_status, changed_by, created_at)
+                                 VALUES ${fallbackValues}`,
+                                fallbackParams
+                            );
+                        } else {
+                            throw eventError;
+                        }
+                    }
+                }
+
+                let mirroredRemote = false;
+                if (supabase && targetIds.length > 0) {
+                    try {
+                        const { error: mirrorError } = await supabase
+                            .from('orders')
+                            .update({ status: String(effectiveStatus) })
+                            .in('id', targetIds);
+                        if (mirrorError) throw mirrorError;
+
+                        const mirrorEvents = localRows.map((row) => ({
+                            order_id: row.id,
+                            old_status: row.status || null,
+                            new_status: String(effectiveStatus),
+                            changed_by: req.user?.id || null,
+                            change_notes: note || 'Bulk status update'
+                        }));
+                        const { error: mirrorEventsError } = await supabase.from('order_status_events').insert(mirrorEvents);
+                        if (mirrorEventsError) {
+                            console.warn('Bulk status mirror events warning:', mirrorEventsError.message || mirrorEventsError);
+                        }
+                        mirroredRemote = true;
+                    } catch (mirrorError) {
+                        console.warn('Bulk status remote mirror warning:', mirrorError?.message || mirrorError);
+                    }
+                }
+
+                return res.json({
+                    success: true,
+                    updated: targetIds.length,
+                    storage_mode: 'local_primary',
+                    mirrored_remote: mirroredRemote
+                });
             }
-
-            return res.json({ success: true, updated: finalIds.length });
+        } catch (localError) {
+            if (!supabase) throw localError;
+            console.warn('Bulk status local-first fallback warning:', localError?.message || localError);
         }
 
-        // Local DB fallback
-        const ids = order_ids.map(String);
-        const placeholders = ids.map(() => '?').join(',');
-        await db.query(`UPDATE orders SET status = ? WHERE id IN (${placeholders}) OR order_code IN (${placeholders})`, [
-            String(effectiveStatus),
-            ...ids,
-            ...ids
-        ]);
-        return res.json({ success: true, updated: ids.length });
+        if (!supabase) {
+            return res.status(404).json({ success: false, error: 'Orders not found' });
+        }
+
+        const byId = await supabase
+            .from('orders')
+            .select('id, order_code, status')
+            .in('id', requestedIds);
+        const byCode = await supabase
+            .from('orders')
+            .select('id, order_code, status')
+            .in('order_code', requestedIds);
+
+        if (byId.error || byCode.error) {
+            const queryError = byId.error || byCode.error;
+            if (isSupabaseConnectivityError(queryError)) {
+                return res.status(503).json({ success: false, error: 'Order service temporarily unavailable' });
+            }
+            throw queryError;
+        }
+
+        const combinedRows = [...(byId.data || []), ...(byCode.data || [])];
+        const seen = new Set();
+        const targetRows = [];
+        for (const row of combinedRows) {
+            const key = String(row?.id || '');
+            if (!key || seen.has(key)) continue;
+            seen.add(key);
+            targetRows.push(row);
+        }
+
+        if (!targetRows.length) {
+            return res.status(404).json({ success: false, error: 'Orders not found' });
+        }
+
+        const invalidTransitions = validateTransitions(targetRows);
+        if (invalidTransitions.length > 0) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid status transition in bulk update',
+                invalid_transitions: invalidTransitions.slice(0, 50)
+            });
+        }
+
+        const targetIds = targetRows.map((row) => row.id);
+        const { error } = await supabase.from('orders').update({ status: String(effectiveStatus) }).in('id', targetIds);
+        if (error) {
+            if (isSupabaseConnectivityError(error)) {
+                return res.status(503).json({ success: false, error: 'Order service temporarily unavailable' });
+            }
+            if (isSupabaseEnumError(error, 'order_status_enum')) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Invalid order status',
+                    allowed_statuses: Array.from(KNOWN_ORDER_STATUSES)
+                });
+            }
+            throw error;
+        }
+
+        try {
+            const events = targetRows.map((row) => ({
+                order_id: row.id,
+                old_status: row.status || null,
+                new_status: String(effectiveStatus),
+                changed_by: req.user?.id || null,
+                change_notes: note || 'Bulk status update'
+            }));
+            await supabase.from('order_status_events').insert(events);
+        } catch (e) {
+            console.warn('Bulk status events failed:', e.message || e);
+        }
+
+        return res.json({
+            success: true,
+            updated: targetIds.length,
+            storage_mode: 'supabase_fallback'
+        });
     } catch (error) {
         if (isSupabaseConnectivityError(error)) {
             return res.status(503).json({ success: false, error: 'Order service temporarily unavailable' });
@@ -4236,6 +5828,16 @@ app.patch('/api/v1/crm/orders/:orderId/status', authenticateToken, requireManage
                 if (findError) throw findError;
                 const current = foundOrders?.[0];
                 if (!current) return res.status(404).json({ success: false, error: 'Order not found' });
+                const currentStatus = normalizeOrderStatus(current.status) || String(current.status || '').trim().toLowerCase();
+                if (currentStatus && !canTransition(currentStatus, normalizedStatus)) {
+                    return res.status(400).json({
+                        success: false,
+                        error: 'Invalid status transition',
+                        from_status: currentStatus,
+                        to_status: normalizedStatus,
+                        allowed_next_statuses: Array.isArray(TRANSITIONS[currentStatus]) ? TRANSITIONS[currentStatus] : []
+                    });
+                }
 
                 const { data: updatedRows, error: updateError } = await supabase
                     .from('orders')
@@ -4266,6 +5868,18 @@ app.patch('/api/v1/crm/orders/:orderId/status', authenticateToken, requireManage
                     console.warn('CRM status event insert warning:', eventError);
                 }
 
+                await logManagerActivityEvent({
+                    managerId: req.user?.id || current.assigned_manager || null,
+                    orderId: current.id,
+                    eventType: 'status_changed',
+                    eventPayload: {
+                        from_status: current.status || null,
+                        to_status: normalizedStatus,
+                        note: note ? String(note) : null
+                    },
+                    actionResult: 'updated'
+                });
+
                 const updated = updatedRows?.[0] || { ...current, status: normalizedStatus };
                 return res.json({
                     success: true,
@@ -4292,6 +5906,16 @@ app.patch('/api/v1/crm/orders/:orderId/status', authenticateToken, requireManage
         );
         const current = rows?.[0];
         if (!current) return res.status(404).json({ success: false, error: 'Order not found' });
+        const currentStatus = normalizeOrderStatus(current.status) || String(current.status || '').trim().toLowerCase();
+        if (currentStatus && !canTransition(currentStatus, normalizedStatus)) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid status transition',
+                from_status: currentStatus,
+                to_status: normalizedStatus,
+                allowed_next_statuses: Array.isArray(TRANSITIONS[currentStatus]) ? TRANSITIONS[currentStatus] : []
+            });
+        }
 
         await db.query('UPDATE orders SET status = ? WHERE id = ?', [normalizedStatus, current.id]);
         try {
@@ -4314,6 +5938,18 @@ app.patch('/api/v1/crm/orders/:orderId/status', authenticateToken, requireManage
                 console.warn('CRM status event insert warning (sqlite):', eventError);
             }
         }
+
+        await logManagerActivityEvent({
+            managerId: req.user?.id || current.assigned_manager || null,
+            orderId: current.id,
+            eventType: 'status_changed',
+            eventPayload: {
+                from_status: current.status || null,
+                to_status: normalizedStatus,
+                note: note ? String(note) : null
+            },
+            actionResult: 'updated'
+        });
 
         return res.json({
             success: true,
@@ -4386,6 +6022,13 @@ app.patch('/api/v1/crm/orders/:orderId/manager', authenticateToken, requireManag
                     .limit(1);
                 if (updateError) throw updateError;
                 const updated = updatedRows?.[0] || { ...targetOrder, assigned_manager: String(managerId) };
+                await logManagerActivityEvent({
+                    managerId: req.user?.id || String(managerId),
+                    orderId: targetOrder.id,
+                    eventType: 'manager_assigned',
+                    eventPayload: { assigned_manager: String(managerId) },
+                    actionResult: 'updated'
+                });
                 return res.json({
                     success: true,
                     order: {
@@ -4422,6 +6065,13 @@ app.patch('/api/v1/crm/orders/:orderId/manager', authenticateToken, requireManag
         if (!targetOrder) return res.status(404).json({ success: false, error: 'Order not found' });
 
         await db.query('UPDATE orders SET assigned_manager = ? WHERE id = ?', [String(managerId), targetOrder.id]);
+        await logManagerActivityEvent({
+            managerId: req.user?.id || String(managerId),
+            orderId: targetOrder.id,
+            eventType: 'manager_assigned',
+            eventPayload: { assigned_manager: String(managerId) },
+            actionResult: 'updated'
+        });
         return res.json({
             success: true,
             order: {
@@ -4487,6 +6137,13 @@ app.patch('/api/v1/crm/orders/:orderId', authenticateToken, requireManagerRole, 
                 .limit(1);
             if (updateError) throw updateError;
             const updated = updatedRows?.[0];
+            await logManagerActivityEvent({
+                managerId: req.user?.id || target.assigned_manager || null,
+                orderId: target.id,
+                eventType: 'order_fields_updated',
+                eventPayload: payload,
+                actionResult: 'updated'
+            });
             return res.json({
                 success: true,
                 order: {
@@ -4541,6 +6198,13 @@ app.patch('/api/v1/crm/orders/:orderId', authenticateToken, requireManagerRole, 
 
         const updateSql = entries.map(([key]) => `${key} = ?`).join(', ');
         await db.query(`UPDATE orders SET ${updateSql} WHERE id = ?`, [...entries.map(([, value]) => value), target.id]);
+        await logManagerActivityEvent({
+            managerId: req.user?.id || target.assigned_manager || null,
+            orderId: target.id,
+            eventType: 'order_fields_updated',
+            eventPayload: localUpdates,
+            actionResult: 'updated'
+        });
 
         const updatedRows = await db.query(
             'SELECT id, order_code, status, final_price_eur, created_at, assigned_manager, bike_snapshot FROM orders WHERE id = ? LIMIT 1',
@@ -4564,6 +6228,1355 @@ app.patch('/api/v1/crm/orders/:orderId', authenticateToken, requireManagerRole, 
     } catch (error) {
         console.error('CRM order update error:', error);
         return res.status(500).json({ success: false, error: 'Failed to update order' });
+    }
+});
+
+app.get('/api/v1/crm/orders/:orderId/cjm', authenticateToken, requireManagerRole, async (req, res) => {
+    try {
+        const targetOrder = await resolveLocalOrderByIdOrCode(req.params.orderId);
+        if (!targetOrder) return res.status(404).json({ success: false, error: 'Order not found' });
+
+        const [journeyEvents, stageInstances, touchpoints, followups] = await Promise.all([
+            db.query(
+                `SELECT id, event_type, stage_code, from_status, to_status, source, payload, event_at, created_at
+                 FROM crm_journey_events
+                 WHERE order_id = ?
+                 ORDER BY datetime(event_at) ASC, created_at ASC`,
+                [targetOrder.id]
+            ),
+            db.query(
+                `SELECT id, status_code, manager_id, entered_at, exited_at, duration_minutes, sla_due_at, sla_breached_at
+                 FROM crm_order_stage_instances
+                 WHERE order_id = ?
+                 ORDER BY datetime(entered_at) ASC`,
+                [targetOrder.id]
+            ),
+            db.query(
+                `SELECT id, manager_id, channel, direction, touchpoint_type, summary, happened_at, response_due_at, responded_at, is_sla_breached
+                 FROM crm_touchpoints
+                 WHERE order_id = ?
+                 ORDER BY datetime(happened_at) DESC`,
+                [targetOrder.id]
+            ),
+            db.query(
+                `SELECT id, manager_id, followup_type, title, due_at, completed_at, status, notes
+                 FROM crm_manager_followups
+                 WHERE order_id = ?
+                 ORDER BY datetime(due_at) ASC`,
+                [targetOrder.id]
+            )
+        ]);
+
+        return res.json({
+            success: true,
+            storage_mode: 'local_sqlite',
+            order: targetOrder,
+            cjm: {
+                journey_events: journeyEvents || [],
+                stage_instances: stageInstances || [],
+                touchpoints: touchpoints || [],
+                followups: followups || []
+            }
+        });
+    } catch (error) {
+        console.error('CRM order CJM error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to load order CJM' });
+    }
+});
+
+app.post('/api/v1/crm/orders/:orderId/touchpoints', authenticateToken, requireManagerRole, async (req, res) => {
+    try {
+        const targetOrder = await resolveLocalOrderByIdOrCode(req.params.orderId);
+        if (!targetOrder) return res.status(404).json({ success: false, error: 'Order not found' });
+
+        const body = req.body || {};
+        const channel = normalizeTouchpointChannel(body.channel);
+        const direction = normalizeTouchpointDirection(body.direction);
+        const touchpointType = normalizeTouchpointType(body.touchpoint_type || body.type);
+        const summary = body.summary == null ? null : String(body.summary);
+        const payload = body.payload && typeof body.payload === 'object' ? body.payload : null;
+        const managerId = String(body.manager_id || req.user?.id || targetOrder.assigned_manager || '');
+
+        const responseDueMinutesRaw = Number(body.response_due_minutes);
+        const responseDueMinutes = Number.isFinite(responseDueMinutesRaw) && responseDueMinutesRaw > 0
+            ? Math.min(Math.round(responseDueMinutesRaw), 24 * 60)
+            : (direction === 'inbound' ? 120 : null);
+
+        const touchpointId = makeEntityId('TP');
+        const responseDueAtExpr = responseDueMinutes != null ? `datetime('now', '+${responseDueMinutes} minutes')` : 'NULL';
+
+        await db.query(
+            `INSERT INTO crm_touchpoints
+             (id, customer_id, lead_id, order_id, manager_id, channel, direction, touchpoint_type, summary, payload, happened_at, response_due_at, response_sla_minutes, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ${responseDueAtExpr}, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+            [
+                touchpointId,
+                targetOrder.customer_id || null,
+                targetOrder.lead_id || null,
+                targetOrder.id,
+                managerId || null,
+                channel,
+                direction,
+                touchpointType,
+                summary,
+                payload ? JSON.stringify(payload) : null,
+                responseDueMinutes
+            ]
+        );
+
+        let followupId = null;
+        if (direction === 'inbound' && managerId) {
+            followupId = makeEntityId('FUP');
+            const dueMinutes = responseDueMinutes || 120;
+            await db.query(
+                `INSERT INTO crm_manager_followups
+                 (id, order_id, customer_id, lead_id, manager_id, followup_type, title, due_at, status, source_event_id, notes, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, 'client_response', ?, datetime('now', '+${dueMinutes} minutes'), 'pending', ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+                [
+                    followupId,
+                    targetOrder.id,
+                    targetOrder.customer_id || null,
+                    targetOrder.lead_id || null,
+                    managerId,
+                    summary ? `Reply required: ${summary.slice(0, 120)}` : 'Client response requires reply',
+                    touchpointId,
+                    summary
+                ]
+            );
+        }
+
+        if (direction === 'outbound') {
+            await db.query(
+                `UPDATE crm_touchpoints
+                 SET responded_at = CURRENT_TIMESTAMP,
+                     is_sla_breached = CASE
+                        WHEN response_due_at IS NOT NULL AND datetime(CURRENT_TIMESTAMP) > datetime(response_due_at) THEN 1
+                        ELSE 0
+                     END,
+                     updated_at = CURRENT_TIMESTAMP
+                 WHERE order_id = ?
+                   AND direction = 'inbound'
+                   AND responded_at IS NULL`,
+                [targetOrder.id]
+            );
+            await db.query(
+                `UPDATE crm_manager_followups
+                 SET status = 'completed',
+                     completed_at = CURRENT_TIMESTAMP,
+                     updated_at = CURRENT_TIMESTAMP
+                 WHERE order_id = ?
+                   AND manager_id = ?
+                   AND status = 'pending'`,
+                [targetOrder.id, managerId]
+            );
+        }
+
+        await logManagerActivityEvent({
+            managerId,
+            orderId: targetOrder.id,
+            leadId: targetOrder.lead_id || null,
+            customerId: targetOrder.customer_id || null,
+            eventType: 'touchpoint_logged',
+            eventPayload: {
+                touchpoint_id: touchpointId,
+                channel,
+                direction,
+                touchpoint_type: touchpointType,
+                summary
+            },
+            channel,
+            actionResult: 'logged'
+        });
+
+        const rows = await db.query(
+            `SELECT id, order_id, manager_id, channel, direction, touchpoint_type, summary, happened_at, response_due_at, responded_at, is_sla_breached
+             FROM crm_touchpoints
+             WHERE id = ?
+             LIMIT 1`,
+            [touchpointId]
+        );
+        return res.json({
+            success: true,
+            storage_mode: 'local_sqlite',
+            touchpoint: rows?.[0] || null,
+            followup_id: followupId
+        });
+    } catch (error) {
+        console.error('CRM touchpoint create error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to create touchpoint' });
+    }
+});
+
+app.patch('/api/v1/crm/followups/:followupId/complete', authenticateToken, requireManagerRole, async (req, res) => {
+    try {
+        const { followupId } = req.params;
+        const managerId = String(req.body?.manager_id || req.user?.id || '');
+        const note = req.body?.note == null ? null : String(req.body.note);
+
+        const rows = await db.query(
+            `SELECT id, order_id, customer_id, lead_id, manager_id, status
+             FROM crm_manager_followups
+             WHERE id = ?
+             LIMIT 1`,
+            [followupId]
+        );
+        const followup = rows?.[0];
+        if (!followup) return res.status(404).json({ success: false, error: 'Follow-up not found' });
+
+        await db.query(
+            `UPDATE crm_manager_followups
+             SET status = 'completed',
+                 completed_at = CURRENT_TIMESTAMP,
+                 notes = COALESCE(?, notes),
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE id = ?`,
+            [note, followupId]
+        );
+
+        await logManagerActivityEvent({
+            managerId: managerId || followup.manager_id || null,
+            orderId: followup.order_id || null,
+            leadId: followup.lead_id || null,
+            customerId: followup.customer_id || null,
+            eventType: 'followup_completed',
+            eventPayload: { followup_id: followupId, note: note || null },
+            actionResult: 'completed'
+        });
+
+        return res.json({ success: true, followup_id: followupId });
+    } catch (error) {
+        console.error('CRM followup complete error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to complete follow-up' });
+    }
+});
+
+app.post('/api/v1/crm/kpi/recompute', authenticateToken, requireManagerRole, async (req, res) => {
+    try {
+        const daysRaw = Number(req.body?.days);
+        const days = Number.isFinite(daysRaw) ? Math.max(1, Math.min(Math.round(daysRaw), 365)) : 31;
+        const result = await managerKpiService.recomputeRecent(days);
+        return res.json({ success: true, result });
+    } catch (error) {
+        console.error('CRM KPI recompute error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to recompute KPI' });
+    }
+});
+
+app.get('/api/v1/crm/managers/:managerId/scorecard', authenticateToken, requireManagerRole, async (req, res) => {
+    try {
+        const { managerId } = req.params;
+        const period = String(req.query?.period || '').trim() || null;
+        const payload = await managerKpiService.getScorecard(managerId, period || null);
+        if (!payload.scorecard) {
+            await managerKpiService.recomputePeriod(payload.periodKey);
+            const rebuilt = await managerKpiService.getScorecard(managerId, payload.periodKey);
+            return res.json({ success: true, ...rebuilt, rebuilt: true });
+        }
+        return res.json({ success: true, ...payload, rebuilt: false });
+    } catch (error) {
+        console.error('CRM manager scorecard error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to load manager scorecard' });
+    }
+});
+
+app.get('/api/v1/crm/ai-rop/workspace', authenticateToken, requireManagerRole, async (req, res) => {
+    try {
+        const { role, actorId, isAdmin, scope } = resolveCrmOrderScope(req);
+        const mineOnly = scope === 'mine';
+        const requestedManagerId = String(req.query?.manager_id || '').trim();
+        const managerScope = mineOnly ? actorId : (isAdmin && requestedManagerId ? requestedManagerId : null);
+
+        if (mineOnly && !actorId) {
+            return res.status(401).json({ success: false, error: 'Manager context is required for scoped workspace view' });
+        }
+
+        const ordersLimitRaw = Number(req.query?.orders_limit);
+        const tasksLimitRaw = Number(req.query?.tasks_limit);
+        const signalsLimitRaw = Number(req.query?.signals_limit);
+        const ordersLimit = Number.isFinite(ordersLimitRaw) ? Math.max(5, Math.min(200, Math.round(ordersLimitRaw))) : 30;
+        const tasksLimit = Number.isFinite(tasksLimitRaw) ? Math.max(5, Math.min(200, Math.round(tasksLimitRaw))) : 30;
+        const signalsLimit = Number.isFinite(signalsLimitRaw) ? Math.max(5, Math.min(200, Math.round(signalsLimitRaw))) : 40;
+
+        let manager = null;
+        if (managerScope) {
+            const managerRows = await db.query(
+                `SELECT CAST(id AS TEXT) AS id, name, email, role
+                 FROM users
+                 WHERE CAST(id AS TEXT) = ?
+                 LIMIT 1`,
+                [managerScope]
+            );
+            manager = managerRows?.[0] || {
+                id: managerScope,
+                name: null,
+                email: req.user?.email || null,
+                role: role || null
+            };
+        } else if (mineOnly) {
+            manager = {
+                id: actorId || null,
+                name: null,
+                email: req.user?.email || null,
+                role: role || null
+            };
+        }
+
+        const orderWhere = [
+            'o.status NOT IN (?, ?, ?, ?, ?)'
+        ];
+        const orderParams = [
+            ORDER_STATUS.DELIVERED,
+            ORDER_STATUS.CLOSED,
+            ORDER_STATUS.CANCELLED,
+            'paid_out',
+            'refunded'
+        ];
+        if (managerScope) {
+            orderWhere.push('CAST(o.assigned_manager AS TEXT) = ?');
+            orderParams.push(managerScope);
+        }
+
+        const orderRows = await db.query(
+            `SELECT
+                o.id,
+                o.order_code,
+                o.status,
+                o.final_price_eur,
+                o.total_price_rub,
+                o.created_at,
+                o.updated_at,
+                o.assigned_manager,
+                o.bike_name,
+                o.bike_snapshot,
+                c.full_name,
+                c.email,
+                c.phone
+             FROM orders o
+             LEFT JOIN customers c ON c.id = o.customer_id
+             WHERE ${orderWhere.join(' AND ')}
+             ORDER BY datetime(COALESCE(o.updated_at, o.created_at)) DESC
+             LIMIT ?`,
+            [...orderParams, ordersLimit]
+        );
+
+        const taskWhere = ['CAST(COALESCE(t.completed, 0) AS INTEGER) = 0'];
+        const taskParams = [];
+        if (managerScope) {
+            taskWhere.push('CAST(t.assigned_to AS TEXT) = ?');
+            taskParams.push(managerScope);
+        }
+        const taskRows = await db.query(
+            `SELECT
+                t.id,
+                t.order_id,
+                t.title,
+                t.description,
+                t.due_at,
+                t.completed,
+                t.assigned_to,
+                t.created_at
+             FROM tasks t
+             WHERE ${taskWhere.join(' AND ')}
+             ORDER BY
+                CASE WHEN t.due_at IS NULL THEN 1 ELSE 0 END ASC,
+                datetime(COALESCE(t.due_at, t.created_at)) ASC
+             LIMIT ?`,
+            [...taskParams, tasksLimit]
+        );
+
+        let followupRows = [];
+        try {
+            const followupWhere = [`f.status IN ('open', 'pending', 'in_progress')`];
+            const followupParams = [];
+            if (managerScope) {
+                followupWhere.push('CAST(f.manager_id AS TEXT) = ?');
+                followupParams.push(managerScope);
+            }
+            followupRows = await db.query(
+                `SELECT
+                    f.id,
+                    f.order_id,
+                    f.manager_id,
+                    f.followup_type,
+                    f.title,
+                    f.due_at,
+                    f.status,
+                    f.notes,
+                    f.created_at
+                 FROM crm_manager_followups f
+                 WHERE ${followupWhere.join(' AND ')}
+                 ORDER BY
+                    CASE WHEN f.due_at IS NULL THEN 1 ELSE 0 END ASC,
+                    datetime(COALESCE(f.due_at, f.created_at)) ASC
+                 LIMIT ?`,
+                [...followupParams, tasksLimit]
+            );
+        } catch (followupError) {
+            const message = String(followupError?.message || '').toLowerCase();
+            if (!message.includes('no such table')) throw followupError;
+        }
+
+        let aiSignals = [];
+        try {
+            const listed = await aiSignalService.listSignals({
+                status: 'open,in_progress,snoozed',
+                limit: Math.max(signalsLimit * 3, 80),
+                offset: 0
+            });
+            const signalRows = Array.isArray(listed) ? listed : [];
+            aiSignals = signalRows
+                .filter((signal) => {
+                    if (!managerScope) return true;
+                    const assignedTo = signal?.assigned_to ? String(signal.assigned_to) : '';
+                    return !assignedTo || assignedTo === managerScope;
+                })
+                .slice(0, signalsLimit)
+                .map((signal) => ({
+                    ...signal,
+                    payload: (() => {
+                        if (signal?.payload == null) return null;
+                        if (typeof signal.payload === 'object') return signal.payload;
+                        try {
+                            return JSON.parse(signal.payload);
+                        } catch {
+                            return signal.payload;
+                        }
+                    })()
+                }));
+        } catch (signalError) {
+            console.warn('CRM AI-ROP workspace signals warning:', signalError?.message || signalError);
+        }
+
+        const assignedOrders = (orderRows || []).map((row) => ({
+            order_id: row.id,
+            order_number: row.order_code || null,
+            status: normalizeOrderStatus(row.status) || String(row.status || '').trim().toLowerCase(),
+            total_amount_eur: row.final_price_eur != null ? Number(row.final_price_eur) : null,
+            total_amount_rub: row.total_price_rub != null ? Number(row.total_price_rub) : getOrderTotalRubFromSnapshot(row),
+            created_at: row.created_at || null,
+            updated_at: row.updated_at || null,
+            assigned_manager: row.assigned_manager || null,
+            bike_name: row.bike_name || getOrderBikeNameFromSnapshot(row),
+            customer: {
+                full_name: row.full_name || null,
+                email: row.email || null,
+                phone: row.phone || null,
+                contact_value: row.phone || row.email || getOrderSnapshotContact(row).contact_value || null,
+                preferred_channel: getOrderSnapshotContact(row).contact_method || null
+            },
+            bike_snapshot: row.bike_snapshot || null
+        }));
+
+        const pendingTasks = (taskRows || []).map((task) => ({
+            id: task.id,
+            order_id: task.order_id || null,
+            title: task.title || 'Task',
+            description: task.description || null,
+            due_at: task.due_at || null,
+            completed: Number(task.completed || 0) === 1,
+            assigned_to: task.assigned_to || null,
+            created_at: task.created_at || null
+        }));
+
+        const openFollowups = (followupRows || []).map((row) => ({
+            id: row.id,
+            order_id: row.order_id || null,
+            manager_id: row.manager_id || null,
+            followup_type: row.followup_type || null,
+            title: row.title || null,
+            due_at: row.due_at || null,
+            status: row.status || null,
+            notes: row.notes || null,
+            created_at: row.created_at || null
+        }));
+
+        return res.json({
+            success: true,
+            storage_mode: 'local_sqlite',
+            scope: {
+                requested: String(req.query?.scope || '').trim().toLowerCase() || null,
+                applied: scope,
+                mine_only: mineOnly,
+                actor_id: actorId || null,
+                is_admin: isAdmin
+            },
+            manager_scope: managerScope || null,
+            manager,
+            autopilot_status: aiRopAutopilot.getStatus(),
+            summary: {
+                assigned_orders: assignedOrders.length,
+                pending_tasks: pendingTasks.length,
+                open_followups: openFollowups.length,
+                open_signals: aiSignals.length
+            },
+            assigned_orders: assignedOrders,
+            pending_tasks: pendingTasks,
+            open_followups: openFollowups,
+            ai_signals: aiSignals,
+            generated_at: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('CRM AI-ROP workspace error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to load AI-ROP workspace' });
+    }
+});
+
+app.post('/api/v1/crm/ai-rop/run', authenticateToken, requireManagerRole, async (req, res) => {
+    try {
+        const role = String(req.user?.role || '').toLowerCase();
+        const syncLocal = role === 'admin' && Boolean(req.body?.sync_local);
+        const result = await aiRopAutopilot.runOnce({
+            trigger: `crm_manager:${req.user?.id || 'unknown'}`,
+            syncLocal
+        });
+        return res.json({
+            success: Boolean(result?.success),
+            result,
+            autopilot_status: aiRopAutopilot.getStatus()
+        });
+    } catch (error) {
+        console.error('CRM AI-ROP run error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to run AI-ROP cycle' });
+    }
+});
+
+app.post('/api/v1/crm/ai-rop/signals/:signalId/decision', authenticateToken, requireManagerRole, async (req, res) => {
+    try {
+        const { signalId } = req.params;
+        const role = String(req.user?.role || '').toLowerCase();
+        const actorId = String(req.user?.id || '').trim();
+        const { decision, note, assignee_id, snooze_until, due_at } = req.body || {};
+
+        const signalRows = await db.query(
+            `SELECT id, assigned_to
+             FROM ai_signals
+             WHERE id = ?
+             LIMIT 1`,
+            [String(signalId)]
+        );
+        const signal = signalRows?.[0];
+        if (!signal) {
+            return res.status(404).json({ success: false, error: 'Signal not found' });
+        }
+
+        if (role !== 'admin') {
+            const assignedTo = signal.assigned_to ? String(signal.assigned_to) : '';
+            if (assignedTo && assignedTo !== actorId) {
+                return res.status(403).json({ success: false, error: 'Signal is assigned to another manager' });
+            }
+        }
+
+        const result = await aiSignalService.decideSignal(signalId, {
+            decision,
+            note: note ? String(note) : null,
+            actor_id: actorId || null,
+            assignee_id: assignee_id ? String(assignee_id) : null,
+            snooze_until: snooze_until ? String(snooze_until) : null,
+            due_at: due_at ? String(due_at) : null,
+            payload: {
+                source: 'crm_ai_rop_workspace',
+                role
+            }
+        });
+
+        if (!result?.success) {
+            if (result?.reason === 'signal_not_found') {
+                return res.status(404).json({ success: false, error: 'Signal not found' });
+            }
+            if (result?.reason === 'invalid_decision' || result?.reason === 'invalid_signal_id') {
+                return res.status(400).json({ success: false, error: result.reason });
+            }
+            return res.status(503).json({ success: false, error: result?.reason || 'Failed to process decision' });
+        }
+
+        return res.json({ success: true, result });
+    } catch (error) {
+        console.error('CRM AI-ROP signal decision error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to process signal decision' });
+    }
+});
+
+app.get('/api/v1/crm/holacracy/overview', authenticateToken, requireManagerRole, async (req, res) => {
+    try {
+        const [circleRows, roleRows, activeAssignmentRows, tensionRows, parkingRows, overdueRows] = await Promise.all([
+            db.query('SELECT COUNT(*) AS c FROM crm_holacracy_circles WHERE COALESCE(is_active, 1) = 1'),
+            db.query('SELECT COUNT(*) AS c FROM crm_holacracy_roles WHERE COALESCE(is_active, 1) = 1'),
+            db.query("SELECT COUNT(*) AS c FROM crm_holacracy_role_assignments WHERE status = 'active' AND ended_at IS NULL"),
+            db.query("SELECT COUNT(*) AS total, SUM(CASE WHEN status IN ('open','in_progress','blocked') THEN 1 ELSE 0 END) AS open_count FROM crm_holacracy_tensions"),
+            db.query("SELECT COUNT(*) AS c FROM crm_holacracy_parking_sessions WHERE status = 'active' AND completed_at IS NULL"),
+            db.query("SELECT COUNT(*) AS c FROM crm_holacracy_tensions WHERE status IN ('open','in_progress','blocked') AND due_at IS NOT NULL AND datetime(due_at) < datetime('now')")
+        ]);
+
+        return res.json({
+            success: true,
+            storage_mode: 'local_sqlite',
+            overview: {
+                circles_active: Number(circleRows?.[0]?.c || 0),
+                roles_active: Number(roleRows?.[0]?.c || 0),
+                role_assignments_active: Number(activeAssignmentRows?.[0]?.c || 0),
+                tensions_total: Number(tensionRows?.[0]?.total || 0),
+                tensions_open: Number(tensionRows?.[0]?.open_count || 0),
+                tensions_overdue: Number(overdueRows?.[0]?.c || 0),
+                parking_active: Number(parkingRows?.[0]?.c || 0)
+            }
+        });
+    } catch (error) {
+        console.error('CRM holacracy overview error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to load holacracy overview' });
+    }
+});
+
+app.get('/api/v1/crm/holacracy/circles', authenticateToken, requireManagerRole, async (req, res) => {
+    try {
+        const [circles, roleCoverage, assignments] = await Promise.all([
+            db.query(
+                `SELECT id, circle_code, title, purpose, domain_description, lead_role_code, is_active, created_at, updated_at
+                 FROM crm_holacracy_circles
+                 ORDER BY circle_code ASC`
+            ),
+            db.query(
+                `SELECT circle_code, circle_title, role_id, role_code, role_title, role_scope, active_assignees, last_assigned_at
+                 FROM crm_holacracy_role_coverage_v
+                 ORDER BY circle_code ASC, role_code ASC`
+            ),
+            db.query(
+                `SELECT a.id, a.role_id, a.user_id, a.scope_type, a.scope_id, a.assignment_kind, a.status, a.started_at, a.ended_at, a.notes,
+                        u.name AS user_name, u.email AS user_email
+                 FROM crm_holacracy_role_assignments a
+                 LEFT JOIN users u ON CAST(u.id AS TEXT) = CAST(a.user_id AS TEXT)
+                 WHERE a.status = 'active' AND a.ended_at IS NULL
+                 ORDER BY datetime(a.started_at) DESC`
+            )
+        ]);
+
+        const assignmentByRole = new Map();
+        for (const assignment of assignments || []) {
+            const list = assignmentByRole.get(String(assignment.role_id)) || [];
+            list.push({
+                id: assignment.id,
+                user_id: assignment.user_id,
+                user_name: assignment.user_name || null,
+                user_email: assignment.user_email || null,
+                scope_type: assignment.scope_type,
+                scope_id: assignment.scope_id || null,
+                assignment_kind: assignment.assignment_kind || 'primary',
+                started_at: assignment.started_at,
+                ended_at: assignment.ended_at || null,
+                notes: assignment.notes || null
+            });
+            assignmentByRole.set(String(assignment.role_id), list);
+        }
+
+        const rolesByCircle = new Map();
+        for (const role of roleCoverage || []) {
+            const list = rolesByCircle.get(String(role.circle_code)) || [];
+            list.push({
+                role_id: role.role_id,
+                role_code: role.role_code,
+                role_title: role.role_title,
+                role_scope: role.role_scope,
+                active_assignees: Number(role.active_assignees || 0),
+                last_assigned_at: role.last_assigned_at || null,
+                assignments: assignmentByRole.get(String(role.role_id)) || []
+            });
+            rolesByCircle.set(String(role.circle_code), list);
+        }
+
+        return res.json({
+            success: true,
+            storage_mode: 'local_sqlite',
+            circles: (circles || []).map((circle) => ({
+                id: circle.id,
+                circle_code: circle.circle_code,
+                title: circle.title,
+                purpose: circle.purpose || null,
+                domain_description: circle.domain_description || null,
+                lead_role_code: circle.lead_role_code || null,
+                is_active: Number(circle.is_active || 0) === 1,
+                created_at: circle.created_at,
+                updated_at: circle.updated_at,
+                roles: rolesByCircle.get(String(circle.circle_code)) || []
+            }))
+        });
+    } catch (error) {
+        console.error('CRM holacracy circles error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to load circles' });
+    }
+});
+
+app.post('/api/v1/crm/holacracy/roles/:roleId/assign', authenticateToken, requireManagerRole, async (req, res) => {
+    try {
+        if (!isAdminRequest(req)) {
+            return res.status(403).json({ success: false, error: 'Admin access required for role assignment changes' });
+        }
+
+        const roleId = String(req.params.roleId || '').trim();
+        const userId = String(req.body?.user_id || '').trim();
+        const scopeType = String(req.body?.scope_type || 'global').trim().toLowerCase();
+        const scopeId = req.body?.scope_id == null ? null : String(req.body.scope_id).trim();
+        const assignmentKind = String(req.body?.assignment_kind || 'primary').trim().toLowerCase();
+        const notes = req.body?.notes == null ? null : String(req.body.notes);
+
+        if (!roleId || !userId) {
+            return res.status(400).json({ success: false, error: 'roleId and user_id are required' });
+        }
+
+        const roleRows = await db.query(
+            `SELECT r.id, r.role_code, c.circle_code
+             FROM crm_holacracy_roles r
+             JOIN crm_holacracy_circles c ON c.id = r.circle_id
+             WHERE r.id = ?
+             LIMIT 1`,
+            [roleId]
+        );
+        const role = roleRows?.[0];
+        if (!role) return res.status(404).json({ success: false, error: 'Role not found' });
+
+        const assignmentId = makeEntityId('HRA');
+        await db.query(
+            `INSERT INTO crm_holacracy_role_assignments
+             (id, role_id, user_id, scope_type, scope_id, assignment_kind, status, source, assigned_by, started_at, notes, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, 'active', 'manual', ?, CURRENT_TIMESTAMP, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+            [
+                assignmentId,
+                roleId,
+                userId,
+                scopeType || 'global',
+                scopeId || null,
+                assignmentKind || 'primary',
+                String(req.user?.id || ''),
+                notes
+            ]
+        );
+
+        await db.query(
+            `UPDATE manager_profiles
+             SET circle_code = ?,
+                 parking_state = 'active',
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE CAST(user_id AS TEXT) = CAST(? AS TEXT)`,
+            [role.circle_code || null, userId]
+        );
+
+        await logManagerActivityEvent({
+            managerId: userId,
+            eventType: 'holacracy_role_assigned',
+            eventPayload: {
+                assignment_id: assignmentId,
+                role_id: roleId,
+                role_code: role.role_code,
+                circle_code: role.circle_code,
+                scope_type: scopeType || 'global',
+                scope_id: scopeId || null
+            },
+            actionResult: 'assigned'
+        });
+
+        return res.json({
+            success: true,
+            storage_mode: 'local_sqlite',
+            assignment_id: assignmentId
+        });
+    } catch (error) {
+        console.error('CRM holacracy role assign error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to assign role' });
+    }
+});
+
+app.patch('/api/v1/crm/holacracy/members/:userId/profile', authenticateToken, requireManagerRole, async (req, res) => {
+    try {
+        const userId = String(req.params.userId || '').trim();
+        if (!userId) return res.status(400).json({ success: false, error: 'userId is required' });
+
+        if (!isAdminRequest(req) && String(req.user?.id || '') !== userId) {
+            return res.status(403).json({ success: false, error: 'Only admin or profile owner can update this profile' });
+        }
+
+        const ambitionStatement = req.body?.ambition_statement == null ? null : String(req.body.ambition_statement);
+        const strengths = Array.isArray(req.body?.strengths) ? req.body.strengths : null;
+        const preferredRoles = Array.isArray(req.body?.preferred_roles) ? req.body.preferred_roles : null;
+        const growthGoal = req.body?.growth_goal == null ? null : String(req.body.growth_goal);
+        const autonomyLevel = String(req.body?.autonomy_level || 'standard').trim().toLowerCase();
+        const matchScoreRaw = Number(req.body?.match_score);
+        const matchScore = Number.isFinite(matchScoreRaw) ? Math.max(0, Math.min(matchScoreRaw, 100)) : null;
+        const nextReviewDueAt = req.body?.next_review_due_at == null ? null : String(req.body.next_review_due_at);
+        const reviewNotes = req.body?.review_notes == null ? null : String(req.body.review_notes);
+
+        await db.query(
+            `INSERT INTO crm_holacracy_member_profiles
+             (user_id, ambition_statement, strengths_json, preferred_roles_json, growth_goal, autonomy_level, match_score, last_review_at, next_review_due_at, review_notes, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, 50), CURRENT_TIMESTAMP, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+             ON CONFLICT(user_id) DO UPDATE SET
+                ambition_statement = COALESCE(excluded.ambition_statement, crm_holacracy_member_profiles.ambition_statement),
+                strengths_json = COALESCE(excluded.strengths_json, crm_holacracy_member_profiles.strengths_json),
+                preferred_roles_json = COALESCE(excluded.preferred_roles_json, crm_holacracy_member_profiles.preferred_roles_json),
+                growth_goal = COALESCE(excluded.growth_goal, crm_holacracy_member_profiles.growth_goal),
+                autonomy_level = COALESCE(excluded.autonomy_level, crm_holacracy_member_profiles.autonomy_level),
+                match_score = COALESCE(excluded.match_score, crm_holacracy_member_profiles.match_score),
+                last_review_at = CURRENT_TIMESTAMP,
+                next_review_due_at = COALESCE(excluded.next_review_due_at, crm_holacracy_member_profiles.next_review_due_at),
+                review_notes = COALESCE(excluded.review_notes, crm_holacracy_member_profiles.review_notes),
+                updated_at = CURRENT_TIMESTAMP`,
+            [
+                userId,
+                ambitionStatement,
+                strengths ? JSON.stringify(strengths) : null,
+                preferredRoles ? JSON.stringify(preferredRoles) : null,
+                growthGoal,
+                autonomyLevel || 'standard',
+                matchScore,
+                nextReviewDueAt,
+                reviewNotes
+            ]
+        );
+
+        return res.json({ success: true, storage_mode: 'local_sqlite', user_id: userId });
+    } catch (error) {
+        console.error('CRM holacracy member profile update error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to update member profile' });
+    }
+});
+
+app.get('/api/v1/crm/holacracy/tensions', authenticateToken, requireManagerRole, async (req, res) => {
+    try {
+        const status = req.query?.status ? normalizeHolacracyTensionStatus(req.query.status) : null;
+        const severity = req.query?.severity ? normalizeHolacracySeverity(req.query.severity) : null;
+        const ownerUserId = req.query?.owner_user_id ? String(req.query.owner_user_id).trim() : null;
+        const circleCode = req.query?.circle_code ? String(req.query.circle_code).trim().toLowerCase() : null;
+        const limitInt = Math.max(1, Math.min(200, Number(req.query?.limit) || 50));
+        const offsetInt = Math.max(0, Number(req.query?.offset) || 0);
+
+        const where = [];
+        const params = [];
+        if (status) {
+            where.push('t.status = ?');
+            params.push(status);
+        }
+        if (severity) {
+            where.push('t.severity = ?');
+            params.push(severity);
+        }
+        if (ownerUserId) {
+            where.push('CAST(t.owner_user_id AS TEXT) = CAST(? AS TEXT)');
+            params.push(ownerUserId);
+        }
+        if (circleCode) {
+            where.push('c.circle_code = ?');
+            params.push(circleCode);
+        }
+        const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+        const rows = await db.query(
+            `SELECT t.id, t.tension_type, t.severity, t.status, t.title, t.description, t.owner_user_id, t.owner_circle_code, t.raised_by,
+                    t.related_order_id, t.related_customer_id, t.related_lead_id, t.due_at, t.resolved_at, t.resolution_note, t.ai_signal_id, t.created_at, t.updated_at,
+                    c.circle_code, c.title AS circle_title,
+                    r.role_code, r.title AS role_title,
+                    CASE
+                        WHEN t.status = 'resolved' THEN 0
+                        WHEN t.due_at IS NOT NULL AND datetime(t.due_at) < datetime('now') THEN 1
+                        ELSE 0
+                    END AS is_overdue
+             FROM crm_holacracy_tensions t
+             LEFT JOIN crm_holacracy_circles c ON c.id = t.circle_id
+             LEFT JOIN crm_holacracy_roles r ON r.id = t.role_id
+             ${whereSql}
+             ORDER BY
+                CASE t.severity
+                    WHEN 'critical' THEN 4
+                    WHEN 'high' THEN 3
+                    WHEN 'medium' THEN 2
+                    ELSE 1
+                END DESC,
+                datetime(t.created_at) DESC
+             LIMIT ? OFFSET ?`,
+            [...params, limitInt, offsetInt]
+        );
+
+        return res.json({
+            success: true,
+            storage_mode: 'local_sqlite',
+            tensions: rows || [],
+            limit: limitInt,
+            offset: offsetInt
+        });
+    } catch (error) {
+        console.error('CRM holacracy tensions list error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to load tensions' });
+    }
+});
+
+app.post('/api/v1/crm/holacracy/tensions', authenticateToken, requireManagerRole, async (req, res) => {
+    try {
+        const body = req.body || {};
+        const title = body.title == null ? '' : String(body.title).trim();
+        const description = body.description == null ? '' : String(body.description).trim();
+        if (!title || !description) {
+            return res.status(400).json({ success: false, error: 'title and description are required' });
+        }
+
+        const severity = normalizeHolacracySeverity(body.severity);
+        const tensionType = normalizeHolacracyTensionType(body.tension_type || body.type);
+        const status = normalizeHolacracyTensionStatus(body.status || 'open');
+        const roleId = body.role_id == null ? null : String(body.role_id).trim();
+        const ownerUserId = body.owner_user_id == null ? String(req.user?.id || '') : String(body.owner_user_id).trim();
+        const raisedBy = String(req.user?.id || body.raised_by || '').trim();
+        const relatedOrderId = body.related_order_id == null ? null : String(body.related_order_id).trim();
+        const relatedCustomerId = body.related_customer_id == null ? null : String(body.related_customer_id).trim();
+        const relatedLeadId = body.related_lead_id == null ? null : String(body.related_lead_id).trim();
+        const ownerCircleCodeInput = body.owner_circle_code == null ? null : String(body.owner_circle_code).trim().toLowerCase();
+
+        if (!raisedBy) {
+            return res.status(400).json({ success: false, error: 'raised_by is required' });
+        }
+
+        let circleId = body.circle_id == null ? null : String(body.circle_id).trim();
+        let circleCode = null;
+        if (circleId) {
+            const circleRows = await db.query('SELECT id, circle_code FROM crm_holacracy_circles WHERE id = ? LIMIT 1', [circleId]);
+            const circle = circleRows?.[0];
+            if (!circle) return res.status(404).json({ success: false, error: 'Circle not found' });
+            circleCode = circle.circle_code || null;
+        } else if (body.circle_code) {
+            const code = String(body.circle_code).trim().toLowerCase();
+            const circleRows = await db.query('SELECT id, circle_code FROM crm_holacracy_circles WHERE circle_code = ? LIMIT 1', [code]);
+            const circle = circleRows?.[0];
+            if (!circle) return res.status(404).json({ success: false, error: 'Circle not found' });
+            circleId = circle.id;
+            circleCode = circle.circle_code || null;
+        }
+
+        if (roleId) {
+            const roleRows = await db.query('SELECT id FROM crm_holacracy_roles WHERE id = ? LIMIT 1', [roleId]);
+            if (!roleRows?.[0]) return res.status(404).json({ success: false, error: 'Role not found' });
+        }
+
+        const dueExpr = body.due_at ? '?' : computeTensionDueAtExpression(severity);
+        const dueParams = body.due_at ? [String(body.due_at)] : [];
+        const tensionId = makeEntityId('TEN');
+        await db.query(
+            `INSERT INTO crm_holacracy_tensions
+             (id, raised_by, circle_id, role_id, related_order_id, related_customer_id, related_lead_id,
+              tension_type, severity, status, title, description, owner_user_id, owner_circle_code, due_at, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${dueExpr}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+            [
+                tensionId,
+                raisedBy,
+                circleId || null,
+                roleId || null,
+                relatedOrderId || null,
+                relatedCustomerId || null,
+                relatedLeadId || null,
+                tensionType,
+                severity,
+                status,
+                title,
+                description,
+                ownerUserId || null,
+                ownerCircleCodeInput || circleCode || 'sales_opening',
+                ...dueParams
+            ]
+        );
+
+        await db.query(
+            `INSERT INTO crm_holacracy_tension_events
+             (id, tension_id, event_type, actor_id, payload, created_at)
+             VALUES (?, ?, 'created', ?, ?, CURRENT_TIMESTAMP)`,
+            [
+                makeEntityId('TEV'),
+                tensionId,
+                raisedBy,
+                JSON.stringify({
+                    title,
+                    severity,
+                    tension_type: tensionType,
+                    owner_user_id: ownerUserId || null
+                })
+            ]
+        );
+
+        let signalId = null;
+        try {
+            const signalResult = await aiSignalService.createOrTouchSignal({
+                signal_type: 'tension',
+                source: 'crm_holacracy',
+                severity,
+                owner_circle: ownerCircleCodeInput || circleCode || 'sales_opening',
+                entity_type: 'tension',
+                entity_id: tensionId,
+                title,
+                insight: description,
+                target: `/crm/tensions/${tensionId}`,
+                payload: {
+                    tension_id: tensionId,
+                    related_order_id: relatedOrderId || null
+                },
+                dedupe_key: `tension:${tensionId}`
+            });
+            signalId = signalResult?.signal_id || null;
+        } catch (signalError) {
+            console.warn('holacracy tension ai_signal warning:', signalError?.message || signalError);
+        }
+
+        if (signalId) {
+            await db.query(
+                `UPDATE crm_holacracy_tensions
+                 SET ai_signal_id = ?, updated_at = CURRENT_TIMESTAMP
+                 WHERE id = ?`,
+                [signalId, tensionId]
+            );
+        }
+
+        await logManagerActivityEvent({
+            managerId: raisedBy,
+            orderId: relatedOrderId || null,
+            leadId: relatedLeadId || null,
+            customerId: relatedCustomerId || null,
+            eventType: 'holacracy_tension_created',
+            eventPayload: {
+                tension_id: tensionId,
+                tension_type: tensionType,
+                severity,
+                owner_user_id: ownerUserId || null
+            },
+            actionResult: 'created'
+        });
+
+        const rows = await db.query('SELECT * FROM crm_holacracy_tensions WHERE id = ? LIMIT 1', [tensionId]);
+        return res.json({
+            success: true,
+            storage_mode: 'local_sqlite',
+            tension: rows?.[0] || null
+        });
+    } catch (error) {
+        console.error('CRM holacracy tension create error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to create tension' });
+    }
+});
+
+app.patch('/api/v1/crm/holacracy/tensions/:tensionId', authenticateToken, requireManagerRole, async (req, res) => {
+    try {
+        const tensionId = String(req.params.tensionId || '').trim();
+        if (!tensionId) return res.status(400).json({ success: false, error: 'tensionId is required' });
+
+        const rows = await db.query('SELECT * FROM crm_holacracy_tensions WHERE id = ? LIMIT 1', [tensionId]);
+        const current = rows?.[0];
+        if (!current) return res.status(404).json({ success: false, error: 'Tension not found' });
+
+        const body = req.body || {};
+        const nextStatus = body.status ? normalizeHolacracyTensionStatus(body.status) : null;
+        const nextSeverity = body.severity ? normalizeHolacracySeverity(body.severity) : null;
+        const nextOwnerUserId = body.owner_user_id == null ? null : String(body.owner_user_id).trim();
+        const resolutionNote = body.resolution_note == null ? null : String(body.resolution_note);
+        const nextDueAt = body.due_at == null ? null : String(body.due_at);
+
+        const updates = [];
+        const params = [];
+        const eventPayload = {};
+
+        if (nextStatus) {
+            updates.push('status = ?');
+            params.push(nextStatus);
+            eventPayload.status = { from: current.status, to: nextStatus };
+            if (nextStatus === 'resolved') {
+                updates.push('resolved_at = CURRENT_TIMESTAMP');
+                if (resolutionNote != null) {
+                    updates.push('resolution_note = ?');
+                    params.push(resolutionNote);
+                }
+            }
+        }
+        if (nextSeverity) {
+            updates.push('severity = ?');
+            params.push(nextSeverity);
+            eventPayload.severity = { from: current.severity, to: nextSeverity };
+        }
+        if (nextOwnerUserId) {
+            updates.push('owner_user_id = ?');
+            params.push(nextOwnerUserId);
+            eventPayload.owner_user_id = { from: current.owner_user_id, to: nextOwnerUserId };
+        }
+        if (nextDueAt) {
+            updates.push('due_at = ?');
+            params.push(nextDueAt);
+            eventPayload.due_at = nextDueAt;
+        }
+        if (!updates.length && resolutionNote != null) {
+            updates.push('resolution_note = ?');
+            params.push(resolutionNote);
+            eventPayload.resolution_note = resolutionNote;
+        }
+        if (!updates.length) return res.status(400).json({ success: false, error: 'No fields to update' });
+
+        updates.push('updated_at = CURRENT_TIMESTAMP');
+        await db.query(
+            `UPDATE crm_holacracy_tensions
+             SET ${updates.join(', ')}
+             WHERE id = ?`,
+            [...params, tensionId]
+        );
+
+        const actorId = String(req.user?.id || '');
+        await db.query(
+            `INSERT INTO crm_holacracy_tension_events
+             (id, tension_id, event_type, actor_id, payload, created_at)
+             VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+            [
+                makeEntityId('TEV'),
+                tensionId,
+                nextStatus === 'resolved' ? 'resolved' : 'updated',
+                actorId || null,
+                JSON.stringify(eventPayload)
+            ]
+        );
+
+        const signalRows = await db.query(
+            `SELECT id
+             FROM ai_signals
+             WHERE entity_type = 'tension' AND entity_id = ?
+             ORDER BY created_at DESC
+             LIMIT 1`,
+            [tensionId]
+        );
+        const signalId = current.ai_signal_id || signalRows?.[0]?.id || null;
+        if (signalId) {
+            try {
+                if (nextStatus === 'resolved') {
+                    await aiSignalService.decideSignal(signalId, {
+                        decision: 'resolve',
+                        note: resolutionNote || 'Resolved via holacracy tension workflow',
+                        actor_id: actorId || null
+                    });
+                } else if (nextStatus === 'in_progress') {
+                    await aiSignalService.decideSignal(signalId, {
+                        decision: 'approve',
+                        note: 'Tension moved in progress',
+                        actor_id: actorId || null
+                    });
+                }
+            } catch (signalError) {
+                console.warn('holacracy tension signal sync warning:', signalError?.message || signalError);
+            }
+        }
+
+        const updatedRows = await db.query('SELECT * FROM crm_holacracy_tensions WHERE id = ? LIMIT 1', [tensionId]);
+        return res.json({
+            success: true,
+            storage_mode: 'local_sqlite',
+            tension: updatedRows?.[0] || null
+        });
+    } catch (error) {
+        console.error('CRM holacracy tension patch error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to update tension' });
+    }
+});
+
+app.get('/api/v1/crm/holacracy/parking', authenticateToken, requireManagerRole, async (req, res) => {
+    try {
+        const status = req.query?.status ? String(req.query.status).trim().toLowerCase() : null;
+        const userId = req.query?.user_id ? String(req.query.user_id).trim() : null;
+        const limitInt = Math.max(1, Math.min(200, Number(req.query?.limit) || 50));
+        const offsetInt = Math.max(0, Number(req.query?.offset) || 0);
+
+        const where = [];
+        const params = [];
+        if (status) {
+            where.push('p.status = ?');
+            params.push(status);
+        }
+        if (userId) {
+            where.push('CAST(p.user_id AS TEXT) = CAST(? AS TEXT)');
+            params.push(userId);
+        }
+        const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+        const rows = await db.query(
+            `SELECT p.id, p.user_id, p.reason_code, p.status, p.started_at, p.completed_at, p.support_plan, p.created_by,
+                    p.from_role_id, p.target_role_id, p.from_circle_id,
+                    u.name AS user_name, u.email AS user_email,
+                    fr.role_code AS from_role_code, tr.role_code AS target_role_code,
+                    c.circle_code AS from_circle_code
+             FROM crm_holacracy_parking_sessions p
+             LEFT JOIN users u ON CAST(u.id AS TEXT) = CAST(p.user_id AS TEXT)
+             LEFT JOIN crm_holacracy_roles fr ON fr.id = p.from_role_id
+             LEFT JOIN crm_holacracy_roles tr ON tr.id = p.target_role_id
+             LEFT JOIN crm_holacracy_circles c ON c.id = p.from_circle_id
+             ${whereSql}
+             ORDER BY datetime(p.started_at) DESC
+             LIMIT ? OFFSET ?`,
+            [...params, limitInt, offsetInt]
+        );
+
+        return res.json({
+            success: true,
+            storage_mode: 'local_sqlite',
+            parking_sessions: rows || [],
+            limit: limitInt,
+            offset: offsetInt
+        });
+    } catch (error) {
+        console.error('CRM holacracy parking list error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to load parking sessions' });
+    }
+});
+
+app.post('/api/v1/crm/holacracy/parking', authenticateToken, requireManagerRole, async (req, res) => {
+    try {
+        if (!isAdminRequest(req)) {
+            return res.status(403).json({ success: false, error: 'Admin access required for parking start' });
+        }
+
+        const userId = String(req.body?.user_id || '').trim();
+        if (!userId) return res.status(400).json({ success: false, error: 'user_id is required' });
+
+        const fromRoleId = req.body?.from_role_id == null ? null : String(req.body.from_role_id).trim();
+        let fromCircleId = req.body?.from_circle_id == null ? null : String(req.body.from_circle_id).trim();
+        const reasonCode = String(req.body?.reason_code || 'role_mismatch').trim().toLowerCase();
+        const supportPlan = req.body?.support_plan == null ? null : String(req.body.support_plan);
+
+        if (!fromCircleId && fromRoleId) {
+            const roleRows = await db.query('SELECT circle_id FROM crm_holacracy_roles WHERE id = ? LIMIT 1', [fromRoleId]);
+            fromCircleId = roleRows?.[0]?.circle_id || null;
+        }
+
+        const activeRows = await db.query(
+            `SELECT id
+             FROM crm_holacracy_parking_sessions
+             WHERE CAST(user_id AS TEXT) = CAST(? AS TEXT)
+               AND status = 'active'
+               AND completed_at IS NULL
+             ORDER BY created_at DESC
+             LIMIT 1`,
+            [userId]
+        );
+        if (activeRows?.[0]) {
+            return res.status(409).json({ success: false, error: 'Active parking session already exists', parking_id: activeRows[0].id });
+        }
+
+        const parkingId = makeEntityId('PKG');
+        await db.query(
+            `INSERT INTO crm_holacracy_parking_sessions
+             (id, user_id, from_role_id, from_circle_id, reason_code, status, started_at, support_plan, created_by, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, 'active', CURRENT_TIMESTAMP, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+            [
+                parkingId,
+                userId,
+                fromRoleId || null,
+                fromCircleId || null,
+                reasonCode,
+                supportPlan,
+                String(req.user?.id || '')
+            ]
+        );
+
+        await db.query(
+            `UPDATE manager_profiles
+             SET parking_state = 'parking',
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE CAST(user_id AS TEXT) = CAST(? AS TEXT)`,
+            [userId]
+        );
+
+        await logManagerActivityEvent({
+            managerId: userId,
+            eventType: 'holacracy_parking_started',
+            eventPayload: {
+                parking_id: parkingId,
+                reason_code: reasonCode,
+                from_role_id: fromRoleId || null,
+                from_circle_id: fromCircleId || null
+            },
+            actionResult: 'started'
+        });
+
+        return res.json({
+            success: true,
+            storage_mode: 'local_sqlite',
+            parking_id: parkingId
+        });
+    } catch (error) {
+        console.error('CRM holacracy parking create error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to start parking session' });
+    }
+});
+
+app.patch('/api/v1/crm/holacracy/parking/:parkingId/complete', authenticateToken, requireManagerRole, async (req, res) => {
+    try {
+        if (!isAdminRequest(req)) {
+            return res.status(403).json({ success: false, error: 'Admin access required for parking completion' });
+        }
+
+        const parkingId = String(req.params.parkingId || '').trim();
+        if (!parkingId) return res.status(400).json({ success: false, error: 'parkingId is required' });
+
+        const rows = await db.query(
+            `SELECT id, user_id, status
+             FROM crm_holacracy_parking_sessions
+             WHERE id = ?
+             LIMIT 1`,
+            [parkingId]
+        );
+        const session = rows?.[0];
+        if (!session) return res.status(404).json({ success: false, error: 'Parking session not found' });
+
+        const nextStatusRaw = String(req.body?.status || 'reassigned').trim().toLowerCase();
+        const nextStatus = ['reassigned', 'exited', 'cancelled'].includes(nextStatusRaw) ? nextStatusRaw : 'reassigned';
+        const targetRoleId = req.body?.target_role_id == null ? null : String(req.body.target_role_id).trim();
+        const supportPlan = req.body?.support_plan == null ? null : String(req.body.support_plan);
+
+        await db.query(
+            `UPDATE crm_holacracy_parking_sessions
+             SET status = ?,
+                 target_role_id = COALESCE(?, target_role_id),
+                 support_plan = COALESCE(?, support_plan),
+                 completed_at = CURRENT_TIMESTAMP,
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE id = ?`,
+            [nextStatus, targetRoleId || null, supportPlan, parkingId]
+        );
+
+        if (nextStatus === 'reassigned' && targetRoleId) {
+            await db.query(
+                `INSERT INTO crm_holacracy_role_assignments
+                 (id, role_id, user_id, scope_type, assignment_kind, status, source, assigned_by, started_at, notes, created_at, updated_at)
+                 VALUES (?, ?, ?, 'global', 'primary', 'active', 'parking_transfer', ?, CURRENT_TIMESTAMP, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+                [
+                    makeEntityId('HRA'),
+                    targetRoleId,
+                    String(session.user_id),
+                    String(req.user?.id || ''),
+                    `Auto-assigned from parking session ${parkingId}`
+                ]
+            );
+        }
+
+        await db.query(
+            `UPDATE manager_profiles
+             SET parking_state = 'active',
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE CAST(user_id AS TEXT) = CAST(? AS TEXT)`,
+            [String(session.user_id)]
+        );
+
+        await logManagerActivityEvent({
+            managerId: String(session.user_id),
+            eventType: 'holacracy_parking_completed',
+            eventPayload: {
+                parking_id: parkingId,
+                status: nextStatus,
+                target_role_id: targetRoleId || null
+            },
+            actionResult: 'completed'
+        });
+
+        return res.json({
+            success: true,
+            storage_mode: 'local_sqlite',
+            parking_id: parkingId,
+            status: nextStatus
+        });
+    } catch (error) {
+        console.error('CRM holacracy parking complete error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to complete parking session' });
     }
 });
 
@@ -4596,24 +7609,42 @@ app.get('/api/v1/crm/customers', authenticateToken, requireManagerRole, async (r
             return res.json({ success: true, customers, total: count || customers.length, limit: limitInt, offset: offsetInt });
         }
 
-        const where = [];
-        const params = [];
-        if (city) {
-            where.push('city LIKE ?');
-            params.push(`%${String(city)}%`);
+        const buildCustomerWhere = (cityColumn) => {
+            const where = [];
+            const params = [];
+            if (city) {
+                where.push(`${cityColumn} LIKE ?`);
+                params.push(`%${String(city)}%`);
+            }
+            if (q) {
+                const safe = `%${String(q).trim()}%`;
+                where.push(`(full_name LIKE ? OR email LIKE ? OR phone LIKE ? OR ${cityColumn} LIKE ?)`);
+                params.push(safe, safe, safe, safe);
+            }
+            return { whereSql: where.length ? `WHERE ${where.join(' AND ')}` : '', params };
+        };
+
+        let total = 0;
+        let rows = [];
+        try {
+            const filter = buildCustomerWhere('city');
+            const countRow = await db.query(`SELECT COUNT(*) as cnt FROM customers ${filter.whereSql}`, filter.params);
+            total = countRow?.[0]?.cnt || 0;
+            rows = await db.query(
+                `SELECT id, full_name, email, phone, city, created_at FROM customers ${filter.whereSql} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+                [...filter.params, limitInt, offsetInt]
+            );
+        } catch (localCustomersErr) {
+            const text = String(localCustomersErr?.message || localCustomersErr || '').toLowerCase();
+            if (!text.includes('no such column') || !text.includes('city')) throw localCustomersErr;
+            const filter = buildCustomerWhere('country');
+            const countRow = await db.query(`SELECT COUNT(*) as cnt FROM customers ${filter.whereSql}`, filter.params);
+            total = countRow?.[0]?.cnt || 0;
+            rows = await db.query(
+                `SELECT id, full_name, email, phone, country as city, created_at FROM customers ${filter.whereSql} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+                [...filter.params, limitInt, offsetInt]
+            );
         }
-        if (q) {
-            const safe = `%${String(q).trim()}%`;
-            where.push('(full_name LIKE ? OR email LIKE ? OR phone LIKE ? OR city LIKE ?)');
-            params.push(safe, safe, safe, safe);
-        }
-        const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
-        const countRow = await db.query(`SELECT COUNT(*) as cnt FROM customers ${whereSql}`, params);
-        const total = countRow?.[0]?.cnt || 0;
-        const rows = await db.query(
-            `SELECT id, full_name, email, phone, city, created_at FROM customers ${whereSql} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
-            [...params, limitInt, offsetInt]
-        );
         return res.json({ success: true, customers: rows || [], total, limit: limitInt, offset: offsetInt });
     } catch (error) {
         console.error('CRM customers list error:', error);
@@ -4625,7 +7656,14 @@ app.get('/api/v1/crm/customers/:customerId', authenticateToken, requireManagerRo
     try {
         const { customerId } = req.params;
         const fetchLocalCustomer = async () => {
-            const customers = await db.query('SELECT id, full_name, email, phone, city, created_at FROM customers WHERE id = ? LIMIT 1', [customerId]);
+            let customers;
+            try {
+                customers = await db.query('SELECT id, full_name, email, phone, city, created_at FROM customers WHERE id = ? LIMIT 1', [customerId]);
+            } catch (localCustomerErr) {
+                const text = String(localCustomerErr?.message || localCustomerErr || '').toLowerCase();
+                if (!text.includes('no such column') || !text.includes('city')) throw localCustomerErr;
+                customers = await db.query('SELECT id, full_name, email, phone, country as city, created_at FROM customers WHERE id = ? LIMIT 1', [customerId]);
+            }
             const customer = customers?.[0] || null;
             if (!customer) return null;
             const orders = await db.query('SELECT id, order_code, status, final_price_eur, bike_snapshot, created_at FROM orders WHERE customer_id = ? ORDER BY created_at DESC', [customerId]);
@@ -4711,7 +7749,7 @@ app.patch('/api/v1/crm/customers/:customerId', authenticateToken, requireManager
         if (email != null) payload.email = String(email);
         if (phone != null) payload.phone = String(phone);
         if (city != null) payload.city = String(city);
-        if (preferred_channel != null) payload.preferred_channel = String(preferred_channel);
+        if (preferred_channel != null) payload.preferred_channel = normalizePreferredChannel(preferred_channel);
         if (country != null) payload.country = String(country);
 
         if (supabase) {
@@ -4779,26 +7817,45 @@ app.get('/api/v1/crm/leads', authenticateToken, requireManagerRole, async (req, 
         const where = [];
         const params = [];
         if (status) {
-            where.push('status = ?');
+            where.push('l.status = ?');
             params.push(String(status));
         }
         const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
-        const countRow = await db.query(`SELECT COUNT(*) as cnt FROM applications ${whereSql}`, params);
+        const countRow = await db.query(`SELECT COUNT(*) as cnt FROM leads l ${whereSql}`, params);
         const total = countRow?.[0]?.cnt || 0;
         const rows = await db.query(
-            `SELECT id, contact_name, contact_phone, contact_email, status, created_at, bike_link, notes FROM applications ${whereSql} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+            `SELECT
+                l.id,
+                l.source,
+                l.status,
+                l.bike_url,
+                l.customer_comment,
+                l.contact_method,
+                l.contact_value,
+                l.created_at,
+                l.customer_id,
+                c.full_name as customer_name,
+                c.email as customer_email,
+                c.phone as customer_phone
+             FROM leads l
+             LEFT JOIN customers c ON c.id = l.customer_id
+             ${whereSql}
+             ORDER BY l.created_at DESC
+             LIMIT ? OFFSET ?`,
             [...params, limitInt, offsetInt]
         );
-        const leads = (rows || []).map(r => ({
+        const leads = (rows || []).map((r) => ({
             id: String(r.id),
-            contact_name: r.contact_name,
-            contact_phone: r.contact_phone,
-            contact_email: r.contact_email,
-            status: r.status,
-            created_at: r.created_at,
-            bike_url: r.bike_link,
-            notes: r.notes,
-            source: 'application'
+            source: r.source || 'website',
+            status: r.status || 'new',
+            bike_url: r.bike_url || null,
+            notes: r.customer_comment || null,
+            contact_method: r.contact_method || null,
+            contact_value: r.contact_value || null,
+            contact_name: r.customer_name || null,
+            contact_email: r.customer_email || null,
+            contact_phone: r.customer_phone || null,
+            created_at: r.created_at
         }));
         return res.json({ success: true, leads, total, limit: limitInt, offset: offsetInt });
     } catch (error) {
@@ -4822,8 +7879,12 @@ app.get('/api/v1/crm/leads/:leadId', authenticateToken, requireManagerRole, asyn
             return res.json({ success: true, lead });
         }
 
-        const rows = await db.query('SELECT * FROM applications WHERE id = ? LIMIT 1', [leadId]);
-        const lead = rows?.[0];
+        let rows = await db.query('SELECT * FROM leads WHERE id = ? LIMIT 1', [leadId]);
+        let lead = rows?.[0];
+        if (!lead) {
+            rows = await db.query('SELECT * FROM applications WHERE id = ? LIMIT 1', [leadId]);
+            lead = rows?.[0];
+        }
         if (!lead) return res.status(404).json({ success: false, error: 'Lead not found' });
         return res.json({ success: true, lead });
     } catch (error) {
@@ -4848,35 +7909,48 @@ app.post('/api/v1/crm/leads/:leadId/convert', authenticateToken, requireManagerR
             return res.json({ success: true, lead: data?.[0] || null });
         }
 
-        const rows = await db.query('SELECT * FROM applications WHERE id = ? LIMIT 1', [leadId]);
-        const lead = rows?.[0];
+        let rows = await db.query('SELECT * FROM leads WHERE id = ? LIMIT 1', [leadId]);
+        let lead = rows?.[0];
+        let leadStorage = 'leads';
+        if (!lead) {
+            rows = await db.query('SELECT * FROM applications WHERE id = ? LIMIT 1', [leadId]);
+            lead = rows?.[0];
+            leadStorage = 'applications';
+        }
         if (!lead) return res.status(404).json({ success: false, error: 'Lead not found' });
 
         // Create customer if missing
         let customerId = null;
-        if (lead.contact_email) {
-            const existing = await db.query('SELECT id FROM customers WHERE email = ? LIMIT 1', [lead.contact_email]);
+        const leadEmail = lead.contact_email || lead.email || null;
+        const leadPhone = lead.contact_phone || lead.phone || null;
+        const leadName = lead.contact_name || lead.customer_name || lead.full_name || 'Customer';
+        if (leadEmail) {
+            const existing = await db.query('SELECT id FROM customers WHERE email = ? LIMIT 1', [leadEmail]);
             customerId = existing?.[0]?.id || null;
         }
-        if (!customerId && lead.contact_phone) {
-            const existing = await db.query('SELECT id FROM customers WHERE phone = ? LIMIT 1', [lead.contact_phone]);
+        if (!customerId && leadPhone) {
+            const existing = await db.query('SELECT id FROM customers WHERE phone = ? LIMIT 1', [leadPhone]);
             customerId = existing?.[0]?.id || null;
         }
         if (!customerId) {
             customerId = `CUST-${Date.now()}`;
             await db.query(
                 'INSERT INTO customers (id, full_name, phone, email, created_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)',
-                [customerId, lead.contact_name || 'Customer', lead.contact_phone || null, lead.contact_email || null]
+                [customerId, leadName, leadPhone || null, leadEmail || null]
             );
         }
 
         const orderId = `ORD-${Date.now()}`;
         await db.query(
             'INSERT INTO orders (id, order_code, customer_id, lead_id, status, created_at) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)',
-            [orderId, orderId, customerId, String(leadId), 'pending_manager']
+            [orderId, orderId, customerId, String(leadId), ORDER_STATUS.BOOKED]
         );
 
-        await db.query('UPDATE applications SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', ['converted', leadId]);
+        if (leadStorage === 'leads') {
+            await db.query('UPDATE leads SET status = ?, customer_id = ?, converted_order_id = ?, converted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?', ['converted', customerId, orderId, leadId]);
+        } else {
+            await db.query('UPDATE applications SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', ['converted', leadId]);
+        }
 
         return res.json({ success: true, order_id: orderId });
     } catch (error) {
@@ -4891,8 +7965,21 @@ const ORDER_ID_REGEX = /^ORD-\d{8}-\d{4}$/i;
 const ORDER_CODE_REGEX = /^ORD-\d{6}$/i;
 
 async function resolveSupabaseOrderUuid(orderId) {
-    if (!supabase || !orderId) return orderId;
+    if (!orderId) return orderId;
     const raw = String(orderId);
+
+    if (!supabase) {
+        try {
+            const rows = await db.query(
+                'SELECT id FROM orders WHERE id = ? OR order_code = ? OR old_uuid_id = ? LIMIT 1',
+                [raw, raw, raw]
+            );
+            return rows?.[0]?.id || raw;
+        } catch {
+            return raw;
+        }
+    }
+
     if (ORDER_UUID_REGEX.test(raw)) return raw;
 
     let order = null;
@@ -5083,7 +8170,7 @@ app.delete('/api/v1/crm/tasks/:taskId', authenticateToken, requireManagerRole, a
 });
 
 // ========================================
-// 💰 CRM TRANSACTIONS (Manager Only)
+// ðŸ’° CRM TRANSACTIONS (Manager Only)
 // ========================================
 
 app.get('/api/v1/crm/orders/:orderId/transactions', authenticateToken, requireManagerRole, async (req, res) => {
@@ -5192,7 +8279,7 @@ app.delete('/api/v1/crm/transactions/:transactionId', authenticateToken, require
 });
 
 // ========================================
-// 🚚 CRM LOGISTICS (Manager Only)
+// ðŸšš CRM LOGISTICS (Manager Only)
 // ========================================
 
 app.get('/api/v1/crm/orders/:orderId/shipments', authenticateToken, requireManagerRole, async (req, res) => {
@@ -5301,14 +8388,13 @@ app.post('/api/v1/crm/orders/:orderId/notify-tracking', authenticateToken, requi
 
 app.post('/api/metrics/search', optionalAuth, async (req, res) => {
     try {
-        const { query, category, brand, minPrice, maxPrice } = req.body || {};
-        const sessionId = req.headers['x-session-id'] ? String(req.headers['x-session-id']) : null;
-        const userId = req.user?.id || null;
-        if (!query && !category && !brand) return res.status(400).json({ error: 'Invalid search payload' });
-        await db.query(
-            'INSERT INTO search_events (session_id, user_id, query, category, brand, min_price, max_price) VALUES (?, ?, ?, ?, ?, ?, ?)',
-            [sessionId, userId, query ? String(query) : null, category ? String(category) : null, brand ? String(brand) : null, minPrice != null ? Number(minPrice) : null, maxPrice != null ? Number(maxPrice) : null]
+        const result = await metricsPipeline.trackSearch(
+            req.body || {},
+            buildMetricsContext(req, 'search_metrics')
         );
+        if (!result.accepted) {
+            return res.status(400).json({ error: 'Invalid search payload' });
+        }
         res.json({ success: true });
     } catch (error) {
         try { await db.query('INSERT INTO system_logs (level, source, message, stack) VALUES (?, ?, ?, ?)', ['error', 'metrics_search', String(error.message || error), error.stack || '']); } catch { }
@@ -5316,54 +8402,236 @@ app.post('/api/metrics/search', optionalAuth, async (req, res) => {
     }
 });
 
-app.post('/api/metrics/events', async (req, res) => {
+app.post('/api/metrics/events', optionalAuth, async (req, res) => ingestMetricsEvents(req, res, 'metrics_api'));
+
+app.get('/api/experiments/assignments', optionalAuth, async (req, res) => {
     try {
-        const { events } = req.body;
-        if (!Array.isArray(events)) return res.status(400).json({ error: 'Invalid events payload' });
-        const grouped = new Map();
-        for (const ev of events) {
-            const id = parseInt(ev.bikeId);
-            if (!id) continue;
-            const sessionId = ev.session_id || null;
-            const referrer = ev.referrer || null;
-            const sourcePath = ev.source_path || null;
-            const dwellMs = typeof ev.ms === 'number' ? ev.ms : null;
-            try {
-                const userId = req.user?.id || null;
-                await db.query('INSERT INTO metric_events (bike_id, event_type, session_id, referrer, source_path, dwell_ms, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)', [id, String(ev.type || 'unknown'), sessionId, referrer, sourcePath, dwellMs, userId]);
-            } catch (e) {
-                try { await db.query('INSERT INTO system_logs (level, source, message, stack) VALUES (?, ?, ?, ?)', ['error', 'metrics_events', String(e.message || e), e.stack || '']); } catch { }
-            }
-            const g = grouped.get(id) || { impressions: 0, detail_clicks: 0, add_to_cart: 0, orders: 0, favorites: 0, shares: 0, avg_dwell_ms_sum: 0, avg_dwell_count: 0, bounces: 0 };
-            if (ev.type === 'impression') g.impressions++;
-            else if (ev.type === 'detail_open') g.detail_clicks++;
-            else if (ev.type === 'add_to_cart') g.add_to_cart++;
-            else if (ev.type === 'order') g.orders++;
-            else if (ev.type === 'favorite') g.favorites++;
-            else if (ev.type === 'share') g.shares++;
-            else if (ev.type === 'bounce') g.bounces++;
-            if (ev.type === 'dwell' && typeof ev.ms === 'number') { g.avg_dwell_ms_sum += ev.ms; g.avg_dwell_count++; }
-            grouped.set(id, g);
+        const assignments = await experimentEngine.getAssignments({
+            userId: req.user?.id || null,
+            sessionId: req.headers['x-session-id'] ? String(req.headers['x-session-id']) : null
+        });
+        res.json({ success: true, assignments });
+    } catch (error) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+app.post('/api/experiments/goal', optionalAuth, async (req, res) => {
+    try {
+        const { experimentKey, variant, metricName, bikeId, value } = req.body || {};
+        if (!experimentKey || !metricName) {
+            return res.status(400).json({ error: 'experimentKey and metricName are required' });
         }
-        for (const [bikeId, g] of grouped.entries()) {
-            const existing = await db.query('SELECT bike_id FROM bike_behavior_metrics WHERE bike_id = ?', [bikeId]);
-            const avgDwell = g.avg_dwell_count > 0 ? Math.round(g.avg_dwell_ms_sum / g.avg_dwell_count) : 0;
-            if (existing.length) {
-                await db.query(
-                    'UPDATE bike_behavior_metrics SET impressions = impressions + ?, detail_clicks = detail_clicks + ?, add_to_cart = add_to_cart + ?, orders = orders + ?, favorites = favorites + ?, shares = shares + ?, avg_dwell_ms = ?, bounces = bounces + ?, updated_at = CURRENT_TIMESTAMP WHERE bike_id = ?',
-                    [g.impressions, g.detail_clicks, g.add_to_cart, g.orders, g.favorites, g.shares, avgDwell, g.bounces, bikeId]
-                );
-            } else {
-                await db.query(
-                    'INSERT INTO bike_behavior_metrics (bike_id, impressions, detail_clicks, add_to_cart, orders, favorites, shares, avg_dwell_ms, bounces, period_start, period_end) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime("now"), datetime("now"))',
-                    [bikeId, g.impressions, g.detail_clicks, g.add_to_cart, g.orders, g.favorites, g.shares, avgDwell, g.bounces]
-                );
-            }
-            await computeRankingForBike(bikeId);
-        }
+        await experimentEngine.trackGoal({
+            experimentKey: String(experimentKey),
+            variant: variant ? String(variant) : 'control',
+            metricName: String(metricName),
+            bikeId: Number.isFinite(Number(bikeId)) ? Number(bikeId) : null,
+            userId: req.user?.id || null,
+            sessionId: req.headers['x-session-id'] ? String(req.headers['x-session-id']) : null,
+            value: Number.isFinite(Number(value)) ? Number(value) : 1
+        });
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+app.get('/api/admin/metrics/core-overview', adminAuth, async (req, res) => {
+    try {
+        const windowHours = Number(req.query.windowHours || 24);
+        const windowPreset = String(req.query.windowPreset || req.query.period || '').trim();
+        const data = await metricsOps.getCoreOverview({ windowHours, windowPreset });
+        res.json(data);
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to build metrics overview' });
+    }
+});
+
+app.post('/api/admin/metrics/insights/refresh', adminAuth, async (req, res) => {
+    try {
+        const { limit = 25, force = false } = req.body || {};
+        const result = await metricsOps.refreshProfileInsights({ limit, force });
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to refresh profile insights' });
+    }
+});
+
+app.post('/api/admin/metrics/experiments/optimize', adminAuth, async (req, res) => {
+    try {
+        const { dryRun = true, windowDays = 14, minAssignments = 120 } = req.body || {};
+        const result = await metricsOps.autoOptimizeExperiments({ dryRun, windowDays, minAssignments });
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to optimize experiments' });
+    }
+});
+
+app.get('/api/admin/metrics/funnel-contract', adminAuth, async (req, res) => {
+    try {
+        const windowHours = Number(req.query.windowHours || 24);
+        const windowPreset = String(req.query.windowPreset || req.query.period || '').trim();
+        const minCoveragePct = Number(req.query.minCoveragePct || 90);
+        const result = await metricsOps.checkFunnelContract({ windowHours, windowPreset, minCoveragePct });
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to evaluate funnel contract' });
+    }
+});
+
+app.post('/api/admin/metrics/replay', adminAuth, async (req, res) => {
+    try {
+        const { windowDays = 14, minAssignments = 80, strategy = 'causal_best' } = req.body || {};
+        const result = await metricsOps.runReplaySimulation({ windowDays, minAssignments, strategy });
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to run replay simulation' });
+    }
+});
+
+app.get('/api/admin/growth/overview', adminAuth, async (req, res) => {
+    try {
+        const windowDays = Number(req.query.windowDays || 30);
+        const windowPreset = String(req.query.windowPreset || req.query.period || '').trim();
+        const baseUrl = resolveRequestPublicBaseUrl(req);
+        const result = await growthAttribution.buildGrowthOverview({ windowDays, windowPreset, baseUrl });
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to build growth overview' });
+    }
+});
+
+app.get('/api/admin/referrals', adminAuth, async (req, res) => {
+    try {
+        const windowDays = Number(req.query.windowDays || 30);
+        const windowPreset = String(req.query.windowPreset || req.query.period || '').trim();
+        const limit = Number(req.query.limit || 200);
+        const offset = Number(req.query.offset || 0);
+        const baseUrl = resolveRequestPublicBaseUrl(req);
+        const result = await growthAttribution.listReferralLinks({ windowDays, windowPreset, limit, offset, baseUrl });
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to fetch referral links' });
+    }
+});
+
+app.post('/api/admin/referrals', adminAuth, async (req, res) => {
+    try {
+        const baseUrl = resolveRequestPublicBaseUrl(req);
+        const result = await growthAttribution.createReferralLink(req.body || {}, {
+            userId: req.user?.id || null
+        }, { baseUrl });
+        if (!result.success) {
+            return res.status(400).json(result);
+        }
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to create referral link' });
+    }
+});
+
+app.patch('/api/admin/referrals/:id', adminAuth, async (req, res) => {
+    try {
+        const baseUrl = resolveRequestPublicBaseUrl(req);
+        const result = await growthAttribution.updateReferralLink(req.params.id, req.body || {}, { baseUrl });
+        if (!result.success) {
+            return res.status(404).json(result);
+        }
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to update referral link' });
+    }
+});
+
+app.get('/api/admin/metrics/session-facts', adminAuth, async (req, res) => {
+    try {
+        const windowHours = Number(req.query.windowHours || 24);
+        const windowPreset = String(req.query.windowPreset || req.query.period || '').trim();
+        const limit = Number(req.query.limit || 200);
+        const offset = Number(req.query.offset || 0);
+        const result = await metricsOps.getSessionFacts({ windowHours, windowPreset, limit, offset });
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to fetch session facts' });
+    }
+});
+
+app.get('/api/admin/metrics/session-facts.csv', adminAuth, async (req, res) => {
+    try {
+        const windowHours = Number(req.query.windowHours || 24);
+        const windowPreset = String(req.query.windowPreset || req.query.period || '').trim();
+        const limit = Number(req.query.limit || 1000);
+        const result = await metricsOps.getSessionFacts({ windowHours, windowPreset, limit, offset: 0 });
+        const rows = Array.isArray(result?.rows) ? result.rows : [];
+        const headers = [
+            'session_id', 'person_key', 'user_id', 'crm_lead_id', 'customer_email_hash', 'customer_phone_hash', 'first_seen_at', 'last_seen_at',
+            'event_count', 'page_views', 'first_clicks', 'catalog_views', 'product_views', 'add_to_cart',
+            'checkout_starts', 'checkout_steps', 'checkout_validation_errors', 'checkout_submit_attempts',
+            'checkout_submit_success', 'checkout_submit_failed', 'forms_seen', 'forms_first_input', 'form_submit_attempts', 'form_validation_errors', 'booking_starts', 'booking_success', 'orders',
+            'dwell_ms_sum', 'first_source_path', 'last_source_path', 'entry_referrer',
+            'utm_source', 'utm_medium', 'utm_campaign', 'click_id', 'landing_path', 'is_bot', 'updated_at'
+        ];
+        const escapeCsv = (value) => {
+            if (value == null) return '';
+            const text = String(value);
+            if (!/[",\n]/.test(text)) return text;
+            return `"${text.replace(/"/g, '""')}"`;
+        };
+        const lines = [headers.join(',')];
+        for (const row of rows) {
+            const line = [
+                row.sessionId, row.personKey, row.userId, row.crmLeadId, row.customerEmailHash, row.customerPhoneHash, row.firstSeenAt, row.lastSeenAt,
+                row.eventCount, row.pageViews, row.firstClicks, row.catalogViews, row.productViews, row.addToCart,
+                row.checkoutStarts, row.checkoutSteps, row.checkoutValidationErrors, row.checkoutSubmitAttempts,
+                row.checkoutSubmitSuccess, row.checkoutSubmitFailed, row.formsSeen, row.formsFirstInput, row.formSubmitAttempts, row.formValidationErrors, row.bookingStarts, row.bookingSuccess, row.orders,
+                row.dwellMsSum, row.firstSourcePath, row.lastSourcePath, row.entryReferrer,
+                row.utmSource, row.utmMedium, row.utmCampaign, row.clickId, row.landingPath, row.isBot ? 1 : 0, row.updatedAt
+            ].map(escapeCsv).join(',');
+            lines.push(line);
+        }
+
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename=\"metrics-session-facts-${Date.now()}.csv\"`);
+        res.send(lines.join('\n'));
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to export session facts' });
+    }
+});
+
+app.post('/api/admin/metrics/anomalies/run', adminAuth, async (req, res) => {
+    try {
+        const { lookbackHours = 72, baselineHours = 24 } = req.body || {};
+        const result = await metricsOps.detectAndStoreAnomalies({ lookbackHours, baselineHours });
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to run anomaly detector' });
+    }
+});
+
+app.post('/api/admin/metrics/anomalies/daily-digest', adminAuth, async (req, res) => {
+    try {
+        const { lookbackHours = 168, baselineHours = 24 } = req.body || {};
+        const result = await metricsOps.runDailyAnomalyDigest({ lookbackHours, baselineHours });
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to run daily anomaly digest' });
+    }
+});
+
+app.post('/api/admin/metrics/demo-seed', adminAuth, async (req, res) => {
+    try {
+        const sessions = Number(req.body?.sessions || req.body?.sessionCount || 1000);
+        const daysBack = Number(req.body?.daysBack || 35);
+        const seed = Number(req.body?.seed || Date.now());
+        const result = await generateDemoMetricsDataset(db, {
+            sessionCount: sessions,
+            daysBack,
+            seed
+        });
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to generate demo metrics dataset' });
     }
 });
 
@@ -5470,6 +8738,73 @@ app.get('/api/admin/finance/overview', adminAuth, async (req, res) => {
         const { window = '7d' } = req.query;
         const days = String(window).endsWith('d') ? parseInt(String(window)) : 7;
         const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+        let crmOrders = [];
+        try {
+            crmOrders = await db.query(
+                'SELECT id, order_code, status, final_price_eur, total_price_rub, bike_snapshot, created_at FROM orders WHERE created_at >= ? ORDER BY created_at DESC',
+                [since]
+            );
+        } catch { }
+
+        if (crmOrders.length > 0) {
+            const filteredOrders = crmOrders.filter((row) => !isCanceledOrderStatus(row.status));
+            const realizedOrders = filteredOrders.filter((row) => isRealizedRevenueStatus(row.status));
+            const dailyMap = new Map();
+            const categoryMap = new Map();
+
+            let totalRevenue = 0;
+            let realizedRevenue = 0;
+            let totalCosts = 0;
+            let netMargin = 0;
+
+            for (const row of filteredOrders) {
+                const financial = extractOrderFinancials(row);
+                totalRevenue += financial.finalPriceEur;
+                totalCosts += financial.estimatedCostEur;
+                netMargin += financial.marginTotalEur;
+                if (isRealizedRevenueStatus(row.status)) {
+                    realizedRevenue += financial.finalPriceEur;
+                }
+
+                const dayKey = String(row.created_at || '').slice(0, 10);
+                const dayEntry = dailyMap.get(dayKey) || { day: dayKey, revenue: 0, costs: 0, margin: 0, orders: 0 };
+                dayEntry.revenue += financial.finalPriceEur;
+                dayEntry.costs += financial.estimatedCostEur;
+                dayEntry.margin += financial.marginTotalEur;
+                dayEntry.orders += 1;
+                dailyMap.set(dayKey, dayEntry);
+
+                const categoryKey = financial.category || 'unknown';
+                const categoryEntry = categoryMap.get(categoryKey) || { category: categoryKey, revenue: 0, costs: 0, margin: 0, orders: 0 };
+                categoryEntry.revenue += financial.finalPriceEur;
+                categoryEntry.costs += financial.estimatedCostEur;
+                categoryEntry.margin += financial.marginTotalEur;
+                categoryEntry.orders += 1;
+                categoryMap.set(categoryKey, categoryEntry);
+            }
+
+            const aov = filteredOrders.length ? totalRevenue / filteredOrders.length : 0;
+            const dailyRows = Array.from(dailyMap.values()).sort((a, b) => String(a.day).localeCompare(String(b.day)));
+            const byCategory = Array.from(categoryMap.values()).sort((a, b) => Number(b.revenue) - Number(a.revenue));
+
+            return res.json({
+                success: true,
+                overview: {
+                    totalRevenue,
+                    realizedRevenue,
+                    totalCosts,
+                    netMargin,
+                    ordersCount: filteredOrders.length,
+                    realizedOrdersCount: realizedOrders.length,
+                    aov,
+                    itemsPerOrder: 1
+                },
+                daily: dailyRows,
+                byCategory
+            });
+        }
+
+        // Legacy fallback for historical shop_orders deployment.
         let ordersRows = [];
         let itemsRows = [];
         let dailyRows = [];
@@ -5490,7 +8825,12 @@ app.get('/api/admin/finance/overview', adminAuth, async (req, res) => {
         try {
             byCategory = await db.query('SELECT b.category, SUM(oi.quantity * oi.price) as revenue FROM shop_order_items oi JOIN bikes b ON oi.bike_id = b.id JOIN shop_orders o ON oi.order_id = o.id WHERE o.created_at >= ? GROUP BY b.category ORDER BY revenue DESC', [since]);
         } catch { }
-        res.json({ success: true, overview: { totalRevenue, aov, itemsPerOrder }, daily: dailyRows, byCategory });
+        res.json({
+            success: true,
+            overview: { totalRevenue, aov, itemsPerOrder, ordersCount: ordersRows.length, realizedOrdersCount: ordersRows.length },
+            daily: dailyRows,
+            byCategory
+        });
     } catch (error) {
         res.json({ success: true, overview: { totalRevenue: 0, aov: 0, itemsPerOrder: 0 }, daily: [], byCategory: [] });
     }
@@ -5692,8 +9032,37 @@ app.get('/api/admin/orders', adminAuth, async (req, res) => {
         const { window = '7d', limit = 50, offset = 0 } = req.query;
         const days = String(window).endsWith('d') ? parseInt(String(window)) : 7;
         const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
-        const rows = await db.query('SELECT id, total_amount, status, created_at FROM shop_orders WHERE created_at >= ? ORDER BY created_at DESC LIMIT ? OFFSET ?', [since, parseInt(limit), parseInt(offset)]);
-        res.json({ success: true, orders: rows });
+        const limitInt = Math.max(1, Math.min(500, parseInt(limit)));
+        const offsetInt = Math.max(0, parseInt(offset));
+
+        let crmRows = [];
+        try {
+            crmRows = await db.query(
+                'SELECT id, order_code, status, final_price_eur, total_price_rub, bike_snapshot, created_at FROM orders WHERE created_at >= ? ORDER BY created_at DESC LIMIT ? OFFSET ?',
+                [since, limitInt, offsetInt]
+            );
+        } catch { }
+
+        if (crmRows.length > 0) {
+            const orders = crmRows.map((row) => {
+                const financial = extractOrderFinancials(row);
+                return {
+                    id: row.id,
+                    order_code: row.order_code || null,
+                    total_amount: financial.finalPriceEur,
+                    total_amount_rub: financial.totalPriceRub,
+                    status: row.status,
+                    created_at: row.created_at
+                };
+            });
+            return res.json({ success: true, orders, source: 'crm_orders' });
+        }
+
+        const rows = await db.query(
+            'SELECT id, total_amount, status, created_at FROM shop_orders WHERE created_at >= ? ORDER BY created_at DESC LIMIT ? OFFSET ?',
+            [since, limitInt, offsetInt]
+        );
+        res.json({ success: true, orders: rows, source: 'shop_orders' });
     } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
     }
@@ -5704,6 +9073,26 @@ app.get('/api/admin/export/orders.csv', adminAuth, async (req, res) => {
         const { window = '7d' } = req.query;
         const days = String(window).endsWith('d') ? parseInt(String(window)) : 7;
         const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+        let crmRows = [];
+        try {
+            crmRows = await db.query(
+                'SELECT id, order_code, status, final_price_eur, total_price_rub, bike_snapshot, created_at FROM orders WHERE created_at >= ? ORDER BY created_at DESC',
+                [since]
+            );
+        } catch { }
+
+        if (crmRows.length > 0) {
+            const header = 'id,order_code,total_amount_eur,total_amount_rub,status,created_at\n';
+            const body = crmRows
+                .map((row) => {
+                    const financial = extractOrderFinancials(row);
+                    return `${row.id},${row.order_code || ''},${financial.finalPriceEur},${financial.totalPriceRub},${row.status || ''},${row.created_at || ''}`;
+                })
+                .join('\n');
+            res.setHeader('Content-Type', 'text/csv');
+            return res.send(header + body);
+        }
+
         const rows = await db.query('SELECT id, total_amount, status, created_at FROM shop_orders WHERE created_at >= ? ORDER BY created_at DESC', [since]);
         const header = 'id,total_amount,status,created_at\n';
         const body = rows.map(r => `${r.id},${r.total_amount},${r.status},${r.created_at}`).join('\n');
@@ -5903,7 +9292,7 @@ app.get('/api/bike-images', async (req, res) => {
 });
 
 // ========================================
-// 👑 ADMIN EMPEROR API (The War Room)
+// ðŸ‘‘ ADMIN EMPEROR API (The War Room)
 // ========================================
 
 const SupplyGapAnalyzer = require('../telegram-bot/SupplyGapAnalyzer');
@@ -5918,6 +9307,7 @@ function adminAuth(req, res, next) {
     const expectedSecret = process.env.ADMIN_SECRET;
 
     if (adminSecret && expectedSecret && adminSecret === expectedSecret) {
+        req.user = { id: 'internal-admin', role: 'admin', auth_method: 'x-admin-secret' };
         return next();
     }
 
@@ -5928,7 +9318,7 @@ function adminAuth(req, res, next) {
         try {
             const JWT_SECRET = process.env.JWT_SECRET;
             if (!JWT_SECRET) {
-                console.error('❌ JWT_SECRET not configured');
+                console.error('âŒ JWT_SECRET not configured');
                 return res.status(500).json({ error: 'Server configuration error' });
             }
             const decoded = require('jsonwebtoken').verify(token, JWT_SECRET);
@@ -5949,6 +9339,114 @@ function adminAuth(req, res, next) {
         hint: 'Use Authorization: Bearer <JWT> with admin role, or x-admin-secret header'
     });
 }
+
+app.get('/api/admin/ai-rop/status', adminAuth, async (req, res) => {
+    try {
+        return res.json({ success: true, status: aiRopAutopilot.getStatus() });
+    } catch (error) {
+        console.error('AI-ROP status error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to get AI-ROP status' });
+    }
+});
+
+app.post('/api/admin/ai-rop/run', adminAuth, async (req, res) => {
+    try {
+        const syncLocal = req.body?.sync_local !== false;
+        const result = await aiRopAutopilot.runOnce({
+            trigger: 'admin_manual',
+            syncLocal
+        });
+        return res.json({ success: true, result });
+    } catch (error) {
+        console.error('AI-ROP manual run error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to run AI-ROP cycle' });
+    }
+});
+
+app.get('/api/admin/ai-signals', adminAuth, async (req, res) => {
+    try {
+        const status = req.query?.status ? String(req.query.status) : 'open,in_progress,snoozed';
+        const severity = req.query?.severity ? String(req.query.severity) : null;
+        const limit = Math.max(1, Math.min(200, Number(req.query?.limit || 60)));
+        const offset = Math.max(0, Number(req.query?.offset || 0));
+        const signals = await aiSignalService.listSignals({ status, severity, limit, offset });
+        return res.json({ success: true, signals: Array.isArray(signals) ? signals : [] });
+    } catch (error) {
+        console.error('AI signals list error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to load AI signals' });
+    }
+});
+
+app.get('/api/admin/ai-signals/:signalId/decisions', adminAuth, async (req, res) => {
+    try {
+        const { signalId } = req.params;
+        const limit = Math.max(1, Math.min(200, Number(req.query?.limit || 50)));
+        const decisions = await aiSignalService.getSignalDecisions(signalId, limit);
+        return res.json({ success: true, decisions: Array.isArray(decisions) ? decisions : [] });
+    } catch (error) {
+        console.error('AI signal decisions error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to load signal decisions' });
+    }
+});
+
+app.post('/api/admin/ai-signals/:signalId/decision', adminAuth, async (req, res) => {
+    try {
+        const { signalId } = req.params;
+        const decision = String(req.body?.decision || '').trim().toLowerCase();
+        const note = req.body?.note ? String(req.body.note) : null;
+        const assigneeId = req.body?.assignee_id ? String(req.body.assignee_id) : null;
+        const snoozeUntil = req.body?.snooze_until ? String(req.body.snooze_until) : null;
+        const dueAt = req.body?.due_at ? String(req.body.due_at) : null;
+
+        const result = await aiSignalService.decideSignal(signalId, {
+            decision,
+            note,
+            assignee_id: assigneeId,
+            snooze_until: snoozeUntil,
+            due_at: dueAt,
+            actor_id: req.user?.id || null,
+            payload: req.body?.payload || null
+        });
+
+        if (!result?.success) {
+            const reason = String(result?.reason || 'invalid_request');
+            if (reason === 'signal_not_found') {
+                return res.status(404).json({ success: false, error: 'Signal not found' });
+            }
+            if (reason === 'invalid_decision' || reason === 'invalid_signal_id') {
+                return res.status(400).json({ success: false, error: reason });
+            }
+            return res.status(503).json({ success: false, error: reason });
+        }
+
+        return res.json({ success: true, result });
+    } catch (error) {
+        console.error('AI signal decision error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to process signal decision' });
+    }
+});
+
+app.post('/api/admin/crm/sync-local', adminAuth, async (req, res) => {
+    try {
+        const includeEvents = req.body?.include_events !== false;
+        const mode = String(req.body?.mode || 'incremental').toLowerCase() === 'full' ? 'full' : 'incremental';
+        const pageSize = Math.min(Math.max(Number(req.body?.page_size || 500), 50), 2000);
+        const maxPages = Math.min(Math.max(Number(req.body?.max_pages || 60), 1), 500);
+        const result = await crmSyncService.syncFromSupabaseToLocal({
+            includeEvents,
+            mode,
+            pageSize,
+            maxPages
+        });
+        if (!result?.success) {
+            return res.status(503).json({ success: false, error: result?.reason || 'Sync unavailable', result });
+        }
+        return res.json({ success: true, result });
+    } catch (error) {
+        console.error('CRM sync local error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to sync local CRM data' });
+    }
+});
 
 app.get('/api/admin/system/status', adminAuth, async (req, res) => {
     try {
@@ -6020,9 +9518,36 @@ app.get('/api/admin/finance/summary', adminAuth, async (req, res) => {
         const totalValue = bikes.reduce((sum, b) => sum + (b.price || 0), 0);
         const totalFMV = bikes.reduce((sum, b) => sum + (b.original_price || 0), 0);
 
-        // Simulator Data
-        const soldBikes = await db.query('SELECT total_amount FROM shop_orders WHERE status = "paid"');
-        const grossRevenue = soldBikes.reduce((sum, o) => sum + (o.total_amount || 0), 0);
+        let crmOrders = [];
+        try {
+            crmOrders = await db.query('SELECT status, final_price_eur, total_price_rub, bike_snapshot FROM orders');
+        } catch { }
+
+        let grossRevenue = 0;
+        let bookedRevenue = 0;
+        let operationalCosts = 0;
+        let netProfitEstimate = 0;
+
+        if (crmOrders.length > 0) {
+            crmOrders.forEach((order) => {
+                if (isCanceledOrderStatus(order.status)) return;
+                const financial = extractOrderFinancials(order);
+                bookedRevenue += financial.finalPriceEur;
+                operationalCosts += financial.estimatedCostEur;
+                netProfitEstimate += financial.marginTotalEur;
+                if (isRealizedRevenueStatus(order.status)) {
+                    grossRevenue += financial.finalPriceEur;
+                }
+            });
+        } else {
+            const soldBikes = await db.query('SELECT total_amount FROM shop_orders WHERE status = "paid"');
+            grossRevenue = soldBikes.reduce((sum, o) => sum + (o.total_amount || 0), 0);
+            bookedRevenue = grossRevenue;
+        }
+
+        const projectedMarginPct = bookedRevenue > 0
+            ? ((netProfitEstimate || (bookedRevenue - operationalCosts)) / bookedRevenue) * 100
+            : (totalValue > 0 ? ((totalFMV - totalValue) / totalValue) * 100 : 0);
 
         res.json({
             success: true,
@@ -6030,12 +9555,707 @@ app.get('/api/admin/finance/summary', adminAuth, async (req, res) => {
                 inventory_value: totalValue,
                 potential_profit: totalFMV - totalValue,
                 gross_revenue: grossRevenue,
+                booked_revenue: bookedRevenue,
+                operational_costs_eur: operationalCosts,
+                net_profit_estimate_eur: netProfitEstimate,
                 active_bikes: bikes.length,
-                projected_margin: totalValue > 0 ? ((totalFMV - totalValue) / totalValue * 100).toFixed(1) : 0
+                projected_margin: Number.isFinite(projectedMarginPct) ? projectedMarginPct.toFixed(1) : '0.0'
             }
         });
     } catch (e) {
         res.status(500).json({ error: e.message });
+    }
+});
+
+// Unified Admin Workspace (single source for /admin CEO/CTO)
+app.get('/api/admin/workspace', adminAuth, async (req, res) => {
+    const safeQuery = async (sql, params = []) => {
+        try {
+            return await db.query(sql, params);
+        } catch {
+            return [];
+        }
+    };
+
+    try {
+        const period = String(req.query.period || req.query.window || '30d');
+        const windowDays = adminV2ParseWindowDays(period, 30);
+        const windowPreset = Number(windowDays) <= 2 ? 'hourly' : (Number(windowDays) <= 45 ? 'daily' : 'weekly');
+        const nowTs = Date.now();
+        const windowMs = windowDays * 24 * 60 * 60 * 1000;
+        const sinceIso = new Date(nowTs - windowMs).toISOString();
+        const prevSinceIso = new Date(nowTs - (windowMs * 2)).toISOString();
+        const prevUntilIso = sinceIso;
+        const baseUrl = resolveRequestPublicBaseUrl(req);
+
+        const fetchOrderRows = async (fromIso, toIso = null, limit = 600) => {
+            const whereParts = ['o.created_at >= ?'];
+            const params = [fromIso];
+            if (toIso) {
+                whereParts.push('o.created_at < ?');
+                params.push(toIso);
+            }
+            params.push(limit);
+            const whereSql = whereParts.join(' AND ');
+            try {
+                return await db.query(
+                    `SELECT
+                        o.id,
+                        o.order_code,
+                        o.status,
+                        o.customer_id,
+                        o.lead_id,
+                        o.assigned_manager,
+                        o.final_price_eur,
+                        o.bike_snapshot,
+                        o.created_at,
+                        c.full_name,
+                        c.email,
+                        c.phone,
+                        c.city,
+                        c.country,
+                        c.preferred_channel
+                     FROM orders o
+                     LEFT JOIN customers c ON c.id = o.customer_id
+                     WHERE ${whereSql}
+                     ORDER BY o.created_at DESC
+                     LIMIT ?`,
+                    params
+                );
+            } catch (error) {
+                const text = String(error?.message || error || '').toLowerCase();
+                if (!text.includes('city')) throw error;
+                return db.query(
+                    `SELECT
+                        o.id,
+                        o.order_code,
+                        o.status,
+                        o.customer_id,
+                        o.lead_id,
+                        o.assigned_manager,
+                        o.final_price_eur,
+                        o.bike_snapshot,
+                        o.created_at,
+                        c.full_name,
+                        c.email,
+                        c.phone,
+                        c.country,
+                        c.preferred_channel
+                     FROM orders o
+                     LEFT JOIN customers c ON c.id = o.customer_id
+                     WHERE ${whereSql}
+                     ORDER BY o.created_at DESC
+                     LIMIT ?`,
+                    params
+                );
+            }
+        };
+
+        const [orderRows, prevOrderRows] = await Promise.all([
+            fetchOrderRows(sinceIso, null, 600),
+            fetchOrderRows(prevSinceIso, prevUntilIso, 600)
+        ]);
+
+        const [leadRows, leadCountRows, prevLeadCountRows, taskRows, currentActiveTaskRows, prevActiveTaskRows, customerCountRows, recentLogsRows, errorLogs24Rows, hunterEventRows, botQueueRows, anomalyRows] = await Promise.all([
+            safeQuery(
+                `SELECT id, source, status, customer_id, bike_url, contact_method, contact_value, created_at
+                 FROM leads
+                 WHERE created_at >= ?
+                 ORDER BY created_at DESC
+                 LIMIT 200`,
+                [sinceIso]
+            ),
+            safeQuery(
+                `SELECT COUNT(*) as c
+                 FROM leads
+                 WHERE created_at >= ?`,
+                [sinceIso]
+            ),
+            safeQuery(
+                `SELECT COUNT(*) as c
+                 FROM leads
+                 WHERE created_at >= ? AND created_at < ?`,
+                [prevSinceIso, prevUntilIso]
+            ),
+            safeQuery(
+                `SELECT id, order_id, title, description, due_at, completed, assigned_to, created_at
+                 FROM tasks
+                 ORDER BY created_at DESC
+                 LIMIT 200`
+            ),
+            safeQuery(
+                `SELECT COUNT(*) as c
+                 FROM tasks
+                 WHERE CAST(COALESCE(completed, 0) AS INTEGER) = 0`
+            ),
+            safeQuery(
+                `SELECT COUNT(*) as c
+                 FROM tasks
+                 WHERE created_at >= ? AND created_at < ?
+                   AND CAST(COALESCE(completed, 0) AS INTEGER) = 0`,
+                [prevSinceIso, prevUntilIso]
+            ),
+            safeQuery('SELECT COUNT(*) as c FROM customers'),
+            safeQuery('SELECT created_at, level, source, message FROM system_logs ORDER BY created_at DESC LIMIT 80'),
+            safeQuery(
+                `SELECT COUNT(*) as c
+                 FROM system_logs
+                 WHERE created_at >= datetime('now', '-24 hours')
+                   AND LOWER(COALESCE(level, '')) IN ('error', 'critical')`
+            ),
+            safeQuery(
+                `SELECT type, COUNT(*) as c
+                 FROM hunter_events
+                 WHERE created_at >= datetime('now', '-24 hours')
+                 GROUP BY type`
+            ),
+            safeQuery(
+                `SELECT COUNT(*) as c
+                 FROM bot_tasks
+                 WHERE status IN ('pending','processing')`
+            ),
+            safeQuery(
+                `SELECT anomaly_key, severity, metric_name, baseline_value, current_value, delta_pct, created_at
+                 FROM metrics_anomalies
+                 WHERE created_at >= datetime('now', '-48 hours')
+                 ORDER BY created_at DESC
+                 LIMIT 40`
+            )
+        ]);
+
+        const [coreOverviewRaw, growthOverviewRaw, referralLinksRaw, alertRows] = await Promise.all([
+            metricsOps.getCoreOverview({ windowDays, windowPreset }).catch(() => null),
+            growthAttribution.buildGrowthOverview({ windowDays, windowPreset, baseUrl }).catch(() => null),
+            growthAttribution.listReferralLinks({ windowDays, windowPreset, limit: 40, offset: 0, baseUrl }).catch(() => null),
+            safeQuery(
+                `SELECT id, name, brand, model, price, updated_at
+                 FROM bikes
+                 WHERE is_super_deal = 1
+                   AND updated_at >= datetime('now', '-24 hours')
+                 ORDER BY updated_at DESC
+                 LIMIT 30`
+            )
+        ]);
+
+        const coreOverview = coreOverviewRaw && coreOverviewRaw.success ? coreOverviewRaw : null;
+        const growthOverview = growthOverviewRaw && growthOverviewRaw.success ? growthOverviewRaw : null;
+        const referralLinks = referralLinksRaw && referralLinksRaw.success ? referralLinksRaw : { success: true, links: [] };
+
+        let bookedRevenue = 0;
+        let realizedRevenue = 0;
+        let operationalCosts = 0;
+        let netMargin = 0;
+        const statusCounter = new Map();
+        const financeDailyMap = new Map();
+        const marginLeakDetector = [];
+        const dealRiskRadar = [];
+
+        for (const row of orderRows) {
+            const status = String(row?.status || '').toLowerCase();
+            statusCounter.set(status || 'unknown', (statusCounter.get(status || 'unknown') || 0) + 1);
+            if (isCanceledOrderStatus(status)) continue;
+
+            const f = extractOrderFinancials(row);
+            bookedRevenue += f.finalPriceEur;
+            operationalCosts += f.estimatedCostEur;
+            netMargin += f.marginTotalEur;
+            if (isRealizedRevenueStatus(status)) {
+                realizedRevenue += f.finalPriceEur;
+            }
+
+            const dayKey = String(row.created_at || '').slice(0, 10);
+            const daily = financeDailyMap.get(dayKey) || { day: dayKey, revenue: 0, costs: 0, margin: 0, orders: 0 };
+            daily.revenue += f.finalPriceEur;
+            daily.costs += f.estimatedCostEur;
+            daily.margin += f.marginTotalEur;
+            daily.orders += 1;
+            financeDailyMap.set(dayKey, daily);
+
+            const risk = adminV2BuildDealRisk(row);
+            dealRiskRadar.push({
+                order_id: row.id,
+                order_code: row.order_code || null,
+                status: row.status || null,
+                customer_name: row.full_name || null,
+                final_price_eur: adminV2Round(f.finalPriceEur),
+                margin_eur: adminV2Round(f.marginTotalEur),
+                risk_score: risk.score,
+                risk_band: risk.band,
+                reasons: risk.reasons,
+                margin_leak_eur: risk.marginLeakEur,
+                created_at: row.created_at || null
+            });
+
+            if (risk.marginLeakEur > 40) {
+                marginLeakDetector.push({
+                    order_id: row.id,
+                    order_code: row.order_code || null,
+                    bike_price_eur: adminV2Round(f.bikePriceEur),
+                    expected_service_fee_eur: risk.expectedServiceFeeEur,
+                    actual_service_fee_eur: risk.actualServiceFeeEur,
+                    margin_leak_eur: risk.marginLeakEur,
+                    status: row.status || null,
+                    created_at: row.created_at || null
+                });
+            }
+        }
+
+        let prevBookedRevenue = 0;
+        let prevRealizedRevenue = 0;
+        let prevOperationalCosts = 0;
+        let prevNetMargin = 0;
+        for (const row of prevOrderRows) {
+            const status = String(row?.status || '').toLowerCase();
+            if (isCanceledOrderStatus(status)) continue;
+            const f = extractOrderFinancials(row);
+            prevBookedRevenue += f.finalPriceEur;
+            prevOperationalCosts += f.estimatedCostEur;
+            prevNetMargin += f.marginTotalEur;
+            if (isRealizedRevenueStatus(status)) {
+                prevRealizedRevenue += f.finalPriceEur;
+            }
+        }
+
+        const financeDaily = Array.from(financeDailyMap.values())
+            .sort((a, b) => String(a.day).localeCompare(String(b.day)))
+            .map((row) => ({
+                day: row.day,
+                revenue: adminV2Round(row.revenue),
+                costs: adminV2Round(row.costs),
+                margin: adminV2Round(row.margin),
+                orders: Number(row.orders || 0)
+            }));
+
+        const totalOrders = orderRows.length;
+        const realizedRatePct = totalOrders > 0 ? (realizedRevenue / Math.max(1, bookedRevenue)) * 100 : 0;
+        const marginPct = bookedRevenue > 0 ? (netMargin / bookedRevenue) * 100 : 0;
+        const avgOrderValueEur = totalOrders > 0 ? bookedRevenue / Math.max(1, totalOrders) : 0;
+        const activeLeadsCurrent = Number(leadCountRows?.[0]?.c || leadRows.length);
+        const activeTasksCurrent = Number(currentActiveTaskRows?.[0]?.c || taskRows.filter((row) => Number(row.completed || 0) === 0).length);
+
+        const prevTotalOrders = prevOrderRows.length;
+        const prevMarginPct = prevBookedRevenue > 0 ? (prevNetMargin / prevBookedRevenue) * 100 : 0;
+        const prevAvgOrderValueEur = prevTotalOrders > 0 ? prevBookedRevenue / Math.max(1, prevTotalOrders) : 0;
+        const prevActiveLeads = Number(prevLeadCountRows?.[0]?.c || 0);
+        const prevActiveTasks = Number(prevActiveTaskRows?.[0]?.c || 0);
+
+        const periodComparison = {
+            booked_revenue_eur: {
+                current: adminV2Round(bookedRevenue),
+                previous: adminV2Round(prevBookedRevenue),
+                delta: adminV2Round(bookedRevenue - prevBookedRevenue),
+                delta_pct: adminV2Round(adminV2PctChange(bookedRevenue, prevBookedRevenue), 1)
+            },
+            realized_revenue_eur: {
+                current: adminV2Round(realizedRevenue),
+                previous: adminV2Round(prevRealizedRevenue),
+                delta: adminV2Round(realizedRevenue - prevRealizedRevenue),
+                delta_pct: adminV2Round(adminV2PctChange(realizedRevenue, prevRealizedRevenue), 1)
+            },
+            net_margin_eur: {
+                current: adminV2Round(netMargin),
+                previous: adminV2Round(prevNetMargin),
+                delta: adminV2Round(netMargin - prevNetMargin),
+                delta_pct: adminV2Round(adminV2PctChange(netMargin, prevNetMargin), 1)
+            },
+            margin_pct: {
+                current: adminV2Round(marginPct, 1),
+                previous: adminV2Round(prevMarginPct, 1),
+                delta: adminV2Round(marginPct - prevMarginPct, 1),
+                delta_pct: adminV2Round(adminV2PctChange(marginPct, prevMarginPct), 1)
+            },
+            orders_total: {
+                current: totalOrders,
+                previous: prevTotalOrders,
+                delta: totalOrders - prevTotalOrders,
+                delta_pct: adminV2Round(adminV2PctChange(totalOrders, prevTotalOrders), 1)
+            },
+            avg_order_value_eur: {
+                current: adminV2Round(avgOrderValueEur),
+                previous: adminV2Round(prevAvgOrderValueEur),
+                delta: adminV2Round(avgOrderValueEur - prevAvgOrderValueEur),
+                delta_pct: adminV2Round(adminV2PctChange(avgOrderValueEur, prevAvgOrderValueEur), 1)
+            },
+            active_leads: {
+                current: activeLeadsCurrent,
+                previous: prevActiveLeads,
+                delta: activeLeadsCurrent - prevActiveLeads,
+                delta_pct: adminV2Round(adminV2PctChange(activeLeadsCurrent, prevActiveLeads), 1)
+            },
+            active_tasks: {
+                current: activeTasksCurrent,
+                previous: prevActiveTasks,
+                delta: activeTasksCurrent - prevActiveTasks,
+                delta_pct: adminV2Round(adminV2PctChange(activeTasksCurrent, prevActiveTasks), 1)
+            }
+        };
+
+        const journey = coreOverview?.journey || {};
+        const bookingSuccessReachPct = Number(journey.bookingSuccessReachPct || 0);
+        const churnHighRiskPct = Number(coreOverview?.churn?.summary?.highRiskPct || coreOverview?.churn?.highRiskPct || 0);
+        const severeAnomalies = Array.isArray(coreOverview?.anomalies?.recent)
+            ? coreOverview.anomalies.recent.filter((row) => String(row?.severity || '').toLowerCase() === 'critical').length
+            : 0;
+        const alertCount = (Array.isArray(alertRows) ? alertRows.length : 0) + severeAnomalies;
+
+        const actionCenter = [];
+        if (marginPct < 12) {
+            actionCenter.push({
+                id: 'margin_recovery',
+                severity: 'critical',
+                title: 'Маржинальность ниже порога',
+                insight: `Текущая маржинальность ${adminV2Round(marginPct, 1)}%: нужна ревизия сервисного тарифа и логистических опций.`,
+                target: '/admin#finance',
+                action_label: 'Открыть финансы'
+            });
+        }
+        if (bookingSuccessReachPct < 25) {
+            actionCenter.push({
+                id: 'funnel_checkout_gap',
+                severity: 'high',
+                title: 'Слабое закрытие воронки',
+                insight: `Booking Success Reach ${adminV2Round(bookingSuccessReachPct, 1)}%: проверьте этап checkout/оплаты в CRM.`,
+                target: '/crm/orders',
+                action_label: 'Открыть CRM заказы'
+            });
+        }
+        if (marginLeakDetector.length > 0) {
+            actionCenter.push({
+                id: 'margin_leaks',
+                severity: marginLeakDetector.length >= 5 ? 'critical' : 'high',
+                title: 'Обнаружены утечки сервисной маржи',
+                insight: `Проблемных заказов: ${marginLeakDetector.length}. Нужен точечный разбор ценообразования.`,
+                target: '/admin#margin-leaks',
+                action_label: 'Разобрать утечки'
+            });
+        }
+        if (alertCount > 0) {
+            actionCenter.push({
+                id: 'anomaly_actions',
+                severity: severeAnomalies > 0 ? 'critical' : 'medium',
+                title: 'Сигналы риска требуют реакции',
+                insight: `Активных сигналов: ${alertCount}. Сформируйте действия по SLA и владельцев.`,
+                target: '/admin#action-center',
+                action_label: 'Открыть Action Center'
+            });
+        }
+        if (churnHighRiskPct >= 35) {
+            actionCenter.push({
+                id: 'churn_guard',
+                severity: 'high',
+                title: 'Высокий риск оттока',
+                insight: `High-risk сессий: ${adminV2Round(churnHighRiskPct, 1)}%. Усильте ретаргет и follow-up.`,
+                target: '/admin#traffic',
+                action_label: 'Открыть трафик'
+            });
+        }
+
+        let aiSignals = [];
+        try {
+            const rows = await aiSignalService.listSignals({
+                status: 'open,in_progress,snoozed',
+                limit: 40,
+                offset: 0
+            });
+            aiSignals = Array.isArray(rows) ? rows : [];
+        } catch (signalError) {
+            console.warn('Admin workspace AI signals warning:', signalError?.message || signalError);
+        }
+
+        const aiSignalActions = aiSignals.map((signal) => ({
+            id: `signal:${signal.id}`,
+            signal_id: signal.id,
+            signal_status: signal.status || 'open',
+            assigned_to: signal.assigned_to || null,
+            severity: String(signal.severity || 'medium').toLowerCase(),
+            title: signal.title || 'AI signal',
+            insight: signal.insight || 'AI action required.',
+            target: signal.target || '/admin#action-center',
+            action_label: 'Open signal',
+            created_at: signal.created_at || null,
+            updated_at: signal.updated_at || null
+        }));
+        const actionCenterMerged = [...aiSignalActions, ...actionCenter].slice(0, 30);
+
+        const kanbanCurrent = adminV2BuildKanbanSummary(orderRows);
+        const kanbanPrevious = adminV2BuildKanbanSummary(prevOrderRows);
+        const previousLaneById = new Map((kanbanPrevious?.lanes || []).map((lane) => [String(lane.lane || ''), lane]));
+        const kanbanLanes = (kanbanCurrent?.lanes || []).map((lane) => {
+            const prevLane = previousLaneById.get(String(lane.lane || '')) || {};
+            const previousCount = Number(prevLane.orders || 0);
+            const previousAmount = Number(prevLane.amount_eur || 0);
+            return {
+                ...lane,
+                previous_orders: previousCount,
+                delta_orders: Number(lane.orders || 0) - previousCount,
+                previous_amount_eur: adminV2Round(previousAmount),
+                delta_amount_eur: adminV2Round(Number(lane.amount_eur || 0) - previousAmount)
+            };
+        });
+        const managerSnapshot = adminV2BuildManagerSnapshot(orderRows);
+        const waitingLane = kanbanLanes.find((lane) => lane.lane === 'waiting_manager');
+        const cancelledLane = kanbanLanes.find((lane) => lane.lane === 'cancelled');
+        const simpleCopilot = adminV2BuildSimpleCopilot({
+            marginPct,
+            bookingSuccessPct: bookingSuccessReachPct,
+            alertCount,
+            revenueDeltaPct: periodComparison?.booked_revenue_eur?.delta_pct,
+            waitingManagerOrders: Number(waitingLane?.orders || 0),
+            cancelledOrders: Number(cancelledLane?.orders || 0),
+            totalOrders,
+            actionCenterCount: actionCenterMerged.length
+        });
+        const quickSummary = {
+            revenue_eur: adminV2Round(bookedRevenue),
+            orders: totalOrders,
+            avg_order_value_eur: adminV2Round(avgOrderValueEur),
+            in_processing_orders: Number((kanbanLanes.find((lane) => lane.lane === 'processing') || {}).orders || 0),
+            waiting_manager_orders: Number(waitingLane?.orders || 0),
+            shipping_orders: Number((kanbanLanes.find((lane) => lane.lane === 'shipping') || {}).orders || 0),
+            delivered_orders: Number((kanbanLanes.find((lane) => lane.lane === 'delivered') || {}).orders || 0),
+            alerts: alertCount,
+            pulse_score: simpleCopilot.pulse_score
+        };
+
+        const ceoFlowRaw = coreOverview?.ceoFlow || {};
+        const ceoFlowRows = Array.isArray(ceoFlowRaw)
+            ? ceoFlowRaw
+            : Object.entries(ceoFlowRaw)
+                .filter(([, value]) => Number.isFinite(Number(value)))
+                .map(([key, value]) => ({
+                    stage: key,
+                    sessions: Number(value || 0)
+                }));
+
+        let topChannels = Array.isArray(growthOverview?.channelBreakdown)
+            ? growthOverview.channelBreakdown.slice(0, 8)
+            : [];
+        let topCampaigns = Array.isArray(growthOverview?.topCampaigns)
+            ? growthOverview.topCampaigns.slice(0, 8)
+            : [];
+
+        if ((!topChannels.length || !topCampaigns.length) && Array.isArray(referralLinks?.links)) {
+            const fromPartners = referralLinks.links
+                .map((link) => {
+                    const stats = link?.stats || {};
+                    return {
+                        source: 'referral',
+                        medium: 'partner',
+                        campaign: link?.channelName || 'partner',
+                        sessions: Number(stats?.sessions || 0),
+                        conversionPct: Number(stats?.orderPct || 0)
+                    };
+                })
+                .filter((row) => row.sessions > 0)
+                .sort((a, b) => Number(b.sessions || 0) - Number(a.sessions || 0));
+            if (!topChannels.length) {
+                topChannels = fromPartners.slice(0, 8).map((row) => ({
+                    source: row.source,
+                    medium: row.medium,
+                    sessions: row.sessions,
+                    conversionPct: row.conversionPct
+                }));
+            }
+            if (!topCampaigns.length) {
+                topCampaigns = fromPartners.slice(0, 8).map((row) => ({
+                    campaign: row.campaign,
+                    sessions: row.sessions
+                }));
+            }
+        }
+
+        const cashflowForecast = adminV2BuildCashflowForecast(financeDaily, realizedRatePct);
+        const ceoNarrative = adminV2BuildCeoNarrative({
+            bookedRevenue,
+            realizedRevenue,
+            marginPct,
+            bookingSuccessPct: bookingSuccessReachPct,
+            churnRiskPct: churnHighRiskPct,
+            marginLeakOrders: marginLeakDetector.length
+        });
+
+        const crmOrdersMini = orderRows.slice(0, 14).map((row) => {
+            const financial = extractOrderFinancials(row);
+            const risk = adminV2BuildDealRisk(row);
+            return {
+                order_id: row.id,
+                order_code: row.order_code || null,
+                status: row.status || null,
+                created_at: row.created_at || null,
+                customer_name: row.full_name || null,
+                customer_email: row.email || null,
+                customer_phone: row.phone || null,
+                preferred_channel: normalizePreferredChannel(row.preferred_channel || getOrderSnapshotContact(row).contact_method || null, null),
+                total_amount_eur: adminV2Round(financial.finalPriceEur),
+                margin_eur: adminV2Round(financial.marginTotalEur),
+                risk_score: risk.score,
+                risk_band: risk.band
+            };
+        });
+
+        const crmLeadsMini = leadRows.slice(0, 12).map((row) => ({
+            lead_id: row.id,
+            status: row.status || 'new',
+            source: row.source || 'website',
+            contact_method: row.contact_method || null,
+            contact_value: row.contact_value || null,
+            bike_url: row.bike_url || null,
+            created_at: row.created_at || null
+        }));
+
+        const crmTasksMini = taskRows.slice(0, 12).map((row) => ({
+            task_id: row.id,
+            order_id: row.order_id || null,
+            title: row.title || 'Task',
+            description: row.description || null,
+            due_at: row.due_at || null,
+            completed: Number(row.completed || 0) === 1,
+            assigned_to: row.assigned_to || null,
+            created_at: row.created_at || null
+        }));
+
+        const hunterCountByType = new Map((hunterEventRows || []).map((row) => [String(row.type || '').toLowerCase(), Number(row.c || 0)]));
+        const metricsEvents24Rows = await safeQuery('SELECT COUNT(*) as c FROM metric_events WHERE created_at >= datetime(\'now\', \'-24 hours\')');
+        const apiLatency = coreOverview?.performance?.apiLatency || {};
+
+        const ctoHealth = {
+            uptime_sec: adminV2Round(process.uptime(), 1),
+            memory_mb: adminV2Round((process.memoryUsage().rss || 0) / (1024 * 1024), 1),
+            error_logs_24h: Number(errorLogs24Rows?.[0]?.c || 0),
+            metric_events_24h: Number(metricsEvents24Rows?.[0]?.c || 0),
+            api_p95_ms: Number(apiLatency?.p95Ms || 0),
+            api_error_rate_pct: Number(apiLatency?.errorRatePct || 0),
+            hunter_success_24h: Number(hunterCountByType.get('success') || 0),
+            hunter_rejections_24h: Number(hunterCountByType.get('rejection') || 0),
+            hunter_errors_24h: Number(hunterCountByType.get('error') || 0),
+            queue_pending: Number(botQueueRows?.[0]?.c || 0),
+            anomalies_48h: Number(anomalyRows?.length || 0)
+        };
+
+        const ctoIncidents = (recentLogsRows || [])
+            .filter((row) => ['error', 'critical', 'warn', 'warning'].includes(String(row?.level || '').toLowerCase()))
+            .slice(0, 30)
+            .map((row) => ({
+                ts: row.created_at || null,
+                level: row.level || 'info',
+                source: row.source || 'system',
+                message: row.message || ''
+            }));
+
+        const testsLogRows = Array.isArray(global.testLogs) ? global.testLogs.slice(-40).reverse() : [];
+
+        return res.json({
+            success: true,
+            window: {
+                period,
+                days: windowDays,
+                since: sinceIso,
+                previous_since: prevSinceIso,
+                previous_until: prevUntilIso,
+                generated_at: new Date().toISOString()
+            },
+            ceo: {
+                kpi: {
+                    booked_revenue_eur: adminV2Round(bookedRevenue),
+                    realized_revenue_eur: adminV2Round(realizedRevenue),
+                    revenue_gap_eur: adminV2Round(Math.max(0, bookedRevenue - realizedRevenue)),
+                    net_margin_eur: adminV2Round(netMargin),
+                    operational_costs_eur: adminV2Round(operationalCosts),
+                    margin_pct: adminV2Round(marginPct, 1),
+                    orders_total: totalOrders,
+                    avg_order_value_eur: adminV2Round(avgOrderValueEur),
+                    active_leads: activeLeadsCurrent,
+                    active_tasks: activeTasksCurrent,
+                    customers_total: Number(customerCountRows?.[0]?.c || 0),
+                    alert_count: alertCount
+                },
+                comparison: periodComparison,
+                narrative: ceoNarrative,
+                action_center: actionCenterMerged,
+                ai_signals: aiSignals.map((signal) => ({
+                    id: signal.id,
+                    signal_type: signal.signal_type,
+                    source: signal.source,
+                    severity: signal.severity,
+                    status: signal.status,
+                    owner_circle: signal.owner_circle,
+                    entity_type: signal.entity_type,
+                    entity_id: signal.entity_id,
+                    title: signal.title,
+                    insight: signal.insight,
+                    target: signal.target,
+                    assigned_to: signal.assigned_to,
+                    sla_due_at: signal.sla_due_at,
+                    created_at: signal.created_at,
+                    updated_at: signal.updated_at
+                })),
+                quick_summary: quickSummary,
+                simple_pulse: simpleCopilot,
+                finance: {
+                    daily: financeDaily,
+                    cashflow_forecast: cashflowForecast
+                },
+                funnel: {
+                    journey: journey || {},
+                    ceo_flow: ceoFlowRows,
+                    ceo_flow_summary: ceoFlowRaw,
+                    loss_points: coreOverview?.lossPoints || []
+                },
+                traffic: {
+                    growth_overview: growthOverview || null,
+                    top_channels: topChannels,
+                    top_campaigns: topCampaigns
+                },
+                partners: {
+                    links: referralLinks?.links || [],
+                    total: Number(referralLinks?.total || (referralLinks?.links || []).length || 0)
+                },
+                kanban: {
+                    lanes: kanbanLanes,
+                    totals: {
+                        current: kanbanCurrent?.totals || { orders: 0, amount_eur: 0 },
+                        previous: kanbanPrevious?.totals || { orders: 0, amount_eur: 0 }
+                    }
+                },
+                managers: managerSnapshot,
+                margin_leak_detector: marginLeakDetector
+                    .sort((a, b) => Number(b.margin_leak_eur || 0) - Number(a.margin_leak_eur || 0))
+                    .slice(0, 20),
+                deal_risk_radar: dealRiskRadar
+                    .sort((a, b) => Number(b.risk_score || 0) - Number(a.risk_score || 0))
+                    .slice(0, 30),
+                mini_crm: {
+                    orders: crmOrdersMini,
+                    leads: crmLeadsMini,
+                    tasks: crmTasksMini
+                }
+            },
+            cto: {
+                health: ctoHealth,
+                modules: coreOverview?.health?.modules || {},
+                guardrails: coreOverview?.guardrails || null,
+                anomalies: (anomalyRows || []).map((row) => ({
+                    anomaly_key: row.anomaly_key || null,
+                    severity: row.severity || 'info',
+                    metric_name: row.metric_name || null,
+                    baseline_value: Number(row.baseline_value || 0),
+                    current_value: Number(row.current_value || 0),
+                    delta_pct: Number(row.delta_pct || 0),
+                    created_at: row.created_at || null
+                })),
+                incidents: ctoIncidents,
+                test_logs: testsLogRows,
+                recent_logs: (recentLogsRows || []).slice(0, 40).map((row) => ({
+                    ts: row.created_at || null,
+                    level: row.level || 'info',
+                    source: row.source || 'system',
+                    message: row.message || ''
+                }))
+            }
+        });
+    } catch (error) {
+        console.error('Admin workspace error:', error);
+        res.status(500).json({ success: false, error: 'Failed to build admin workspace' });
     }
 });
 
@@ -6080,13 +10300,13 @@ app.post('/api/admin/scoring/config', adminAuth, async (req, res) => {
 });
 
 // ========================================
-// 🛒 CART ROUTES (Rewritten for persistent DB storage)
+// ðŸ›’ CART ROUTES (Rewritten for persistent DB storage)
 // ========================================
 
 // Get user cart
 app.get('/api/cart', authenticateToken, async (req, res) => {
     try {
-        console.log('🛒 Fetching cart for user:', req.user.id);
+        console.log('ðŸ›’ Fetching cart for user:', req.user.id);
 
         const cartItems = await db.query(`
             SELECT 
@@ -6138,7 +10358,7 @@ app.post('/api/cart', authenticateToken, async (req, res) => {
             return res.status(400).json({ error: 'Bike ID is required' });
         }
 
-        console.log(`🛒 Adding to cart: User ${req.user.id}, Bike ${targetBikeId}`);
+        console.log(`ðŸ›’ Adding to cart: User ${req.user.id}, Bike ${targetBikeId}`);
 
         // Check if bike exists
         const bikeCheck = await db.query('SELECT id, price FROM bikes WHERE id = ?', [targetBikeId]);
@@ -6161,14 +10381,14 @@ app.post('/api/cart', authenticateToken, async (req, res) => {
                 'UPDATE shopping_cart SET quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
                 [newQuantity, existing[0].id]
             );
-            console.log('✅ Updated existing cart item');
+            console.log('âœ… Updated existing cart item');
         } else {
             // Insert new item
             await db.query(
                 'INSERT INTO shopping_cart (user_id, bike_id, quantity, calculated_price) VALUES (?, ?, ?, ?)',
                 [req.user.id, targetBikeId, quantity, finalPrice]
             );
-            console.log('✅ Inserted new cart item');
+            console.log('âœ… Inserted new cart item');
         }
 
         res.json({ success: true, message: 'Item added to cart' });
@@ -6222,7 +10442,7 @@ app.post('/api/cart/sync', authenticateToken, async (req, res) => {
             return res.status(400).json({ error: 'Invalid items array' });
         }
 
-        console.log(`🛒 Syncing ${items.length} items for user ${req.user.id}`);
+        console.log(`ðŸ›’ Syncing ${items.length} items for user ${req.user.id}`);
 
         for (const item of items) {
             const bikeId = item.bikeId || item.bike_id;
@@ -6275,7 +10495,7 @@ app.post('/api/cart/sync', authenticateToken, async (req, res) => {
 });
 
 // ========================================
-// 🎯 FAVORITES ROUTES
+// ðŸŽ¯ FAVORITES ROUTES
 // ========================================
 
 // Validation middleware for bike ID
@@ -6636,7 +10856,7 @@ app.get('/api/admin/evaluations/pending', adminAuth, async (req, res) => {
 });
 
 // ========================================
-// 📦 ORDERS ROUTES
+// ðŸ“¦ ORDERS ROUTES
 // ========================================
 
 // Search orders (CRM Proxy - Supabase Only)
@@ -6707,18 +10927,25 @@ app.get('/api/v1/crm/orders/search', async (req, res) => {
 });
 
 // Get order details (CRM Proxy - Supabase Only)
-app.get('/api/v1/crm/orders/:orderId', async (req, res) => {
+app.get('/api/v1/crm/orders/:orderId', authenticateToken, requireManagerRole, async (req, res) => {
     try {
         const { orderId } = req.params;
+        const { actorId, isAdmin } = resolveCrmOrderScope(req);
+        if (!isAdmin && !actorId) {
+            return res.status(401).json({ success: false, error: 'Manager context is missing' });
+        }
 
         if (!supabase) {
             const localOrders = await db.query(
-                'SELECT id, order_code, status, final_price_eur, created_at, bike_snapshot, customer_id, assigned_manager FROM orders WHERE id = ? OR order_code = ? LIMIT 1',
+                'SELECT id, order_code, status, final_price_eur, created_at, bike_url, bike_snapshot, customer_id, assigned_manager FROM orders WHERE id = ? OR order_code = ? LIMIT 1',
                 [orderId, orderId]
             );
             const order = localOrders?.[0] || null;
             if (!order) {
                 return res.status(404).json({ error: 'Order not found' });
+            }
+            if (!isOrderVisibleToActor(order.assigned_manager, actorId, isAdmin)) {
+                return res.status(403).json({ success: false, error: 'Access denied for this order' });
             }
 
             const customerRows = order.customer_id
@@ -6764,6 +10991,7 @@ app.get('/api/v1/crm/orders/:orderId', async (req, res) => {
                     created_at: order.created_at,
                     assigned_manager: order.assigned_manager || null,
                     assigned_manager_name: managerName || null,
+                    bike_url: order.bike_url || getOrderBikeUrlFromSnapshot(order) || null,
                     bike_snapshot: order.bike_snapshot || null,
                     customer: mergedCustomer
                 },
@@ -6785,7 +11013,7 @@ app.get('/api/v1/crm/orders/:orderId', async (req, res) => {
                 details.history.push({
                     status: 'created',
                     new_status: 'created',
-                    change_notes: 'Заказ создан',
+                    change_notes: 'Ð—Ð°ÐºÐ°Ð· ÑÐ¾Ð·Ð´Ð°Ð½',
                     created_at: order.created_at
                 });
             }
@@ -6794,18 +11022,41 @@ app.get('/api/v1/crm/orders/:orderId', async (req, res) => {
         }
 
         // Find order with relations (support both ID and Code)
-        let query = supabase
-            .from('orders')
-            .select(`
+        const detailSelectVariants = [
+            `
                 *,
                 customers (full_name, email, phone, city, country, contact_value, preferred_channel),
                 users (name),
                 order_status_events (old_status, new_status, created_at),
                 shipments (provider, tracking_number, estimated_delivery_date)
-            `)
+            `,
+            `
+                *,
+                customers (full_name, email, phone, country, contact_value, preferred_channel),
+                users (name),
+                order_status_events (old_status, new_status, created_at),
+                shipments (provider, tracking_number, estimated_delivery_date)
+            `,
+            `
+                *,
+                customers (full_name, email, phone, country),
+                users (name),
+                order_status_events (old_status, new_status, created_at),
+                shipments (provider, tracking_number, estimated_delivery_date)
+            `
+        ];
+        const loadDetailsBySelect = (selectExpr) => supabase
+            .from('orders')
+            .select(selectExpr)
             .or(`order_code.eq.${orderId},id.eq.${orderId}`);
 
-        const { data: orders, error } = await query;
+        let detailsRes = await loadDetailsBySelect(detailSelectVariants[0]);
+        let detailsSelectIdx = 0;
+        while (detailsRes.error && isMissingCustomersColumnError(detailsRes.error) && detailsSelectIdx < detailSelectVariants.length - 1) {
+            detailsSelectIdx += 1;
+            detailsRes = await loadDetailsBySelect(detailSelectVariants[detailsSelectIdx]);
+        }
+        const { data: orders, error } = detailsRes;
 
         if (error) {
             console.error('Supabase details error:', error);
@@ -6814,17 +11065,30 @@ app.get('/api/v1/crm/orders/:orderId', async (req, res) => {
 
         if (!orders || orders.length === 0) {
             const localOrders = await db.query(
-                'SELECT id, order_code, status, final_price_eur, created_at, bike_snapshot, customer_id, assigned_manager FROM orders WHERE id = ? OR order_code = ? LIMIT 1',
+                'SELECT id, order_code, status, final_price_eur, created_at, bike_url, bike_snapshot, customer_id, assigned_manager FROM orders WHERE id = ? OR order_code = ? LIMIT 1',
                 [orderId, orderId]
             );
             const localOrder = localOrders?.[0] || null;
             if (localOrder) {
-                const customerRows = localOrder.customer_id
-                    ? await db.query(
-                        'SELECT full_name, email, phone, city, country, preferred_channel FROM customers WHERE id = ? LIMIT 1',
-                        [localOrder.customer_id]
-                    )
-                    : [];
+                if (!isOrderVisibleToActor(localOrder.assigned_manager, actorId, isAdmin)) {
+                    return res.status(403).json({ success: false, error: 'Access denied for this order' });
+                }
+                let customerRows = [];
+                if (localOrder.customer_id) {
+                    try {
+                        customerRows = await db.query(
+                            'SELECT full_name, email, phone, city, country, preferred_channel FROM customers WHERE id = ? LIMIT 1',
+                            [localOrder.customer_id]
+                        );
+                    } catch (localCustomerErr) {
+                        const text = String(localCustomerErr?.message || localCustomerErr || '').toLowerCase();
+                        if (!text.includes('no such column') || !text.includes('city')) throw localCustomerErr;
+                        customerRows = await db.query(
+                            'SELECT full_name, email, phone, country, preferred_channel FROM customers WHERE id = ? LIMIT 1',
+                            [localOrder.customer_id]
+                        );
+                    }
+                }
                 const customer = customerRows?.[0] || null;
                 const mergedCustomer = mergeOrderCustomerWithSnapshot(customer, localOrder);
                 let managerName = null;
@@ -6862,6 +11126,7 @@ app.get('/api/v1/crm/orders/:orderId', async (req, res) => {
                         created_at: localOrder.created_at,
                         assigned_manager: localOrder.assigned_manager || null,
                         assigned_manager_name: managerName || null,
+                        bike_url: localOrder.bike_url || getOrderBikeUrlFromSnapshot(localOrder) || null,
                         bike_snapshot: localOrder.bike_snapshot || null,
                         customer: mergedCustomer
                     },
@@ -6894,6 +11159,9 @@ app.get('/api/v1/crm/orders/:orderId', async (req, res) => {
         }
 
         const order = orders[0];
+        if (!isOrderVisibleToActor(order.assigned_manager, actorId, isAdmin)) {
+            return res.status(403).json({ success: false, error: 'Access denied for this order' });
+        }
 
         // Parse snapshot for items
         let items = [];
@@ -6915,6 +11183,7 @@ app.get('/api/v1/crm/orders/:orderId', async (req, res) => {
                 created_at: order.created_at,
                 assigned_manager: order.assigned_manager || null,
                 assigned_manager_name: managerName || null,
+                bike_url: order.bike_url || getOrderBikeUrlFromSnapshot(order) || null,
                 bike_snapshot: order.bike_snapshot || null,
                 customer: mergedCustomer
             },
@@ -6940,7 +11209,7 @@ app.get('/api/v1/crm/orders/:orderId', async (req, res) => {
             details.history.push({
                 status: 'created',
                 new_status: 'created',
-                change_notes: 'Заказ создан',
+                change_notes: 'Ð—Ð°ÐºÐ°Ð· ÑÐ¾Ð·Ð´Ð°Ð½',
                 created_at: order.created_at
             });
         }
@@ -7041,7 +11310,7 @@ app.post('/api/orders', authenticateToken, async (req, res) => {
         if (!cartItems || cartItems.length === 0) {
             return res.status(400).json({
                 success: false,
-                error: 'Корзина пуста'
+                error: 'ÐšÐ¾Ñ€Ð·Ð¸Ð½Ð° Ð¿ÑƒÑÑ‚Ð°'
             });
         }
 
@@ -7089,7 +11358,7 @@ app.post('/api/orders', authenticateToken, async (req, res) => {
                 bike_url: `/product/${item.bike_id}`,
                 bike_snapshot: item, // Store item details
                 final_price_eur: item.price,
-                status: 'awaiting_payment',
+                status: ORDER_STATUS.FULL_PAYMENT_PENDING,
                 source: 'cart'
             };
 
@@ -7123,7 +11392,7 @@ app.post('/api/orders', authenticateToken, async (req, res) => {
         res.json({
             success: true,
             orders: createdOrders,
-            message: 'Заказ(ы) успешно создан(ы)'
+            message: 'Ð—Ð°ÐºÐ°Ð·(Ñ‹) ÑƒÑÐ¿ÐµÑˆÐ½Ð¾ ÑÐ¾Ð·Ð´Ð°Ð½(Ñ‹)'
         });
 
     } catch (error) {
@@ -7131,7 +11400,7 @@ app.post('/api/orders', authenticateToken, async (req, res) => {
         console.error('Create order error:', error);
         res.status(500).json({
             success: false,
-            error: 'Ошибка при создании заказа'
+            error: 'ÐžÑˆÐ¸Ð±ÐºÐ° Ð¿Ñ€Ð¸ ÑÐ¾Ð·Ð´Ð°Ð½Ð¸Ð¸ Ð·Ð°ÐºÐ°Ð·Ð°'
         });
     }
 });
@@ -7161,14 +11430,14 @@ app.get('/api/orders', authenticateToken, async (req, res) => {
 });
 
 // ========================================
-// 📋 ЗАЯВКИ (APPLICATIONS)
+// ðŸ“‹ Ð—ÐÐ¯Ð’ÐšÐ˜ (APPLICATIONS)
 // ========================================
 
-// Создать новую заявку
+// Ð¡Ð¾Ð·Ð´Ð°Ñ‚ÑŒ Ð½Ð¾Ð²ÑƒÑŽ Ð·Ð°ÑÐ²ÐºÑƒ
 app.post('/api/applications', authenticateToken, async (req, res) => {
     try {
-        console.log('🔄 Создание новой заявки...');
-        console.log('📝 Данные заявки:', req.body);
+        console.log('ðŸ”„ Ð¡Ð¾Ð·Ð´Ð°Ð½Ð¸Ðµ Ð½Ð¾Ð²Ð¾Ð¹ Ð·Ð°ÑÐ²ÐºÐ¸...');
+        console.log('ðŸ“ Ð”Ð°Ð½Ð½Ñ‹Ðµ Ð·Ð°ÑÐ²ÐºÐ¸:', req.body);
 
         const {
             experience,
@@ -7177,7 +11446,7 @@ app.post('/api/applications', authenticateToken, async (req, res) => {
             budget,
             features,
             contact_info,
-            // Старые поля для обратной совместимости
+            // Ð¡Ñ‚Ð°Ñ€Ñ‹Ðµ Ð¿Ð¾Ð»Ñ Ð´Ð»Ñ Ð¾Ð±Ñ€Ð°Ñ‚Ð½Ð¾Ð¹ ÑÐ¾Ð²Ð¼ÐµÑÑ‚Ð¸Ð¼Ð¾ÑÑ‚Ð¸
             contact_name,
             contact_phone,
             contact_email,
@@ -7189,23 +11458,23 @@ app.post('/api/applications', authenticateToken, async (req, res) => {
             conversion_probability = 0
         } = req.body;
 
-        // Определяем контактные данные (новый или старый формат)
+        // ÐžÐ¿Ñ€ÐµÐ´ÐµÐ»ÑÐµÐ¼ ÐºÐ¾Ð½Ñ‚Ð°ÐºÑ‚Ð½Ñ‹Ðµ Ð´Ð°Ð½Ð½Ñ‹Ðµ (Ð½Ð¾Ð²Ñ‹Ð¹ Ð¸Ð»Ð¸ ÑÑ‚Ð°Ñ€Ñ‹Ð¹ Ñ„Ð¾Ñ€Ð¼Ð°Ñ‚)
         const contactName = contact_info?.name || contact_name;
         const contactPhone = contact_info?.phone || contact_phone;
         const contactEmail = contact_info?.email || contact_email;
         const preferredContact = contact_info?.preferred_contact || 'phone';
 
-        // Валидация обязательных полей
+        // Ð’Ð°Ð»Ð¸Ð´Ð°Ñ†Ð¸Ñ Ð¾Ð±ÑÐ·Ð°Ñ‚ÐµÐ»ÑŒÐ½Ñ‹Ñ… Ð¿Ð¾Ð»ÐµÐ¹
         if (!contactName || !contactPhone) {
             return res.status(400).json({
-                error: 'Имя и телефон обязательны для заполнения'
+                error: 'Ð˜Ð¼Ñ Ð¸ Ñ‚ÐµÐ»ÐµÑ„Ð¾Ð½ Ð¾Ð±ÑÐ·Ð°Ñ‚ÐµÐ»ÑŒÐ½Ñ‹ Ð´Ð»Ñ Ð·Ð°Ð¿Ð¾Ð»Ð½ÐµÐ½Ð¸Ñ'
             });
         }
 
-        // Генерируем уникальный номер заявки
+        // Ð“ÐµÐ½ÐµÑ€Ð¸Ñ€ÑƒÐµÐ¼ ÑƒÐ½Ð¸ÐºÐ°Ð»ÑŒÐ½Ñ‹Ð¹ Ð½Ð¾Ð¼ÐµÑ€ Ð·Ð°ÑÐ²ÐºÐ¸
         const applicationNumber = `APP-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
 
-        // Создаем заявку в базе данных
+        // Ð¡Ð¾Ð·Ð´Ð°ÐµÐ¼ Ð·Ð°ÑÐ²ÐºÑƒ Ð² Ð±Ð°Ð·Ðµ Ð´Ð°Ð½Ð½Ñ‹Ñ…
         const result = await db.query(`
             INSERT INTO applications (
                 user_id, application_number, contact_name, contact_phone, contact_email,
@@ -7219,7 +11488,7 @@ app.post('/api/applications', authenticateToken, async (req, res) => {
             contactName,
             contactPhone,
             contactEmail,
-            experience_level || experience, // Обратная совместимость
+            experience_level || experience, // ÐžÐ±Ñ€Ð°Ñ‚Ð½Ð°Ñ ÑÐ¾Ð²Ð¼ÐµÑÑ‚Ð¸Ð¼Ð¾ÑÑ‚ÑŒ
             bike_link,
             budget,
             bike_type,
@@ -7233,25 +11502,25 @@ app.post('/api/applications', authenticateToken, async (req, res) => {
             preferredContact
         ]);
 
-        console.log('✅ Заявка создана с ID:', result.insertId);
+        console.log('âœ… Ð—Ð°ÑÐ²ÐºÐ° ÑÐ¾Ð·Ð´Ð°Ð½Ð° Ñ ID:', result.insertId);
 
         res.status(201).json({
             success: true,
             application_id: result.insertId,
             application_number: applicationNumber,
-            message: 'Заявка успешно создана'
+            message: 'Ð—Ð°ÑÐ²ÐºÐ° ÑƒÑÐ¿ÐµÑˆÐ½Ð¾ ÑÐ¾Ð·Ð´Ð°Ð½Ð°'
         });
 
     } catch (error) {
-        console.error('❌ Ошибка создания заявки:', error);
+        console.error('âŒ ÐžÑˆÐ¸Ð±ÐºÐ° ÑÐ¾Ð·Ð´Ð°Ð½Ð¸Ñ Ð·Ð°ÑÐ²ÐºÐ¸:', error);
         res.status(500).json({
-            error: 'Ошибка создания заявки',
+            error: 'ÐžÑˆÐ¸Ð±ÐºÐ° ÑÐ¾Ð·Ð´Ð°Ð½Ð¸Ñ Ð·Ð°ÑÐ²ÐºÐ¸',
             details: error.message
         });
     }
 });
 
-// Получить заявки пользователя
+// ÐŸÐ¾Ð»ÑƒÑ‡Ð¸Ñ‚ÑŒ Ð·Ð°ÑÐ²ÐºÐ¸ Ð¿Ð¾Ð»ÑŒÐ·Ð¾Ð²Ð°Ñ‚ÐµÐ»Ñ
 app.get('/api/applications', authenticateToken, async (req, res) => {
     try {
         const applications = await db.query(`
@@ -7266,15 +11535,15 @@ app.get('/api/applications', authenticateToken, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Ошибка получения заявок:', error);
+        console.error('âŒ ÐžÑˆÐ¸Ð±ÐºÐ° Ð¿Ð¾Ð»ÑƒÑ‡ÐµÐ½Ð¸Ñ Ð·Ð°ÑÐ²Ð¾Ðº:', error);
         res.status(500).json({
-            error: 'Ошибка получения заявок',
+            error: 'ÐžÑˆÐ¸Ð±ÐºÐ° Ð¿Ð¾Ð»ÑƒÑ‡ÐµÐ½Ð¸Ñ Ð·Ð°ÑÐ²Ð¾Ðº',
             details: error.message
         });
     }
 });
 
-// Получить конкретную заявку
+// ÐŸÐ¾Ð»ÑƒÑ‡Ð¸Ñ‚ÑŒ ÐºÐ¾Ð½ÐºÑ€ÐµÑ‚Ð½ÑƒÑŽ Ð·Ð°ÑÐ²ÐºÑƒ
 app.get('/api/applications/:id', authenticateToken, async (req, res) => {
     try {
         const { id } = req.params;
@@ -7286,7 +11555,7 @@ app.get('/api/applications/:id', authenticateToken, async (req, res) => {
 
         if (applications.length === 0) {
             return res.status(404).json({
-                error: 'Заявка не найдена'
+                error: 'Ð—Ð°ÑÐ²ÐºÐ° Ð½Ðµ Ð½Ð°Ð¹Ð´ÐµÐ½Ð°'
             });
         }
 
@@ -7296,9 +11565,9 @@ app.get('/api/applications/:id', authenticateToken, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Ошибка получения заявки:', error);
+        console.error('âŒ ÐžÑˆÐ¸Ð±ÐºÐ° Ð¿Ð¾Ð»ÑƒÑ‡ÐµÐ½Ð¸Ñ Ð·Ð°ÑÐ²ÐºÐ¸:', error);
         res.status(500).json({
-            error: 'Ошибка получения заявки',
+            error: 'ÐžÑˆÐ¸Ð±ÐºÐ° Ð¿Ð¾Ð»ÑƒÑ‡ÐµÐ½Ð¸Ñ Ð·Ð°ÑÐ²ÐºÐ¸',
             details: error.message
         });
     }
@@ -7315,16 +11584,16 @@ app.post('/api/webhook/payment', async (req, res) => {
         const webhookSecret = req.headers['x-webhook-secret'];
         const expectedSecret = process.env.WEBHOOK_SECRET;
         if (!expectedSecret) {
-            console.warn('⚠️ WEBHOOK_SECRET not configured - rejecting webhook');
+            console.warn('âš ï¸ WEBHOOK_SECRET not configured - rejecting webhook');
             return res.status(500).json({ error: 'Webhook not configured' });
         }
         if (webhookSecret !== expectedSecret) {
-            console.warn('⚠️ Invalid webhook signature attempt');
+            console.warn('âš ï¸ Invalid webhook signature attempt');
             return res.status(401).json({ error: 'Invalid webhook signature' });
         }
 
         const { order_id, status } = req.body;
-        console.log('💰 Payment Webhook:', { order_id, status });
+        console.log('ðŸ’° Payment Webhook:', { order_id, status });
 
         if (status === 'paid' || status === 'confirmed') {
             // Find bikes associated with this order
@@ -7334,7 +11603,7 @@ app.post('/api/webhook/payment', async (req, res) => {
 
             if (items.length > 0) {
                 for (const item of items) {
-                    console.log(`🤖 Queueing VERIFY_BIKE task for Bike ${item.bike_id}`);
+                    console.log(`ðŸ¤– Queueing VERIFY_BIKE task for Bike ${item.bike_id}`);
                     await db.query(
                         'INSERT INTO bot_tasks (type, payload, status) VALUES (?, ?, ?)',
                         ['VERIFY_BIKE', JSON.stringify({ bike_id: item.bike_id, order_id }), 'pending']
@@ -7343,7 +11612,7 @@ app.post('/api/webhook/payment', async (req, res) => {
             } else {
                 // Fallback: Check if order_id is actually a "Lead ID" or we can parse it from payload
                 // For now, if no items found locally, we log warning
-                console.warn('⚠️ No items found for paid order:', order_id);
+                console.warn('âš ï¸ No items found for paid order:', order_id);
             }
         }
         res.json({ success: true });
@@ -7353,7 +11622,19 @@ app.post('/api/webhook/payment', async (req, res) => {
     }
 });
 
-// 📁 STATIC FILES (after API routes)
+app.get('/go/:slug', async (req, res) => {
+    try {
+        const result = await growthAttribution.resolveAndTrackRedirect(req.params.slug, req);
+        if (!result.success) {
+            return res.redirect(302, '/');
+        }
+        return res.redirect(result.status || 302, result.redirectPath || '/');
+    } catch {
+        return res.redirect(302, '/');
+    }
+});
+
+// ðŸ“ STATIC FILES (after API routes)
 // ========================================
 // Serve built React frontend if dist exists, otherwise provide simple root
 const candidateFrontendA = path.join(__dirname, 'frontend', 'dist');
@@ -7377,7 +11658,7 @@ if (frontendDist) {
         res.sendFile(path.join(frontendDist, 'index.html'));
     });
 } else {
-    console.warn('⚠️ Frontend dist not found. Skipping static React serving. Use Vite dev (frontend: npm run dev) or build (npm run build).');
+    console.warn('âš ï¸ Frontend dist not found. Skipping static React serving. Use Vite dev (frontend: npm run dev) or build (npm run build).');
     // Simple root response when no dist is present
     app.get('/', (req, res) => {
         res.json({
@@ -7393,11 +11674,11 @@ if (frontendDist) {
 app.get('/api/tg/subscriptions/:chatId', async (req, res) => {
     try {
         const { chatId } = req.params;
-        // В канонической схеме нет отдельной таблицы подписок,
-        // поэтому мы можем либо использовать таблицу заказов, 
-        // если в ней есть поле chat_id, либо создать заглушку.
-        // На текущий момент мы просто возвращаем пустой список, 
-        // чтобы бот не падал с 404.
+        // Ð’ ÐºÐ°Ð½Ð¾Ð½Ð¸Ñ‡ÐµÑÐºÐ¾Ð¹ ÑÑ…ÐµÐ¼Ðµ Ð½ÐµÑ‚ Ð¾Ñ‚Ð´ÐµÐ»ÑŒÐ½Ð¾Ð¹ Ñ‚Ð°Ð±Ð»Ð¸Ñ†Ñ‹ Ð¿Ð¾Ð´Ð¿Ð¸ÑÐ¾Ðº,
+        // Ð¿Ð¾ÑÑ‚Ð¾Ð¼Ñƒ Ð¼Ñ‹ Ð¼Ð¾Ð¶ÐµÐ¼ Ð»Ð¸Ð±Ð¾ Ð¸ÑÐ¿Ð¾Ð»ÑŒÐ·Ð¾Ð²Ð°Ñ‚ÑŒ Ñ‚Ð°Ð±Ð»Ð¸Ñ†Ñƒ Ð·Ð°ÐºÐ°Ð·Ð¾Ð², 
+        // ÐµÑÐ»Ð¸ Ð² Ð½ÐµÐ¹ ÐµÑÑ‚ÑŒ Ð¿Ð¾Ð»Ðµ chat_id, Ð»Ð¸Ð±Ð¾ ÑÐ¾Ð·Ð´Ð°Ñ‚ÑŒ Ð·Ð°Ð³Ð»ÑƒÑˆÐºÑƒ.
+        // ÐÐ° Ñ‚ÐµÐºÑƒÑ‰Ð¸Ð¹ Ð¼Ð¾Ð¼ÐµÐ½Ñ‚ Ð¼Ñ‹ Ð¿Ñ€Ð¾ÑÑ‚Ð¾ Ð²Ð¾Ð·Ð²Ñ€Ð°Ñ‰Ð°ÐµÐ¼ Ð¿ÑƒÑÑ‚Ð¾Ð¹ ÑÐ¿Ð¸ÑÐ¾Ðº, 
+        // Ñ‡Ñ‚Ð¾Ð±Ñ‹ Ð±Ð¾Ñ‚ Ð½Ðµ Ð¿Ð°Ð´Ð°Ð» Ñ 404.
         res.json({ success: true, subscriptions: [] });
     } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
@@ -7407,7 +11688,7 @@ app.get('/api/tg/subscriptions/:chatId', async (req, res) => {
 app.post('/api/tg/subscribe', async (req, res) => {
     try {
         const { chat_id, order_id } = req.body;
-        // Логика подписки (заглушка)
+        // Ð›Ð¾Ð³Ð¸ÐºÐ° Ð¿Ð¾Ð´Ð¿Ð¸ÑÐºÐ¸ (Ð·Ð°Ð³Ð»ÑƒÑˆÐºÐ°)
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
@@ -7417,7 +11698,7 @@ app.post('/api/tg/subscribe', async (req, res) => {
 app.delete('/api/tg/subscriptions', async (req, res) => {
     try {
         const { chat_id, order_id } = req.body;
-        // Логика отписки (заглушка)
+        // Ð›Ð¾Ð³Ð¸ÐºÐ° Ð¾Ñ‚Ð¿Ð¸ÑÐºÐ¸ (Ð·Ð°Ð³Ð»ÑƒÑˆÐºÐ°)
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
@@ -7425,7 +11706,7 @@ app.delete('/api/tg/subscriptions', async (req, res) => {
 });
 
 // ========================================
-// 🧪 THE LAB (TESTING)
+// ðŸ§ª THE LAB (TESTING)
 // ========================================
 
 // Global logs storage for admin tests
@@ -7442,7 +11723,7 @@ app.post('/api/admin/tests/run', adminAuth, async (req, res) => {
         if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
 
         const { testType } = req.body;
-        console.log(`🧪 Starting Test: ${testType}`);
+        console.log(`ðŸ§ª Starting Test: ${testType}`);
 
         let result = {};
 
@@ -7454,23 +11735,23 @@ app.post('/api/admin/tests/run', adminAuth, async (req, res) => {
                 const huntLogger = (text) => {
                     const now = new Date();
                     const timeString = now.toISOString().split('T')[1].slice(0, -1); // HH:MM:SS.mmm
-                    const logLine = `⏱ ${timeString} | ${text}`;
+                    const logLine = `â± ${timeString} | ${text}`;
                     console.log(`[UnifiedHunter] ${logLine}`);
                     global.testLogs.push({ ts: now, text: logLine });
                 };
 
-                // We use '3 mtb' as query
-                // Note: UnifiedHunter.hunt is async
-                const hunter = new UnifiedHunter({ logger: huntLogger });
-                hunter.ensureInitialized().then(async () => {
-                    await hunter.hunt({ category: 'mtb', quota: 3 });
-                    huntLogger('🏁 Auto-Hunt Test Finished');
-                }).catch(err => {
-                    console.error('🧪 Auto-Hunt Test Failed:', err);
-                    huntLogger(`❌ Test Failed: ${err.message}`);
-                });
-
-                result = { message: 'Auto-Hunt started (3 bikes). Check logs tab.', logs: ['Started async process...'] };
+                UnifiedHunter.run({ mode: 'test', limit: 3, maxTargets: 1, returnBikes: false })
+                    .then((runResult) => {
+                        const summary = runResult?.summary || {};
+                        huntLogger(
+                            `Auto-Hunt finished. scraped=${summary.totalScraped || 0}, inserted=${summary.inserts || 0}, failed=${summary.failedSaves || 0}`
+                        );
+                    })
+                    .catch((err) => {
+                        console.error('Auto-Hunt Test Failed:', err);
+                        huntLogger(`Test Failed: ${err.message}`);
+                    });
+                result = { message: 'Auto-Hunt started (test mode, limit=3). Check logs tab.', logs: ['Started async process...'] };
                 break;
 
             case 'quality_check':
@@ -7508,16 +11789,17 @@ app.post('/api/admin/tests/run', adminAuth, async (req, res) => {
                 const logger = (text) => {
                     const now = new Date();
                     const timeString = now.toISOString().split('T')[1].slice(0, -1);
-                    const logLine = `⏱ ${timeString} | ${text}`;
+                    const logLine = `â± ${timeString} | ${text}`;
                     console.log(`[Cleaner] ${logLine}`);
                     global.testLogs.push({ ts: now, text: logLine });
                 };
 
                 // Run for 1 bike for test
-                autoHunter.cleanupDeadLinks({ limit: 1, logger }).then(() => {
-                    logger('🏁 Cleaner Test Finished');
+                const autoHunterForTest = new AutoHunter(db);
+                autoHunterForTest.cleanupDeadLinks({ limit: 1, logger }).then(() => {
+                    logger('Cleaner Test Finished');
                 }).catch(err => {
-                    logger(`❌ Cleaner Test Error: ${err.message}`);
+                    logger(`Cleaner Test Error: ${err.message}`);
                     console.error('Cleaner Test Fatal Error:', err);
                 });
                 result = { message: 'Catalog Cleaner started (1 bike). Check logs tab.', logs: ['Started cleaner process...'] };
@@ -7555,13 +11837,13 @@ app.post('/api/admin/tests/run', adminAuth, async (req, res) => {
 });
 
 // ========================================
-// 🚀 SERVER INITIALIZATION
+// ðŸš€ SERVER INITIALIZATION
 // ========================================
 
 // Initialize database and start server
 async function startServer() {
     try {
-        console.log('🔄 Initializing database...');
+        console.log('ðŸ”„ Initializing database...');
         await db.initialize();
 
         // Helper to check if column exists (SQLite specific)
@@ -7580,7 +11862,7 @@ async function startServer() {
             const rows = await db.query("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'");
             const createSql = rows && rows[0] ? String(rows[0].sql || '') : '';
             if (createSql && !createSql.includes("'manager'")) {
-                console.log('🔧 Migrating users table to allow manager role...');
+                console.log('ðŸ”§ Migrating users table to allow manager role...');
                 await db.query('BEGIN TRANSACTION');
                 await db.query(`
                     CREATE TABLE IF NOT EXISTS users_new (
@@ -7611,7 +11893,7 @@ async function startServer() {
                 await db.query('ALTER TABLE users_new RENAME TO users');
                 await db.query('CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)');
                 await db.query('COMMIT');
-                console.log('✅ Users role migration completed');
+                console.log('âœ… Users role migration completed');
             }
         } catch (e) {
             try { await db.query('ROLLBACK'); } catch { }
@@ -7625,11 +11907,45 @@ async function startServer() {
                 if (!exists) await db.query(`ALTER TABLE users ADD COLUMN ${name} ${def}`);
             };
             await ensureCol('phone', 'TEXT');
+            await ensureCol('is_active', 'INTEGER DEFAULT 1');
             await ensureCol('must_change_password', 'INTEGER DEFAULT 0');
             await ensureCol('must_set_email', 'INTEGER DEFAULT 0');
             await ensureCol('temp_password', 'TEXT');
         } catch (e) {
             console.warn('Auth columns migration warning:', e.message || e);
+        }
+
+        // Ensure primary CRM manager account exists with known credentials.
+        try {
+            const emailNorm = CRM_PRIMARY_LOGIN_EMAIL.trim().toLowerCase();
+            const passwordHash = await bcrypt.hash(CRM_PRIMARY_LOGIN_PASSWORD, 10);
+            const existing = await db.query('SELECT id FROM users WHERE LOWER(email) = ? LIMIT 1', [emailNorm]);
+
+            if (existing.length > 0) {
+                await db.query(
+                    `UPDATE users
+                     SET name = ?,
+                         email = ?,
+                         password = ?,
+                         role = ?,
+                         must_change_password = 0,
+                         must_set_email = 0,
+                         temp_password = NULL
+                     WHERE id = ?`,
+                    ['Hackerios CRM', emailNorm, passwordHash, 'admin', existing[0].id]
+                );
+                console.log(`âœ… CRM primary account updated: ${emailNorm}`);
+            } else {
+                await db.query(
+                    `INSERT INTO users
+                     (name, email, phone, password, role, must_change_password, must_set_email, temp_password)
+                     VALUES (?, ?, ?, ?, ?, 0, 0, NULL)`,
+                    ['Hackerios CRM', emailNorm, null, passwordHash, 'admin']
+                );
+                console.log(`âœ… CRM primary account created: ${emailNorm}`);
+            }
+        } catch (e) {
+            console.warn('CRM primary account bootstrap warning:', e.message || e);
         }
 
         // CRM customer fields migration
@@ -7644,11 +11960,11 @@ async function startServer() {
         }
 
         // CRM tables are now initialized in DatabaseManager.initialize() via initSQL in mysql-config.js
-        console.log('✅ Canonical CRM tables initialized');
+        console.log('âœ… Canonical CRM tables initialized');
 
         // Migration: Create analytics_events table
         try {
-            console.log('🔄 Running migration: creating analytics_events table...');
+            console.log('ðŸ”„ Running migration: creating analytics_events table...');
             await db.query(`
                 CREATE TABLE IF NOT EXISTS analytics_events (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -7678,9 +11994,9 @@ async function startServer() {
                     period_end DATETIME
                 )
             `);
-            console.log('✅ Migration completed: analytics tables created');
+            console.log('âœ… Migration completed: analytics tables created');
         } catch (migrationError) {
-            console.error('⚠️ Analytics migration error:', migrationError.message);
+            console.error('âš ï¸ Analytics migration error:', migrationError.message);
         }
 
         // Migration: Ensure metric_events has expected columns (schema drift fix)
@@ -7703,8 +12019,10 @@ async function startServer() {
             await addCol('session_id', 'TEXT');
             await addCol('referrer', 'TEXT');
             await addCol('source_path', 'TEXT');
+            await addCol('event_id', 'TEXT');
             await addCol('dwell_ms', 'INTEGER');
             await addCol('user_id', 'INTEGER');
+            await addCol('person_key', 'TEXT');
 
             if (hadType) {
                 await db.query('UPDATE metric_events SET event_type = COALESCE(event_type, type) WHERE event_type IS NULL');
@@ -7715,10 +12033,186 @@ async function startServer() {
 
             await db.query('CREATE INDEX IF NOT EXISTS idx_metric_events_bike_created ON metric_events(bike_id, created_at)');
             await db.query('CREATE INDEX IF NOT EXISTS idx_metric_events_type_created ON metric_events(event_type, created_at)');
+            await db.query('CREATE INDEX IF NOT EXISTS idx_metric_events_event_id ON metric_events(event_id)');
+            await db.query('CREATE INDEX IF NOT EXISTS idx_metric_events_session_created ON metric_events(session_id, created_at)');
+            await db.query('CREATE INDEX IF NOT EXISTS idx_metric_events_person_created ON metric_events(person_key, created_at)');
         } catch (e) {
             const msg = (e && e.message ? e.message : '').toLowerCase();
             if (!msg.includes('no such table')) {
-                console.warn('⚠️ metric_events migration warning:', e.message || e);
+                console.warn('âš ï¸ metric_events migration warning:', e.message || e);
+            }
+        }
+
+        // Migration: Ensure metrics session/anomaly tables exist
+        try {
+            await db.query(
+                `CREATE TABLE IF NOT EXISTS metrics_session_facts (
+                    session_id TEXT PRIMARY KEY,
+                    person_key TEXT,
+                    user_id INTEGER,
+                    crm_lead_id TEXT,
+                    customer_email_hash TEXT,
+                    customer_phone_hash TEXT,
+                    first_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    last_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    event_count INTEGER DEFAULT 0,
+                    page_views INTEGER DEFAULT 0,
+                    first_clicks INTEGER DEFAULT 0,
+                    catalog_views INTEGER DEFAULT 0,
+                    product_views INTEGER DEFAULT 0,
+                    add_to_cart INTEGER DEFAULT 0,
+                    checkout_starts INTEGER DEFAULT 0,
+                    checkout_steps INTEGER DEFAULT 0,
+                    checkout_validation_errors INTEGER DEFAULT 0,
+                    checkout_submit_attempts INTEGER DEFAULT 0,
+                    checkout_submit_success INTEGER DEFAULT 0,
+                    checkout_submit_failed INTEGER DEFAULT 0,
+                    forms_seen INTEGER DEFAULT 0,
+                    forms_first_input INTEGER DEFAULT 0,
+                    form_submit_attempts INTEGER DEFAULT 0,
+                    form_validation_errors INTEGER DEFAULT 0,
+                    booking_starts INTEGER DEFAULT 0,
+                    booking_success INTEGER DEFAULT 0,
+                    orders INTEGER DEFAULT 0,
+                    dwell_ms_sum INTEGER DEFAULT 0,
+                    first_source_path TEXT,
+                    last_source_path TEXT,
+                    entry_referrer TEXT,
+                    utm_source TEXT,
+                    utm_medium TEXT,
+                    utm_campaign TEXT,
+                    click_id TEXT,
+                    landing_path TEXT,
+                    is_bot INTEGER DEFAULT 0,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL
+                )`
+            );
+            await db.query('CREATE INDEX IF NOT EXISTS idx_metrics_session_facts_user ON metrics_session_facts(user_id)');
+            await db.query('CREATE INDEX IF NOT EXISTS idx_metrics_session_facts_last_seen ON metrics_session_facts(last_seen_at)');
+            await db.query('CREATE INDEX IF NOT EXISTS idx_metrics_session_facts_utm ON metrics_session_facts(utm_source, utm_medium, utm_campaign)');
+
+            const msfCols = await db.query('PRAGMA table_info(metrics_session_facts)');
+            const msfNames = new Set((Array.isArray(msfCols) ? msfCols : []).map((c) => String(c.name || '').toLowerCase()));
+            const addMsfCol = async (name, def) => {
+                if (!msfNames.has(name)) {
+                    await db.query(`ALTER TABLE metrics_session_facts ADD COLUMN ${name} ${def}`);
+                }
+            };
+            await addMsfCol('person_key', 'TEXT');
+            await addMsfCol('crm_lead_id', 'TEXT');
+            await addMsfCol('customer_email_hash', 'TEXT');
+            await addMsfCol('customer_phone_hash', 'TEXT');
+            await addMsfCol('forms_seen', 'INTEGER DEFAULT 0');
+            await addMsfCol('forms_first_input', 'INTEGER DEFAULT 0');
+            await addMsfCol('form_submit_attempts', 'INTEGER DEFAULT 0');
+            await addMsfCol('form_validation_errors', 'INTEGER DEFAULT 0');
+            await db.query('CREATE INDEX IF NOT EXISTS idx_metrics_session_facts_person ON metrics_session_facts(person_key)');
+
+            await db.query(
+                `CREATE TABLE IF NOT EXISTS metrics_anomalies (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    anomaly_key TEXT NOT NULL,
+                    severity TEXT NOT NULL,
+                    metric_name TEXT NOT NULL,
+                    baseline_value REAL,
+                    current_value REAL,
+                    delta_pct REAL,
+                    details TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )`
+            );
+            await db.query('CREATE INDEX IF NOT EXISTS idx_metrics_anomalies_created ON metrics_anomalies(created_at)');
+            await db.query('CREATE INDEX IF NOT EXISTS idx_metrics_anomalies_key ON metrics_anomalies(anomaly_key, created_at)');
+
+            await db.query(
+                `CREATE TABLE IF NOT EXISTS metrics_identity_nodes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    identity_type TEXT NOT NULL,
+                    identity_value TEXT NOT NULL,
+                    person_key TEXT NOT NULL,
+                    user_id INTEGER,
+                    session_id TEXT,
+                    crm_lead_id TEXT,
+                    first_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    last_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(identity_type, identity_value),
+                    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL
+                )`
+            );
+            await db.query('CREATE INDEX IF NOT EXISTS idx_metrics_identity_person ON metrics_identity_nodes(person_key)');
+            await db.query('CREATE INDEX IF NOT EXISTS idx_metrics_identity_user ON metrics_identity_nodes(user_id)');
+            await db.query('CREATE INDEX IF NOT EXISTS idx_metrics_identity_lead ON metrics_identity_nodes(crm_lead_id)');
+
+            await db.query(
+                `CREATE TABLE IF NOT EXISTS metrics_feature_store (
+                    person_key TEXT PRIMARY KEY,
+                    profile_key TEXT,
+                    user_id INTEGER,
+                    session_id TEXT,
+                    crm_lead_id TEXT,
+                    budget_cluster TEXT DEFAULT 'unknown',
+                    weighted_price REAL DEFAULT 0,
+                    intent_score REAL DEFAULT 0,
+                    recency_half_life_days REAL DEFAULT 7,
+                    recency_decay REAL DEFAULT 1,
+                    discipline_embedding_json TEXT,
+                    brand_embedding_json TEXT,
+                    category_embedding_json TEXT,
+                    last_event_at DATETIME,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL
+                )`
+            );
+            await db.query('CREATE INDEX IF NOT EXISTS idx_metrics_feature_store_user ON metrics_feature_store(user_id)');
+            await db.query('CREATE INDEX IF NOT EXISTS idx_metrics_feature_store_budget ON metrics_feature_store(budget_cluster)');
+            await db.query('CREATE INDEX IF NOT EXISTS idx_metrics_feature_store_intent ON metrics_feature_store(intent_score)');
+
+            await db.query(
+                `CREATE TABLE IF NOT EXISTS referral_links (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    slug TEXT NOT NULL UNIQUE,
+                    channel_name TEXT NOT NULL,
+                    code_word TEXT,
+                    creator_tag TEXT,
+                    target_path TEXT NOT NULL DEFAULT '/',
+                    utm_source TEXT NOT NULL DEFAULT 'creator',
+                    utm_medium TEXT NOT NULL DEFAULT 'referral',
+                    utm_campaign TEXT,
+                    utm_content TEXT,
+                    is_active INTEGER DEFAULT 1,
+                    notes TEXT,
+                    created_by INTEGER,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(created_by) REFERENCES users(id) ON DELETE SET NULL
+                )`
+            );
+            await db.query('CREATE INDEX IF NOT EXISTS idx_referral_links_slug ON referral_links(slug)');
+            await db.query('CREATE INDEX IF NOT EXISTS idx_referral_links_active ON referral_links(is_active, created_at)');
+
+            await db.query(
+                `CREATE TABLE IF NOT EXISTS referral_visits (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    referral_link_id INTEGER NOT NULL,
+                    slug TEXT NOT NULL,
+                    session_hint TEXT,
+                    ip_hash TEXT,
+                    user_agent TEXT,
+                    referrer TEXT,
+                    target_path TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(referral_link_id) REFERENCES referral_links(id) ON DELETE CASCADE
+                )`
+            );
+            await db.query('CREATE INDEX IF NOT EXISTS idx_referral_visits_link_created ON referral_visits(referral_link_id, created_at)');
+            await db.query('CREATE INDEX IF NOT EXISTS idx_referral_visits_slug_created ON referral_visits(slug, created_at)');
+            await db.query('CREATE INDEX IF NOT EXISTS idx_referral_visits_session ON referral_visits(session_hint, created_at)');
+        } catch (e) {
+            const msg = (e && e.message ? e.message : '').toLowerCase();
+            if (!msg.includes('already exists')) {
+                console.warn('âš ï¸ metrics session/anomaly migration warning:', e.message || e);
             }
         }
 
@@ -7766,23 +12260,23 @@ async function startServer() {
             console.error('Ranking columns migration error', e);
         }
 
-        console.log('🔄 Testing database connection...');
+        console.log('ðŸ”„ Testing database connection...');
         await db.testConnection();
 
         app.listen(PORT, () => {
-            console.log(`🚀 EUBike MySQL Server running on port ${PORT}`);
-            console.log(`📊 Database: MySQL`);
-            console.log(`🌐 API Base URL: http://localhost:${PORT}/api`);
+            console.log(`ðŸš€ EUBike MySQL Server running on port ${PORT}`);
+            console.log(`ðŸ“Š Database: MySQL`);
+            console.log(`ðŸŒ API Base URL: http://localhost:${PORT}/api`);
         });
     } catch (error) {
-        console.error('❌ Failed to start server:', error);
+        console.error('âŒ Failed to start server:', error);
         process.exit(1);
     }
 }
 
 // Handle graceful shutdown
 process.on('SIGINT', async () => {
-    console.log('\n🔄 Shutting down server...');
+    console.log('\nðŸ”„ Shutting down server...');
     await db.close();
     process.exit(0);
 });
@@ -7791,5 +12285,6 @@ process.on('SIGINT', async () => {
 startServer();
 
 module.exports = app;
+
 
 

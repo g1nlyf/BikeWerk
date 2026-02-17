@@ -18,6 +18,10 @@ export default defineConfig({
         target: 'http://localhost:8082',
         changeOrigin: true,
       },
+      '/go': {
+        target: 'http://localhost:8082',
+        changeOrigin: true,
+      },
       '/images': {
         target: 'http://localhost:8082',
         changeOrigin: true,

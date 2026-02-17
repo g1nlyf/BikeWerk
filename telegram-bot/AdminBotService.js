@@ -15,7 +15,11 @@ class AdminBotService {
             return;
         }
 
-        this.bot = new TelegramBot(this.token, { polling: true });
+        const shouldPoll = String(process.env.ADMIN_BOT_POLLING || process.env.BOT_POLLING || 'true').toLowerCase() === 'true';
+        this.bot = new TelegramBot(this.token, { polling: shouldPoll });
+        if (!shouldPoll) {
+            console.log('ℹ️ Admin bot polling disabled by env');
+        }
         this.initCommands();
         console.log('🛡️ Admin Command Center initialized.');
     }

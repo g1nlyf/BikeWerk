@@ -10,9 +10,75 @@ class DatabaseServiceV2 {
   constructor(dbPath) {
     this.dbPath = dbPath || DB_PATH;
     this.db = new Database(this.dbPath);
+    this.ensureSchemaCompatibility();
 
     console.log(`âœ… Database Service v2.0 initialized`);
     console.log(`   Database: ${this.dbPath}`);
+  }
+
+  getBikeTableColumns() {
+    try {
+      const rows = this.db.prepare('PRAGMA table_info(bikes)').all();
+      return new Set(rows.map((r) => String(r.name || '').toLowerCase()));
+    } catch (error) {
+      console.warn(`[DatabaseServiceV2] Failed to read bikes schema: ${error.message}`);
+      return new Set();
+    }
+  }
+
+  ensureSchemaCompatibility() {
+    const requiredColumns = {
+      size: 'TEXT',
+      breadcrumb: 'TEXT',
+      buyer_protection_price: 'REAL',
+      receipt_available: 'INTEGER DEFAULT 0',
+      seller_rating_visual: 'TEXT',
+      seller_last_active: 'TEXT',
+      platform_reviews_count: 'INTEGER',
+      platform_reviews_source: 'TEXT',
+      shifting_type: 'TEXT',
+      component_upgrades_json: 'TEXT',
+      shipping_option: "TEXT DEFAULT 'unknown'",
+      ready_to_ship: 'INTEGER DEFAULT 0',
+      zip_code: 'TEXT',
+      shipping_days: 'INTEGER',
+      source_ad_id: 'TEXT',
+      wheel_diameter: 'TEXT',
+      description_ru: 'TEXT'
+    };
+
+    const existing = this.getBikeTableColumns();
+    if (existing.size === 0) return;
+
+    let added = 0;
+    for (const [columnName, definition] of Object.entries(requiredColumns)) {
+      if (existing.has(columnName.toLowerCase())) continue;
+      try {
+        this.db.exec(`ALTER TABLE bikes ADD COLUMN ${columnName} ${definition}`);
+        existing.add(columnName.toLowerCase());
+        added += 1;
+        console.log(`[DatabaseServiceV2] Added missing bikes column: ${columnName}`);
+      } catch (error) {
+        console.warn(`[DatabaseServiceV2] Failed to add column ${columnName}: ${error.message}`);
+      }
+    }
+
+    // Keep legacy rows queryable by modern filters/selectors.
+    if (existing.has('size') && existing.has('frame_size')) {
+      try {
+        this.db.prepare(`
+          UPDATE bikes
+          SET size = COALESCE(NULLIF(TRIM(size), ''), NULLIF(TRIM(frame_size), ''))
+          WHERE size IS NULL OR TRIM(size) = ''
+        `).run();
+      } catch (error) {
+        console.warn(`[DatabaseServiceV2] Failed to backfill size from frame_size: ${error.message}`);
+      }
+    }
+
+    if (added > 0) {
+      console.log(`[DatabaseServiceV2] Schema compatibility patch applied (${added} columns added)`);
+    }
   }
 
   normalizeCategory(value) {
@@ -552,7 +618,8 @@ class DatabaseServiceV2 {
       console.log(`   âœ… Bike saved successfully!`);
       console.log(`   ðŸ“Š Database ID: ${bikeId}`);
       console.log(`   ðŸ† Quality Score: ${u.quality_score}`);
-      console.log(`   ðŸ“ˆ Completeness: ${Number(u.completeness || 0).toFixed(1)}%`);
+      const completenessPct = Number(u.completeness || 0) * 100;
+      console.log(`   ðŸ“ˆ Completeness: ${completenessPct.toFixed(1)}%`);
 
       return bikeId;
 
@@ -741,7 +808,8 @@ class DatabaseServiceV2 {
     try {
       const stmt = this.db.prepare(sql);
       // Determine if it's a SELECT or modifying query
-      if (sql.trim().toUpperCase().startsWith('SELECT')) {
+      const head = sql.trim().toUpperCase();
+      if (head.startsWith('SELECT') || head.startsWith('PRAGMA') || head.startsWith('WITH')) {
         return stmt.all(...params);
       } else {
         const result = stmt.run(...params);

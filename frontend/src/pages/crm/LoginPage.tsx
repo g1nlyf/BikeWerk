@@ -2,6 +2,9 @@ import * as React from 'react'
 import { useNavigate } from 'react-router-dom'
 import { auth } from '@/api'
 
+const CRM_DEFAULT_LOGIN = 'hackerios222@gmail.com'
+const CRM_DEFAULT_PASSWORD = '12345678'
+
 type LoginResponse = {
   success?: boolean
   error?: string
@@ -11,10 +14,41 @@ type LoginResponse = {
 
 export default function CRMLoginPage() {
   const navigate = useNavigate()
-  const [login, setLogin] = React.useState('')
-  const [password, setPassword] = React.useState('')
+  const [login, setLogin] = React.useState(CRM_DEFAULT_LOGIN)
+  const [password, setPassword] = React.useState(CRM_DEFAULT_PASSWORD)
   const [error, setError] = React.useState<string | null>(null)
   const [loading, setLoading] = React.useState(false)
+  const [checkingToken, setCheckingToken] = React.useState(true)
+
+  React.useEffect(() => {
+    let mounted = true
+    const token = (() => {
+      try { return localStorage.getItem('authToken') } catch { return null }
+    })()
+
+    if (!token) {
+      setCheckingToken(false)
+      return
+    }
+
+    auth.me()
+      .then((res: LoginResponse) => {
+        if (!mounted) return
+        const user = (res as any)?.user
+        const email = String(user?.email || '').trim().toLowerCase()
+        if (res?.success && user && email === CRM_DEFAULT_LOGIN.toLowerCase()) {
+          const needsProfile = Boolean(user?.must_change_password || user?.must_set_email)
+          navigate(needsProfile ? '/crm/complete-profile' : '/crm/dashboard', { replace: true })
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!mounted) return
+        setCheckingToken(false)
+      })
+
+    return () => { mounted = false }
+  }, [navigate])
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -35,6 +69,14 @@ export default function CRMLoginPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  if (checkingToken) {
+    return (
+      <div className="min-h-screen bg-[#f4f4f5] flex items-center justify-center px-4 text-sm text-slate-500">
+        Проверка сессии...
+      </div>
+    )
   }
 
   return (

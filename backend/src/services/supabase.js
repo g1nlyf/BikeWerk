@@ -1,18 +1,35 @@
 const { createClient } = require('@supabase/supabase-js');
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
+require('dotenv').config({ path: path.resolve(__dirname, '../../../.env') });
+const { ORDER_STATUS, normalizeOrderStatus } = require('../domain/orderLifecycle');
 
 class SupabaseService {
     constructor() {
-        if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+        const localDbOnly = ['1', 'true', 'yes', 'on'].includes(String(process.env.LOCAL_DB_ONLY || '1').trim().toLowerCase());
+        const supabaseUrl = localDbOnly ? null : (process.env.SUPABASE_URL || process.env.SUPABASE_API_URL || null);
+        const supabaseKey = localDbOnly
+            ? null
+            : (
+                process.env.SUPABASE_SERVICE_ROLE_KEY ||
+                process.env.SUPABASE_KEY ||
+                process.env.SUPABASE_ANON_KEY ||
+                null
+            );
+
+        if (localDbOnly) {
+            console.warn('[SupabaseService] LOCAL_DB_ONLY=1 -> remote sync disabled');
+        }
+
+        if (!supabaseUrl || !supabaseKey) {
             console.warn('⚠️ Supabase credentials missing. CRM Sync disabled.');
             this.enabled = false;
             return;
         }
 
         this.supabase = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_SERVICE_ROLE_KEY
+            supabaseUrl,
+            supabaseKey
         );
         this.enabled = true;
         console.log('✅ Supabase Client Initialized');
@@ -123,18 +140,7 @@ class SupabaseService {
     }
 
     _mapStatus(localStatus) {
-        // Map local statuses to Supabase Enum (guessed: awaiting_payment, processing, completed, cancelled)
-        const map = {
-            'new': 'awaiting_payment',
-            'negotiation': 'awaiting_payment',
-            'inspection': 'processing', // Risk: if processing doesn't exist, will fail. 
-            'payment': 'processing',
-            'logistics': 'processing',
-            'delivered': 'completed',
-            'cancelled': 'cancelled'
-        };
-        // Fallback to awaiting_payment if unknown, as it's the default
-        return map[localStatus] || 'awaiting_payment';
+        return normalizeOrderStatus(localStatus) || ORDER_STATUS.BOOKED;
     }
 
     /**
@@ -327,7 +333,14 @@ class SupabaseService {
             const { data, error } = await this.supabase
                 .from('orders')
                 .select('*')
-                .in('status', ['new', 'negotiation', 'inspection'])
+                .in('status', [
+                    ORDER_STATUS.BOOKED,
+                    ORDER_STATUS.SELLER_CHECK_IN_PROGRESS,
+                    ORDER_STATUS.CHECK_READY,
+                    'new',
+                    'negotiation',
+                    'inspection'
+                ])
                 .lt('created_at', yesterday); // Fallback to created_at
             
             if (error) throw error;

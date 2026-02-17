@@ -5,8 +5,8 @@ module.exports = {
 	theme: {
 		extend: {
 			fontFamily: {
-				sans: ['Manrope', 'sans-serif'],
-				heading: ['Outfit', 'sans-serif'],
+				sans: ['Futura', 'Inter', 'Montserrat', 'Helvetica Now', 'SF Pro', 'Arial', 'sans-serif'],
+				heading: ['Futura', 'Inter', 'Montserrat', 'Helvetica Now', 'SF Pro', 'Arial', 'sans-serif'],
 			},
 			colors: {
 				border: 'hsl(var(--border))',

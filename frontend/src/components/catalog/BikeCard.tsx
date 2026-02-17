@@ -85,8 +85,7 @@ export const BikeCard: React.FC<{ bike: BikeData; variant?: "default" | "compact
   const [negotiationStarted, setNegotiationStarted] = React.useState(false);
   const [negotiationLoading, setNegotiationLoading] = React.useState(false);
 
-  // Calculate price from
-  const calc = calculatePriceBreakdown(Number(bike.priceEU), 'Cargo', true);
+  const calc = calculatePriceBreakdown(Number(bike.priceEU), 'Cargo', false);
   const priceRub = calc.totalRub;
 
   // AI Hotness Badge Logic
@@ -108,14 +107,14 @@ export const BikeCard: React.FC<{ bike: BikeData; variant?: "default" | "compact
 
   // Use Triad ID if available (Unified with ProductDetailPage)
   if ((bike as any).triad_id) {
-      const tid = Number((bike as any).triad_id);
-      isShippingAvailable = tid === 1;
-      isGuaranteedPickup = tid === 2;
-      isLocalLot = tid === 3;
+    const tid = Number((bike as any).triad_id);
+    isShippingAvailable = tid === 1;
+    isGuaranteedPickup = tid === 2;
+    isLocalLot = tid === 3;
   } else {
-      isShippingAvailable = !bike.shipping_option || bike.shipping_option === 'available' || bike.shipping_option === 'unknown';
-      isGuaranteedPickup = !isShippingAvailable && !!bike.guaranteed_pickup;
-      isLocalLot = !isShippingAvailable && !isGuaranteedPickup;
+    isShippingAvailable = !bike.shipping_option || bike.shipping_option === 'available' || bike.shipping_option === 'unknown';
+    isGuaranteedPickup = !isShippingAvailable && !!bike.guaranteed_pickup;
+    isLocalLot = !isShippingAvailable && !isGuaranteedPickup;
   }
   const isPickupOnly = !isShippingAvailable;
 
@@ -123,27 +122,27 @@ export const BikeCard: React.FC<{ bike: BikeData; variant?: "default" | "compact
   const isSuperHot = (bike.hotness_score || 0) > 1000;
 
   const handleNegotiationRequest = async (e: React.MouseEvent) => {
-      e.stopPropagation();
-      if (negotiationStarted) return;
-      
-      setNegotiationLoading(true);
-      try {
-          await apiPost('/negotiation/request', { bikeId: bike.id });
-          setNegotiationStarted(true);
-          showNotification({
-              title: "Переговоры начаты",
-              message: "ИИ-агент отправил предложение продавцу. Мы сообщим результат.",
-              type: "success"
-          });
-      } catch (error) {
-          showNotification({
-              title: "Ошибка",
-              message: "Не удалось начать переговоры.",
-              type: "error"
-          });
-      } finally {
-          setNegotiationLoading(false);
-      }
+    e.stopPropagation();
+    if (negotiationStarted) return;
+
+    setNegotiationLoading(true);
+    try {
+      await apiPost('/negotiation/request', { bikeId: bike.id });
+      setNegotiationStarted(true);
+      showNotification({
+        title: "Переговоры начаты",
+        message: "ИИ-агент отправил предложение продавцу. Мы сообщим результат.",
+        type: "success"
+      });
+    } catch (error) {
+      showNotification({
+        title: "Ошибка",
+        message: "Не удалось начать переговоры.",
+        type: "error"
+      });
+    } finally {
+      setNegotiationLoading(false);
+    }
   };
 
   const [added, setAdded] = React.useState(false);
@@ -153,19 +152,19 @@ export const BikeCard: React.FC<{ bike: BikeData; variant?: "default" | "compact
   );
   const [currentIndex, setCurrentIndex] = React.useState(0);
   const timerRef = React.useRef<number | null>(null);
-  
+
   // Tracking: Scroll (debounced)
   const isFirstRender = React.useRef(true);
   React.useEffect(() => {
-     if (isFirstRender.current) {
-       isFirstRender.current = false;
-       return;
-     }
-     const bikeId = Number(bike.id);
-     const handler = setTimeout(() => {
-       metricsApi.sendEvents([{ type: 'scroll', bikeId }]).catch(() => {});
-     }, 2000);
-     return () => clearTimeout(handler);
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    const bikeId = Number(bike.id);
+    const handler = setTimeout(() => {
+      metricsApi.sendEvents([{ type: 'scroll', bikeId }]).catch(() => { });
+    }, 2000);
+    return () => clearTimeout(handler);
   }, [currentIndex, bike.id]);
 
   const [quickViewOpen, setQuickViewOpen] = React.useState(false);
@@ -174,7 +173,7 @@ export const BikeCard: React.FC<{ bike: BikeData; variant?: "default" | "compact
   const favKey = "guestFavorites";
   const { trackEvent } = useAnalytics();
   const cardRef = React.useRef<HTMLDivElement>(null);
-  
+
   const analyticsData = React.useMemo(() => ({
     price: bike.priceEU,
     brand: bike.brand,
@@ -238,7 +237,7 @@ export const BikeCard: React.FC<{ bike: BikeData; variant?: "default" | "compact
       setIsHot(!next);
     }
   };
-  
+
   const fallbackSrc = "/placeholder-bike.svg";
   const handleImgError: React.ReactEventHandler<HTMLImageElement> = (e) => {
     const el = e.currentTarget as HTMLImageElement;
@@ -312,7 +311,7 @@ export const BikeCard: React.FC<{ bike: BikeData; variant?: "default" | "compact
 
   const title = (bike.name && bike.name.trim())
     || [bike.brand, bike.model].filter(Boolean).join(" ").trim();
-  
+
   // Generate SEO-friendly alt text
   const altText = `${bike.brand} ${bike.model} ${bike.year || ''} б/у - ${title}`.trim();
   const badgeChips = React.useMemo(() => {
@@ -361,7 +360,7 @@ export const BikeCard: React.FC<{ bike: BikeData; variant?: "default" | "compact
     if (isKnown(wheelVal)) chips.push(String(wheelVal));
     return chips.slice(0, 3);
   }, [title, bike.model, bike.description, bike.tags, bike.year, bike.size, bike.wheelDiameter]);
-  
+
 
   const statusColors = {
     available: "bg-green-500/10 text-green-500 border-green-500/20",
@@ -388,43 +387,43 @@ export const BikeCard: React.FC<{ bike: BikeData; variant?: "default" | "compact
 
   const renderLogisticsBadge = () => {
     if (isShippingAvailable) {
-       return (
-         <Badge className="bg-emerald-500/90 hover:bg-emerald-600 text-white border-none backdrop-blur-md shadow-sm px-2 py-0.5 text-[10px]">
-           <PackageCheck className="w-3 h-3 mr-1" /> Доставка доступна
-         </Badge>
-       );
+      return (
+        <Badge className="bg-emerald-500/90 hover:bg-emerald-600 text-white border-none backdrop-blur-md shadow-sm px-2 py-0.5 text-[10px]">
+          <PackageCheck className="w-3 h-3 mr-1" /> Доставка доступна
+        </Badge>
+      );
     }
     if (isGuaranteedPickup) {
-       return (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                 <Badge className="bg-blue-500/90 hover:bg-blue-600 text-white border-none backdrop-blur-md shadow-sm px-2 py-0.5 text-[10px]">
-                   <ShieldCheck className="w-3 h-3 mr-1" /> Гарантированный самовывоз
-                 </Badge>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Мы лично заберем этот байк. +X€ к цене за выезд эксперта.</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-       );
+      return (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Badge className="bg-blue-500/90 hover:bg-blue-600 text-white border-none backdrop-blur-md shadow-sm px-2 py-0.5 text-[10px]">
+                <ShieldCheck className="w-3 h-3 mr-1" /> Гарантированный самовывоз
+              </Badge>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Мы лично заберем этот байк. +X€ к цене за выезд эксперта.</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      );
     }
     if (isLocalLot) {
-       return (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                 <Badge className="bg-orange-500/90 hover:bg-orange-600 text-white border-none backdrop-blur-md shadow-sm px-2 py-0.5 text-[10px]">
-                   <AlertCircle className="w-3 h-3 mr-1" /> Локальный лот
-                 </Badge>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Требуется согласование. Попробуем договориться с продавцом об отправке.</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-       );
+      return (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Badge className="bg-orange-500/90 hover:bg-orange-600 text-white border-none backdrop-blur-md shadow-sm px-2 py-0.5 text-[10px]">
+                <AlertCircle className="w-3 h-3 mr-1" /> Локальный лот
+              </Badge>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Требуется согласование. Попробуем договориться с продавцом об отправке.</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      );
     }
     return null;
   };
@@ -446,13 +445,14 @@ export const BikeCard: React.FC<{ bike: BikeData; variant?: "default" | "compact
         onMouseEnter={() => {
           // Only on desktop
           if (window.matchMedia('(min-width: 768px)').matches) {
-              startAuto();
-              trackEvent('hover', Number(bike.id), analyticsData);
+            startAuto();
+            trackEvent('hover', Number(bike.id), analyticsData);
           }
         }}
         onMouseLeave={stopAuto}
       >
-        <div className="relative aspect-[4/3] overflow-hidden bg-muted">
+        {/* Fixed 9:10 aspect ratio for consistent card heights */}
+        <div className="relative overflow-hidden bg-muted" style={{ aspectRatio: '9 / 10' }}>
           {imageSrc ? (
             <img
               src={getThumbnailUrl(imageSrc)}
@@ -465,13 +465,13 @@ export const BikeCard: React.FC<{ bike: BikeData; variant?: "default" | "compact
               Нет фотографий
             </div>
           )}
-          
+
           {/* Quality Badge for Compact */}
           {bike.initial_quality_class && (
             <div className="absolute top-2 left-2 z-20">
-               <Badge className={cn("text-white font-bold px-2 py-0.5 text-[10px] shadow-sm", qualityColor(bike.initial_quality_class))}>
-                 Класс {bike.initial_quality_class}
-               </Badge>
+              <Badge className={cn("text-white font-bold px-2 py-0.5 text-[10px] shadow-sm", qualityColor(bike.initial_quality_class))}>
+                Класс {bike.initial_quality_class}
+              </Badge>
             </div>
           )}
 
@@ -487,11 +487,11 @@ export const BikeCard: React.FC<{ bike: BikeData; variant?: "default" | "compact
           <div className="absolute top-2 left-2 z-10 flex flex-col gap-1 items-start">
             {renderLogisticsBadge()}
             {isHot && !bike.initial_quality_class && (
-               <div className="bg-red-600 text-white text-[11px] font-bold px-3 py-1.5 rounded-full shadow-sm">
-                 Горячее предложение
-               </div>
+              <div className="bg-red-600 text-white text-[11px] font-bold px-3 py-1.5 rounded-full shadow-sm">
+                Горячее предложение
+              </div>
             )}
-            
+
             {/* AI Hotness Badge for Compact */}
             {hotnessBadge && (
               <div className={cn(
@@ -508,15 +508,15 @@ export const BikeCard: React.FC<{ bike: BikeData; variant?: "default" | "compact
             </div>
           )}
           {user?.role === 'admin' && (
-             <button
-                onClick={toggleHot}
-                className={cn(
-                  "absolute left-3 top-8 z-20 rounded-full px-2 py-1 text-[10px] font-bold shadow-sm transition-colors border",
-                  isHot ? "bg-red-600 text-white border-red-700" : "bg-white text-gray-700 border-gray-200 hover:bg-gray-100"
-                )}
-             >
-               {isHot ? "HOT" : "Make Hot"}
-             </button>
+            <button
+              onClick={toggleHot}
+              className={cn(
+                "absolute left-3 top-8 z-20 rounded-full px-2 py-1 text-[10px] font-bold shadow-sm transition-colors border",
+                isHot ? "bg-red-600 text-white border-red-700" : "bg-white text-gray-700 border-gray-200 hover:bg-gray-100"
+              )}
+            >
+              {isHot ? "HOT" : "Make Hot"}
+            </button>
           )}
           <img src="/minilogo11.png" alt="" className="absolute right-2 top-2 h-8 w-8 opacity-70 pointer-events-none select-none" />
           {images.length > 1 && (
@@ -535,7 +535,7 @@ export const BikeCard: React.FC<{ bike: BikeData; variant?: "default" | "compact
               </button>
             </>
           )}
-          
+
           <button
             data-testid="favorite-btn"
             aria-pressed={isFavorite}
@@ -552,7 +552,7 @@ export const BikeCard: React.FC<{ bike: BikeData; variant?: "default" | "compact
           </button>
         </div>
 
-      <div className="p-3">
+        <div className="p-3">
           <div className="mb-1.5 flex flex-wrap items-center gap-1.5 min-h-[20px]">
             {badgeChips.map((chip, idx) => (
               <span
@@ -627,14 +627,14 @@ export const BikeCard: React.FC<{ bike: BikeData; variant?: "default" | "compact
       onMouseEnter={() => {
         // Only on desktop
         if (window.matchMedia('(min-width: 768px)').matches) {
-            startAuto();
-            trackEvent('hover', Number(bike.id), analyticsData);
+          startAuto();
+          trackEvent('hover', Number(bike.id), analyticsData);
         }
       }}
       onMouseLeave={stopAuto}
     >
-      {/* Main Catalog: Increased size (+15% height via aspect ratio change) */}
-      <div className="relative aspect-[4/3.5] overflow-hidden bg-muted">
+      {/* Fixed 9:10 aspect ratio for consistent card heights */}
+      <div className="relative overflow-hidden bg-muted" style={{ aspectRatio: '9 / 10' }}>
         {imageSrc ? (
           <img
             src={getThumbnailUrl(imageSrc)}
@@ -650,9 +650,9 @@ export const BikeCard: React.FC<{ bike: BikeData; variant?: "default" | "compact
         {/* Quality Badge */}
         {bike.initial_quality_class && (
           <div className="absolute top-3 left-3 z-20">
-             <Badge className={cn("text-white font-bold px-2 py-1 shadow-md", qualityColor(bike.initial_quality_class))}>
-               Класс {bike.initial_quality_class}
-             </Badge>
+            <Badge className={cn("text-white font-bold px-2 py-1 shadow-md", qualityColor(bike.initial_quality_class))}>
+              Класс {bike.initial_quality_class}
+            </Badge>
           </div>
         )}
 
@@ -667,25 +667,25 @@ export const BikeCard: React.FC<{ bike: BikeData; variant?: "default" | "compact
 
         {/* Hot Badge (hidden if quality badge exists to avoid clutter) */}
         {isHot && !bike.initial_quality_class && (
-             <div className="absolute top-2 left-2 bg-red-600 text-white text-[11px] font-bold px-3 py-1.5 z-10 rounded-full shadow-sm">
-               Горячее предложение
-             </div>
+          <div className="absolute top-2 left-2 bg-red-600 text-white text-[11px] font-bold px-3 py-1.5 z-10 rounded-full shadow-sm">
+            Горячее предложение
+          </div>
         )}
         {Number(bike.savings) > 0 && (
-            <div className="absolute top-2 right-2 bg-red-600 text-white text-[11px] font-bold px-3 py-1.5 z-10 rounded-full shadow-sm">
-              Скидка
-            </div>
+          <div className="absolute top-2 right-2 bg-red-600 text-white text-[11px] font-bold px-3 py-1.5 z-10 rounded-full shadow-sm">
+            Скидка
+          </div>
         )}
         {user?.role === 'admin' && (
-             <button
-                onClick={toggleHot}
-                className={cn(
-                  "absolute left-3 top-8 z-20 rounded-full px-2 py-1 text-[10px] font-bold shadow-sm transition-colors border",
-                  isHot ? "bg-red-600 text-white border-red-700" : "bg-white text-gray-700 border-gray-200 hover:bg-gray-100"
-                )}
-             >
-               {isHot ? "HOT" : "Make Hot"}
-             </button>
+          <button
+            onClick={toggleHot}
+            className={cn(
+              "absolute left-3 top-8 z-20 rounded-full px-2 py-1 text-[10px] font-bold shadow-sm transition-colors border",
+              isHot ? "bg-red-600 text-white border-red-700" : "bg-white text-gray-700 border-gray-200 hover:bg-gray-100"
+            )}
+          >
+            {isHot ? "HOT" : "Make Hot"}
+          </button>
         )}
         <img src="/minilogo11.png" alt="" className="absolute right-2 top-2 h-8 w-8 opacity-70 pointer-events-none select-none" />
         {images.length > 1 && (
@@ -714,7 +714,7 @@ export const BikeCard: React.FC<{ bike: BikeData; variant?: "default" | "compact
           >
             <Heart className={cn("h-4 w-4 transition-all", isFavorite && "fill-current scale-110")} />
           </button>
-          
+
           {/* Hotness Indicator */}
           {isSuperHot && (
             <div className="h-8 w-8 rounded-full bg-orange-500/90 backdrop-blur-sm flex items-center justify-center shadow-sm animate-pulse">
@@ -735,87 +735,87 @@ export const BikeCard: React.FC<{ bike: BikeData; variant?: "default" | "compact
         </Button>
       </div>
 
-        <div className="flex h-full flex-col p-4">
-          <div className="mb-1.5 flex flex-wrap items-center gap-1.5 min-h-[20px]">
-            {renderLogisticsBadge()}
-            
-            {/* Existing Badges */}
-            {badgeChips.slice(0, 3).map((chip) => (
-              <Badge
-                key={chip}
-                variant="secondary"
-                className="bg-muted/50 text-muted-foreground hover:bg-muted text-[10px] px-1.5 h-5 font-normal"
-              >
-                {chip}
-              </Badge>
-            ))}
-          </div>
-          <div>
-            {bike.brand && (
-              <div className="flex justify-between items-center mb-0.5">
-                <p className="text-xs text-muted-foreground">{bike.brand}</p>
-                <p className="text-[10px] text-emerald-600 font-medium bg-emerald-50 px-1.5 py-0.5 rounded-full">
-                  Добавлен {Math.max(1, (Number(bike.id) * 7) % 5)} дн. назад
-                </p>
-              </div>
-            )}
-            <h3 className="text-lg font-semibold">
-              {title}
-            </h3>
-          </div>
+      <div className="flex h-full flex-col p-4">
+        <div className="mb-1.5 flex flex-wrap items-center gap-1.5 min-h-[20px]">
+          {renderLogisticsBadge()}
 
-          {(() => {
-            const hasDiscount = Number(bike.savings) > 0;
-            const originalBasePrice = hasDiscount ? (bike.priceEU + bike.savings) : 0;
-            const originalPriceRub = hasDiscount ? Math.round(calculatePriceBreakdown(originalBasePrice, 'Cargo', false).totalRub) : null;
-            const discountPercent = originalBasePrice ? Math.max(0, Math.round((1 - (bike.priceEU / originalBasePrice)) * 100)) : 0;
-            
-            if (isLocalLot) {
-                return (
-                    <div className="mt-1.5">
-                        <div className="text-xs font-bold text-orange-600 uppercase tracking-wider flex items-center gap-1 mb-1">
-                             <TrendingDown className="w-3 h-3" />
-                             Эксклюзив (-25%)
-                        </div>
-                        <div className="flex items-baseline gap-2">
-                             <span className="text-slate-900 font-extrabold text-[26px]">{Math.round(priceRub).toLocaleString()} ₽</span>
-                             <span className="text-xs text-muted-foreground">(через переговоры)</span>
-                        </div>
-                    </div>
-                );
-            }
+          {/* Existing Badges */}
+          {badgeChips.slice(0, 3).map((chip) => (
+            <Badge
+              key={chip}
+              variant="secondary"
+              className="bg-muted/50 text-muted-foreground hover:bg-muted text-[10px] px-1.5 h-5 font-normal"
+            >
+              {chip}
+            </Badge>
+          ))}
+        </div>
+        <div>
+          {bike.brand && (
+            <div className="flex justify-between items-center mb-0.5">
+              <p className="text-xs text-muted-foreground">{bike.brand}</p>
+              <p className="text-[10px] text-emerald-600 font-medium bg-emerald-50 px-1.5 py-0.5 rounded-full">
+                Добавлен {Math.max(1, (Number(bike.id) * 7) % 5)} дн. назад
+              </p>
+            </div>
+          )}
+          <h3 className="text-lg font-semibold">
+            {title}
+          </h3>
+        </div>
 
-            if (isGuaranteedPickup) {
-                 return (
-                    <div className="mt-1.5">
-                        <div className="text-xs font-bold text-blue-600 uppercase tracking-wider flex items-center gap-1 mb-1">
-                             <ShieldCheck className="w-3 h-3" />
-                             Личный выкуп
-                        </div>
-                        <div className="flex items-baseline gap-2">
-                             <span className="text-slate-900 font-extrabold text-[26px]">{Math.round(priceRub).toLocaleString()} ₽</span>
-                             <span className="text-xs text-muted-foreground">(+ выезд)</span>
-                        </div>
-                    </div>
-                );
-            }
+        {(() => {
+          const hasDiscount = Number(bike.savings) > 0;
+          const originalBasePrice = hasDiscount ? (bike.priceEU + bike.savings) : 0;
+          const originalPriceRub = hasDiscount ? Math.round(calculatePriceBreakdown(originalBasePrice, 'Cargo', false).totalRub) : null;
+          const discountPercent = originalBasePrice ? Math.max(0, Math.round((1 - (bike.priceEU / originalBasePrice)) * 100)) : 0;
 
+          if (isLocalLot) {
             return (
               <div className="mt-1.5">
-                <div className="flex items-baseline gap-2">
-                  <span className={(bestPrice || hasDiscount || isHot ? "text-red-600 " : "text-black ") + "font-extrabold text-[26px]"}>от {Math.round(priceRub).toLocaleString('ru-RU')} ₽</span>
-                  {originalPriceRub ? (
-                    <span className="text-xs text-muted-foreground line-through opacity-70">{originalPriceRub.toLocaleString()} ₽</span>
-                  ) : null}
+                <div className="text-xs font-bold text-orange-600 uppercase tracking-wider flex items-center gap-1 mb-1">
+                  <TrendingDown className="w-3 h-3" />
+                  Эксклюзив (-25%)
                 </div>
-                {hasDiscount ? (
-                  <div className="mt-1">
-                    <Badge className="border bg-red-500/10 text-red-600 border-red-500/20">скидка {discountPercent}%</Badge>
-                  </div>
-                ) : null}
+                <div className="flex items-baseline gap-2">
+                  <span className="text-slate-900 font-extrabold text-[26px]">{Math.round(priceRub).toLocaleString()} ₽</span>
+                  <span className="text-xs text-muted-foreground">(через переговоры)</span>
+                </div>
               </div>
             );
-          })()}
+          }
+
+          if (isGuaranteedPickup) {
+            return (
+              <div className="mt-1.5">
+                <div className="text-xs font-bold text-blue-600 uppercase tracking-wider flex items-center gap-1 mb-1">
+                  <ShieldCheck className="w-3 h-3" />
+                  Личный выкуп
+                </div>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-slate-900 font-extrabold text-[26px]">{Math.round(priceRub).toLocaleString()} ₽</span>
+                  <span className="text-xs text-muted-foreground">(+ выезд)</span>
+                </div>
+              </div>
+            );
+          }
+
+          return (
+            <div className="mt-1.5">
+              <div className="flex items-baseline gap-2">
+                <span className={(bestPrice || hasDiscount || isHot ? "text-red-600 " : "text-black ") + "font-extrabold text-[26px]"}>от {Math.round(priceRub).toLocaleString('ru-RU')} ₽</span>
+                {originalPriceRub ? (
+                  <span className="text-xs text-muted-foreground line-through opacity-70">{originalPriceRub.toLocaleString()} ₽</span>
+                ) : null}
+              </div>
+              {hasDiscount ? (
+                <div className="mt-1">
+                  <Badge className="border bg-red-500/10 text-red-600 border-red-500/20">скидка {discountPercent}%</Badge>
+                </div>
+              ) : null}
+            </div>
+          );
+        })()}
 
         <div className="mt-2 flex gap-2">
           <Button
@@ -829,14 +829,14 @@ export const BikeCard: React.FC<{ bike: BikeData; variant?: "default" | "compact
           <Button
             size="sm"
             className={cn(
-                "flex-1 relative overflow-hidden transition-all duration-300",
-                added
-                    ? "bg-gradient-to-r from-green-600 via-emerald-500 to-green-600 text-white hover:from-green-600 hover:to-emerald-500 scale-[1.03] shadow-lg"
-                    : "bg-primary hover:bg-primary/90 text-white shadow-md"
+              "flex-1 relative overflow-hidden transition-all duration-300",
+              added
+                ? "bg-gradient-to-r from-green-600 via-emerald-500 to-green-600 text-white hover:from-green-600 hover:to-emerald-500 scale-[1.03] shadow-lg"
+                : "bg-primary hover:bg-primary/90 text-white shadow-md"
             )}
             onClick={(e) => {
-                e.stopPropagation();
-                window.location.href = `/product/${bike.id}`;
+              e.stopPropagation();
+              window.location.href = `/product/${bike.id}`;
             }}
           >
             <Search className="mr-2 h-4 w-4" /> Подробнее
@@ -850,7 +850,7 @@ export const BikeCard: React.FC<{ bike: BikeData; variant?: "default" | "compact
               <span className={cn(
                 "font-bold",
                 bike.condition_score >= 80 ? "text-green-600" :
-                bike.condition_score >= 60 ? "text-yellow-600" : "text-red-600"
+                  bike.condition_score >= 60 ? "text-yellow-600" : "text-red-600"
               )}>{bike.condition_score}/100</span>
             </div>
             {bike.condition_reason && (
@@ -864,16 +864,16 @@ export const BikeCard: React.FC<{ bike: BikeData; variant?: "default" | "compact
         {bike.seller_name && (
           <div className="mt-2 text-xs text-muted-foreground border-t pt-2">
             <div className="flex justify-between items-center">
-               <span className="font-semibold">{bike.seller_name}</span>
-               <span>{bike.seller_type}</span>
+              <span className="font-semibold">{bike.seller_name}</span>
+              <span>{bike.seller_type}</span>
             </div>
             {bike.seller_member_since && <div className="text-[10px] opacity-70">На сайте с {bike.seller_member_since}</div>}
             {bike.seller_badges && bike.seller_badges.length > 0 && (
-                <div className="flex flex-wrap gap-1 mt-1">
-                    {bike.seller_badges.slice(0, 3).map((b, i) => (
-                        <span key={i} className="bg-blue-50 text-blue-600 px-1 rounded-[2px] text-[9px] border border-blue-100">{b}</span>
-                    ))}
-                </div>
+              <div className="flex flex-wrap gap-1 mt-1">
+                {bike.seller_badges.slice(0, 3).map((b, i) => (
+                  <span key={i} className="bg-blue-50 text-blue-600 px-1 rounded-[2px] text-[9px] border border-blue-100">{b}</span>
+                ))}
+              </div>
             )}
           </div>
         )}
@@ -976,9 +976,9 @@ export const BikeCard: React.FC<{ bike: BikeData; variant?: "default" | "compact
                 >
                   {ripple && (
                     <>
-                      <span className="pointer-events-none absolute inset-0 rounded-md animate-ping bg-green-400/20" style={{animationDuration:'600ms'}} />
-                      <span className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-3/4 w-3/4 rounded-md animate-ping bg-emerald-400/20" style={{animationDuration:'700ms'}} />
-                      <span className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-2/4 w-2/4 rounded-md animate-ping bg-green-300/25" style={{animationDuration:'800ms'}} />
+                      <span className="pointer-events-none absolute inset-0 rounded-md animate-ping bg-green-400/20" style={{ animationDuration: '600ms' }} />
+                      <span className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-3/4 w-3/4 rounded-md animate-ping bg-emerald-400/20" style={{ animationDuration: '700ms' }} />
+                      <span className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-2/4 w-2/4 rounded-md animate-ping bg-green-300/25" style={{ animationDuration: '800ms' }} />
                     </>
                   )}
                   <ShoppingCart className="mr-2 h-4 w-4" /> {added ? 'В корзине | Перейти в корзину' : 'В корзину'}
@@ -996,7 +996,7 @@ export const BikeCard: React.FC<{ bike: BikeData; variant?: "default" | "compact
         </DialogContent>
       </Dialog>
 
-      
+
     </div>
   );
 };

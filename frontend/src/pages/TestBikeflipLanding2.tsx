@@ -30,7 +30,7 @@ function TopFullWidthBanner() {
     >
       <picture>
         <source media="(max-width: 1024px)" srcSet="/Lanidng2.jpg" />
-              <img
+        <img
           src="/landing.jpg"
           alt="Б/у велосипеды премиум-класса с проверкой - BikeWerk"
           className="block w-screen h-auto object-contain select-none max-w-none"
@@ -41,7 +41,7 @@ function TopFullWidthBanner() {
   );
 }
 
-  function MarketplaceCategoriesSection() {
+function MarketplaceCategoriesSection() {
   const cats = [
     { title: "MTB", img: "/mtb11.jpg" },
     { title: "Road", img: "/Road1.jpg" },
@@ -49,10 +49,10 @@ function TopFullWidthBanner() {
     { title: "Kids", img: "/kids.jpg" },
   ];
   return (
-    <section className="container mx-auto px-4 md:px-6 py-16 font-manrope">
+    <section className="container mx-auto px-4 md:px-6 py-16">
       <h2 data-testid="categories-title" className="text-3xl md:text-5xl leading-[1.1] font-extrabold tracking-tight mb-2">Категории</h2>
       <p className="text-muted-foreground text-lg mb-8">Выбирайте по типу велосипеда</p>
-      
+
       {/* Mobile: сетка 2x2 */}
       <div data-testid="categories-grid-mobile" className="grid grid-cols-2 gap-3 md:hidden">
         {cats.map((c) => (
@@ -74,8 +74,8 @@ function TopFullWidthBanner() {
           <a key={c.title} href={`/catalog#${c.title.toLowerCase()}`} className="group relative block overflow-hidden rounded-[2rem] bg-gray-100">
             <div className="aspect-[3/4] w-full overflow-hidden">
               <img src={c.img} alt={`Купить ${c.title} велосипед б/у - BikeWerk`} className={
-                 (c.title === 'Kids' ? "w-full h-full object-cover object-[50%_50%] scale-[1.06]" : "w-full h-full object-cover") + 
-                 " transition-transform duration-700 ease-out group-hover:scale-105"
+                (c.title === 'Kids' ? "w-full h-full object-cover object-[50%_50%] scale-[1.06]" : "w-full h-full object-cover") +
+                " transition-transform duration-700 ease-out group-hover:scale-105"
               } />
             </div>
             {/* Minimalist overlay: just text at bottom, no pill background, just gradient shadow */}
@@ -84,9 +84,9 @@ function TopFullWidthBanner() {
               <span className="text-white font-extrabold text-2xl tracking-tight">{c.title}</span>
             </div>
             <div className="absolute top-6 right-6 opacity-0 -translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
-               <div className="bg-white/20 backdrop-blur-md p-2 rounded-full text-white">
-                 <ArrowRight className="h-5 w-5" />
-               </div>
+              <div className="bg-white/20 backdrop-blur-md p-2 rounded-full text-white">
+                <ArrowRight className="h-5 w-5" />
+              </div>
             </div>
           </a>
         ))}

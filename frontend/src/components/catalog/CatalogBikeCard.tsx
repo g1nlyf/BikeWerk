@@ -161,16 +161,18 @@ export function CatalogBikeCard({ bike, className }: { bike: BikeData; className
   return (
     <Link
       to={`/product/${bike.id}`}
+      data-testid="bike-card"
       className={cn(
-        "group block overflow-hidden rounded-[12px] border border-zinc-200 bg-white shadow-sm transition-[transform,box-shadow] duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md",
+        "group flex flex-col overflow-hidden rounded-[16px] border border-zinc-200 bg-white shadow-sm transition-[transform,box-shadow] duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md",
         className
       )}
     >
-      <div className="relative aspect-[4/3] w-full bg-[#f4f4f5]">
+      {/* Fixed media box to prevent portrait sources from stretching card height */}
+      <div className="relative aspect-[9/10] min-h-[260px] w-full overflow-hidden bg-[#f4f4f5]">
         <img
           src={imgSrc}
           alt={title}
-          className="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.02]"
+          className="h-full w-full object-cover object-center transition-transform duration-300 ease-out group-hover:scale-[1.02]"
           referrerPolicy="no-referrer"
           loading="lazy"
           onError={(e) => {
@@ -198,6 +200,7 @@ export function CatalogBikeCard({ bike, className }: { bike: BikeData; className
           <Button
             type="button"
             variant="ghost"
+            data-testid="favorite-btn"
             className="h-10 w-10 rounded-full bg-white/90 p-0 text-zinc-700 backdrop-blur hover:bg-white transition-transform active:scale-95"
             onClick={onToggleFav}
             aria-label={fav ? "Убрать из избранного" : "Добавить в избранное"}
@@ -212,7 +215,7 @@ export function CatalogBikeCard({ bike, className }: { bike: BikeData; className
         </div>
       </div>
 
-      <div className="p-4">
+      <div className="flex flex-1 flex-col p-4">
         <div className="text-xs font-medium uppercase tracking-wide text-zinc-500">
           {(bike.brand || "").trim() && !/^unknown$/i.test(String(bike.brand)) ? bike.brand : "BikeWerk"}
         </div>
@@ -225,6 +228,7 @@ export function CatalogBikeCard({ bike, className }: { bike: BikeData; className
             {metaChips.map((c) => (
               <span
                 key={c}
+                data-testid="chip"
                 className="rounded-full bg-[#f4f4f5] px-3 py-1 text-xs text-zinc-700"
               >
                 {c}
@@ -233,23 +237,25 @@ export function CatalogBikeCard({ bike, className }: { bike: BikeData; className
           </div>
         )}
 
-        <div className="mt-3 flex items-end justify-between gap-3">
-          <div className="min-w-0">
-            <div className="text-[18px] font-semibold text-[#18181b]">
-              {priceRub > 0 ? `${priceRub.toLocaleString()} ₽` : `${Math.round(priceEur).toLocaleString()} €`}
+        <div className="mt-auto pt-3">
+          <div className="flex items-end justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-[18px] font-semibold text-[#18181b]">
+                {priceRub > 0 ? `${priceRub.toLocaleString()} ₽` : `${Math.round(priceEur).toLocaleString()} €`}
+              </div>
+              <div className="mt-0.5 text-xs text-zinc-500">
+                {priceEur > 0 ? `${Math.round(priceEur).toLocaleString()} €` : "Цена уточняется"}
+                {savings > 0 ? ` · скидка ${Math.round(savings).toLocaleString()} €` : ""}
+              </div>
             </div>
-            <div className="mt-0.5 text-xs text-zinc-500">
-              {priceEur > 0 ? `${Math.round(priceEur).toLocaleString()} €` : "Цена уточняется"}
-              {savings > 0 ? ` · скидка ${Math.round(savings).toLocaleString()} €` : ""}
-            </div>
-          </div>
 
-          <Button
-            type="button"
-            className="h-12 rounded-[8px] bg-[#18181b] px-8 text-white hover:bg-black transition-transform active:scale-[0.98]"
-          >
-            Подробнее
-          </Button>
+            <Button
+              type="button"
+              className="h-11 rounded-full bg-[#18181b] px-6 text-sm font-semibold text-white hover:bg-black transition-transform active:scale-[0.98]"
+            >
+              Подробнее
+            </Button>
+          </div>
         </div>
       </div>
     </Link>

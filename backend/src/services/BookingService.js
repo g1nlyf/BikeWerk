@@ -1,4 +1,4 @@
-const supabase = require('./supabase');
+﻿const supabase = require('./supabase');
 const managerBot = require('./ManagerBotService');
 const orderDispatcher = require('./OrderDispatcher');
 const { v4: uuidv4 } = require('uuid');
@@ -9,6 +9,11 @@ const axios = require('axios');
 
 const priceCalculator = require('./PriceCalculatorService');
 const imageKitService = require('./ImageKitService');
+const {
+    ORDER_STATUS,
+    TERMINAL_ORDER_STATUSES,
+    normalizeOrderStatus
+} = require('../domain/orderLifecycle');
 
 class BookingService {
     constructor() {
@@ -21,6 +26,375 @@ class BookingService {
 
     _useSupabase() {
         return Boolean(supabase && supabase.supabase);
+    }
+
+    _isPreferredChannelEnumError(error) {
+        const text = String(error?.message || error || '').toLowerCase();
+        return text.includes('preferred_channel_enum') || text.includes('preferred_channel');
+    }
+
+    _normalizePreferredChannel(raw, fallback = 'whatsapp') {
+        const value = String(raw || '').trim().toLowerCase();
+        if (!value) return fallback;
+        if (value === 'email') return 'email';
+        if (value === 'telegram' || value.startsWith('telegram:')) return 'telegram';
+        if (value === 'phone' || value === 'call' || value === 'whatsapp' || value === 'sms') return 'whatsapp';
+        return fallback;
+    }
+
+    _extractBikePriceEur(snapshot = null) {
+        const src = (snapshot && typeof snapshot === 'object') ? snapshot : {};
+        const value = Number(
+            src.price ??
+            src.listing_price_eur ??
+            src.price_eur ??
+            src.final_price_eur ??
+            src?.financials?.bike_price_eur ??
+            0
+        );
+        if (!Number.isFinite(value) || value <= 0) return null;
+        return value;
+    }
+
+    _assertBikePriceWithinCompliance(snapshot = null) {
+        const bikePriceEur = this._extractBikePriceEur(snapshot);
+        if (!bikePriceEur) return;
+        if (bikePriceEur < 500) {
+            throw new Error('400: Bike price below EUR 500 minimum policy');
+        }
+        if (bikePriceEur > 5000) {
+            throw new Error('400: Bike price exceeds EUR 5,000 compliance limit');
+        }
+    }
+    _isTerminalOrderStatus(status) {
+        const normalized = normalizeOrderStatus(status);
+        return Boolean(normalized && TERMINAL_ORDER_STATUSES.includes(normalized));
+    }
+    _isFreeBookingStatus(status) {
+        const normalized = normalizeOrderStatus(status);
+        if (!normalized) return false;
+        return [
+            ORDER_STATUS.BOOKED,
+            ORDER_STATUS.SELLER_CHECK_IN_PROGRESS,
+            ORDER_STATUS.CHECK_READY,
+            ORDER_STATUS.AWAITING_CLIENT_DECISION,
+            ORDER_STATUS.FULL_PAYMENT_PENDING
+        ].includes(normalized);
+    }
+    async _assertFreeBookingQuota(customerId) {
+        const customerKey = String(customerId || '').trim();
+        if (!customerKey) return;
+        try {
+            const rows = await this.db.query('SELECT id, status FROM orders WHERE customer_id = ?', [customerKey]);
+            const activeFreeBookings = (rows || []).filter((order) => {
+                if (this._isTerminalOrderStatus(order.status)) return false;
+                return this._isFreeBookingStatus(order.status);
+            });
+            if (activeFreeBookings.length >= 3) {
+                throw new Error('400: Free booking limit reached (max 3 active bookings)');
+            }
+            return;
+        } catch (localError) {
+            if (!this._useSupabase()) throw localError;
+            const { data, error } = await supabase.supabase
+                .from('orders')
+                .select('id,status')
+                .eq('customer_id', customerKey);
+            if (error) throw error;
+            const activeFreeBookings = (data || []).filter((order) => {
+                if (this._isTerminalOrderStatus(order.status)) return false;
+                return this._isFreeBookingStatus(order.status);
+            });
+            if (activeFreeBookings.length >= 3) {
+                throw new Error('400: Free booking limit reached (max 3 active bookings)');
+            }
+        }
+    }
+    _isMissingCustomersCityError(error) {
+        const text = String(error?.message || error || '').toLowerCase();
+        if (!text) return false;
+        return (
+            text.includes("could not find the 'city' column") ||
+            text.includes('column customers_1.city does not exist') ||
+            text.includes('column customers.city does not exist')
+        );
+    }
+
+    async _enqueueSyncOutbox(entityType, entityId, operation, payload, errorMessage = null) {
+        if (!this.db || typeof this.db.query !== 'function') return;
+        try {
+            await this.db.query(
+                `INSERT INTO crm_sync_outbox (id, entity_type, entity_id, operation, payload, status, retry_count, last_error, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, 'pending', 0, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+                [
+                    uuidv4(),
+                    entityType,
+                    String(entityId || ''),
+                    operation,
+                    payload ? JSON.stringify(payload) : null,
+                    errorMessage ? String(errorMessage) : null
+                ]
+            );
+        } catch (error) {
+            console.warn('[BookingService] Failed to enqueue CRM sync outbox:', error.message || error);
+        }
+    }
+
+    async _mirrorBookingToSupabase({ customer, lead, order, bikeSnapshot, bikeUrl, shippingMethod }) {
+        if (!this._useSupabase()) return;
+        const sb = supabase?.supabase;
+        if (!sb) return;
+
+        const customerPayload = {
+            id: customer.id,
+            email: customer.email || null,
+            full_name: customer.full_name || customer.name || null,
+            phone: customer.phone || null,
+            preferred_channel: this._normalizePreferredChannel(customer.preferred_channel || customer.contact_method || null),
+            contact_value: customer.contact_value || customer.phone || customer.email || null,
+            city: customer.city || null,
+            updated_at: new Date().toISOString()
+        };
+
+        try {
+            let upsertRes = await sb
+                .from('customers')
+                .upsert(customerPayload, { onConflict: 'id' })
+                .select()
+                .single();
+            if (upsertRes.error && this._isMissingCustomersCityError(upsertRes.error)) {
+                const payloadNoCity = { ...customerPayload };
+                delete payloadNoCity.city;
+                upsertRes = await sb
+                    .from('customers')
+                    .upsert(payloadNoCity, { onConflict: 'id' })
+                    .select()
+                    .single();
+            }
+            if (upsertRes.error && this._isPreferredChannelEnumError(upsertRes.error)) {
+                const fallbackPayload = { ...customerPayload, preferred_channel: 'telegram' };
+                upsertRes = await sb
+                    .from('customers')
+                    .upsert(fallbackPayload, { onConflict: 'id' })
+                    .select()
+                    .single();
+            }
+            if (upsertRes.error) throw upsertRes.error;
+        } catch (error) {
+            await this._enqueueSyncOutbox('customers', customer.id, 'upsert', customerPayload, error.message || error);
+        }
+
+        const leadPayload = {
+            id: lead.id,
+            source: lead.source || 'website_booking',
+            customer_id: customer.id,
+            bike_url: bikeUrl || lead.bike_url || null,
+            bike_snapshot: bikeSnapshot || null,
+            status: lead.status || 'new',
+            contact_method: lead.contact_method || null,
+            contact_value: lead.contact_value || null,
+            updated_at: new Date().toISOString()
+        };
+
+        try {
+            let upsertLeadRes = await sb
+                .from('leads')
+                .upsert(leadPayload, { onConflict: 'id' })
+                .select()
+                .single();
+            if (upsertLeadRes.error && String(upsertLeadRes.error.message || '').toLowerCase().includes('bike_snapshot')) {
+                const fallbackLeadPayload = { ...leadPayload };
+                delete fallbackLeadPayload.bike_snapshot;
+                upsertLeadRes = await sb
+                    .from('leads')
+                    .upsert(fallbackLeadPayload, { onConflict: 'id' })
+                    .select()
+                    .single();
+            }
+            if (upsertLeadRes.error) throw upsertLeadRes.error;
+        } catch (error) {
+            await this._enqueueSyncOutbox('leads', lead.id, 'upsert', leadPayload, error.message || error);
+        }
+
+        const normalizedSnapshot = this._normalizeBikeSnapshot(bikeSnapshot, order.bike_id, bikeUrl);
+        const financials = normalizedSnapshot?.financials || normalizedSnapshot?.booking_meta?.financials || {};
+        const exchangeRate = Number(order.exchange_rate || financials.exchange_rate || 96) || 96;
+        const bookingAmountRub = Number(order.booking_amount_rub || order.booking_price || financials.booking_amount_rub || 0) || 0;
+
+        const orderPayload = {
+            id: order.id,
+            customer_id: customer.id,
+            lead_id: lead.id,
+            bike_id: order.bike_id || normalizedSnapshot.bike_id || null,
+            order_code: order.order_code,
+            status: normalizeOrderStatus(order.status) || ORDER_STATUS.BOOKED,
+            bike_snapshot: normalizedSnapshot,
+            bike_name: order.bike_name || normalizedSnapshot.title || null,
+            bike_url: bikeUrl || order.bike_url || normalizedSnapshot.bike_url || null,
+            listing_price_eur: Number(order.listing_price_eur || normalizedSnapshot.listing_price_eur || normalizedSnapshot.price || 0) || null,
+            initial_quality: order.initial_quality || normalizedSnapshot.condition || null,
+            final_price_eur: Number(order.final_price_eur || financials.final_price_eur || 0) || null,
+            total_price_rub: Number(order.total_price_rub || financials.total_price_rub || 0) || null,
+            booking_amount_rub: bookingAmountRub || null,
+            booking_amount_eur: bookingAmountRub ? Math.round(bookingAmountRub / exchangeRate) : null,
+            exchange_rate: exchangeRate,
+            delivery_method: shippingMethod || order.delivery_method || null,
+            updated_at: new Date().toISOString()
+        };
+
+        try {
+            const upsertOrderRes = await sb
+                .from('orders')
+                .upsert(orderPayload, { onConflict: 'id' })
+                .select()
+                .single();
+            if (upsertOrderRes.error) throw upsertOrderRes.error;
+
+            try {
+                await sb.from('order_status_events').insert({
+                    id: uuidv4(),
+                    order_id: order.id,
+                    old_status: null,
+                    new_status: orderPayload.status,
+                    changed_by: 'system_local_first',
+                    created_at: order.created_at || new Date().toISOString()
+                });
+            } catch (eventError) {
+                console.warn('[BookingService] order_status_events mirror warning:', eventError.message || eventError);
+            }
+        } catch (error) {
+            await this._enqueueSyncOutbox('orders', order.id, 'upsert', orderPayload, error.message || error);
+        }
+    }
+
+    async _mirrorCustomerToLocal(customer = {}) {
+        if (!this.db || typeof this.db.query !== 'function') return;
+        const customerId = customer.id ? String(customer.id) : null;
+        if (!customerId) return;
+
+        try {
+            await this.db.query(
+                `INSERT INTO customers (id, full_name, phone, email, preferred_channel, country, city, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
+                 ON CONFLICT(id) DO UPDATE SET
+                    full_name = excluded.full_name,
+                    phone = COALESCE(excluded.phone, customers.phone),
+                    email = COALESCE(excluded.email, customers.email),
+                    preferred_channel = COALESCE(excluded.preferred_channel, customers.preferred_channel),
+                    country = COALESCE(excluded.country, customers.country),
+                    city = COALESCE(excluded.city, customers.city)`,
+                [
+                    customerId,
+                    customer.full_name || null,
+                    customer.phone || null,
+                    customer.email || null,
+                    this._normalizePreferredChannel(customer.preferred_channel || null, null),
+                    customer.country || null,
+                    customer.city || null,
+                    customer.created_at || null
+                ]
+            );
+        } catch (error) {
+            console.warn('[BookingService] Local customer mirror failed:', error.message || error);
+        }
+    }
+
+    async _mirrorLeadToLocal(lead = {}, fallback = {}) {
+        if (!this.db || typeof this.db.query !== 'function') return;
+        const leadId = lead.id ? String(lead.id) : null;
+        if (!leadId) return;
+
+        try {
+            await this.db.query(
+                `INSERT INTO leads (id, source, customer_id, bike_url, bike_snapshot, status, created_at, contact_method, contact_value)
+                 VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), ?, ?)
+                 ON CONFLICT(id) DO UPDATE SET
+                    source = excluded.source,
+                    customer_id = excluded.customer_id,
+                    bike_url = COALESCE(excluded.bike_url, leads.bike_url),
+                    bike_snapshot = COALESCE(excluded.bike_snapshot, leads.bike_snapshot),
+                    status = COALESCE(excluded.status, leads.status),
+                    contact_method = COALESCE(excluded.contact_method, leads.contact_method),
+                    contact_value = COALESCE(excluded.contact_value, leads.contact_value)`,
+                [
+                    leadId,
+                    lead.source || fallback.source || 'website_booking',
+                    lead.customer_id || fallback.customer_id || null,
+                    lead.bike_url || fallback.bike_url || null,
+                    (lead.bike_snapshot || fallback.bike_snapshot) ? JSON.stringify(lead.bike_snapshot || fallback.bike_snapshot) : null,
+                    lead.status || fallback.status || 'new',
+                    lead.created_at || null,
+                    fallback.contact_method || null,
+                    fallback.contact_value || null
+                ]
+            );
+        } catch (error) {
+            console.warn('[BookingService] Local lead mirror failed:', error.message || error);
+        }
+    }
+
+    async _mirrorOrderToLocal(order = {}, fallback = {}) {
+        if (!this.db || typeof this.db.query !== 'function') return;
+        const orderId = order.id ? String(order.id) : null;
+        if (!orderId) return;
+
+        try {
+            const localBikeId = await this._resolveLocalBikeId(
+                order.bike_id ??
+                fallback.bike_id ??
+                fallback?.bike_snapshot?.bike_id
+            );
+            const snapshot = order.bike_snapshot || fallback.bike_snapshot || null;
+            const normalizedStatus = normalizeOrderStatus(order.status || fallback.status) || ORDER_STATUS.BOOKED;
+
+            await this.db.query(
+                `INSERT INTO orders (id, order_code, customer_id, lead_id, bike_url, bike_snapshot, final_price_eur, commission_eur, status, assigned_manager, created_at, is_refundable, booking_price, bike_id)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), ?, ?, ?)
+                 ON CONFLICT(id) DO UPDATE SET
+                    order_code = excluded.order_code,
+                    customer_id = excluded.customer_id,
+                    lead_id = excluded.lead_id,
+                    bike_url = COALESCE(excluded.bike_url, orders.bike_url),
+                    bike_snapshot = COALESCE(excluded.bike_snapshot, orders.bike_snapshot),
+                    final_price_eur = COALESCE(excluded.final_price_eur, orders.final_price_eur),
+                    commission_eur = COALESCE(excluded.commission_eur, orders.commission_eur),
+                    status = COALESCE(excluded.status, orders.status),
+                    assigned_manager = COALESCE(excluded.assigned_manager, orders.assigned_manager),
+                    is_refundable = COALESCE(excluded.is_refundable, orders.is_refundable),
+                    booking_price = COALESCE(excluded.booking_price, orders.booking_price),
+                    bike_id = COALESCE(excluded.bike_id, orders.bike_id)`,
+                [
+                    orderId,
+                    order.order_code || fallback.order_code || null,
+                    order.customer_id || fallback.customer_id || null,
+                    order.lead_id || fallback.lead_id || null,
+                    order.bike_url || fallback.bike_url || null,
+                    snapshot ? JSON.stringify(snapshot) : null,
+                    Number(order.final_price_eur || fallback.final_price_eur || 0) || null,
+                    Number(order.commission_eur || fallback.commission_eur || 0) || 0,
+                    normalizedStatus,
+                    order.assigned_manager || fallback.assigned_manager || null,
+                    order.created_at || null,
+                    Number(order.is_refundable ?? fallback.is_refundable ?? 1),
+                    Number(order.booking_price || fallback.booking_price || 0) || null,
+                    localBikeId
+                ]
+            );
+
+            await this.db.query(
+                'INSERT OR IGNORE INTO order_status_events (id, order_id, old_status, new_status, changed_by, created_at) VALUES (?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))',
+                [
+                    uuidv4(),
+                    orderId,
+                    null,
+                    normalizedStatus,
+                    'system_mirror',
+                    order.created_at || null
+                ]
+            );
+        } catch (error) {
+            console.warn('[BookingService] Local order mirror failed:', error.message || error);
+        }
     }
 
     _normalizeBikeSnapshot(bikeDetails = {}, bikeId = null, bikeUrl = null) {
@@ -238,6 +612,7 @@ class BookingService {
      */
     async createBooking({ bike_id, customer, bike_details, total_price_rub, booking_amount_rub, exchange_rate, final_price_eur, delivery_method, addons = [], booking_form = {} }) {
         const normalizedBikeSnapshot = this._normalizeBikeSnapshot(bike_details, bike_id, bike_details?.bike_url || bike_details?.url || null);
+        this._assertBikePriceWithinCompliance(normalizedBikeSnapshot);
 
         // Delivery method
         let shippingMethod = delivery_method || booking_form.delivery_option || null;
@@ -258,16 +633,17 @@ class BookingService {
             throw new Error('400: Delivery method is required. Please select shipping option.');
         }
 
-        const contactMethod = customer.contact_method || booking_form.contact_method || (customer.email ? 'email' : (customer.phone ? 'phone' : (customer.telegram_id ? 'telegram' : 'other')));
+        const contactMethod = customer.contact_method || booking_form.contact_method || (customer.email ? 'email' : (customer.phone ? 'whatsapp' : (customer.telegram_id ? 'telegram' : 'whatsapp')));
         const contactValue = customer.contact_value || booking_form.contact_value || customer.email || customer.phone || customer.telegram_id || null;
         const city = booking_form.city || customer.city || null;
 
-        // 1. Create/Update Customer in Supabase
+        // 1. Local-first CRM write path with remote fallback/mirror
         const customerPayload = { ...customer, name: customer.full_name || customer.name, contact_method: contactMethod, contact_value: contactValue, city };
-        const customerData = await this._upsertCustomer(customerPayload);
-        if (!customerData) throw new Error('Failed to create customer');
+        let customerData = null;
+        let lead = null;
+        let order = null;
+        let usedRemoteFallback = false;
 
-        // 2. Lead
         let bikeUrl = normalizedBikeSnapshot.bike_url || (bike_id ? `/bike/${bike_id}` : null);
         if (!bikeUrl || !bikeUrl.startsWith('http')) {
             try {
@@ -279,29 +655,80 @@ class BookingService {
             }
         }
         const bikeSnapshotWithUrl = this._normalizeBikeSnapshot(normalizedBikeSnapshot, bike_id, bikeUrl);
-        const lead = await this._createLead(customerData.id, bike_id, bikeUrl, bikeSnapshotWithUrl);
 
-        // 3. Order
         const magicToken = this._generateMagicToken();
         const orderCode = this._generateOrderCode();
 
-        const order = await this._createOrder({
-            customer_id: customerData.id,
-            lead_id: lead.id,
-            bike_id: bike_id,
-            order_code: orderCode,
-            magic_link_token: magicToken,
-            bike_snapshot: bikeSnapshotWithUrl,
-            status: 'pending_manager',
-            total_price_rub,
-            booking_amount_rub,
-            exchange_rate,
-            final_price_eur,
-            delivery_method: shippingMethod,
-            bike_url: bikeUrl,
-            addons,
-            booking_form: { ...booking_form, contact_method: contactMethod, contact_value: contactValue, city, delivery_option: shippingMethod }
-        });
+        try {
+            customerData = await this._upsertCustomerLocal(customerPayload);
+            if (!customerData) throw new Error('Local customer upsert failed');
+            await this._assertFreeBookingQuota(customerData.id);
+
+            lead = await this._createLeadLocal(customerData.id, bike_id, bikeUrl);
+            lead = {
+                ...lead,
+                source: 'website_booking',
+                status: 'new',
+                contact_method: contactMethod,
+                contact_value: contactValue
+            };
+
+            order = await this._createOrderLocal({
+                customer_id: customerData.id,
+                lead_id: lead.id,
+                bike_id: bike_id,
+                order_code: orderCode,
+                magic_link_token: magicToken,
+                bike_snapshot: bikeSnapshotWithUrl,
+                status: ORDER_STATUS.BOOKED,
+                total_price_rub,
+                booking_amount_rub,
+                exchange_rate,
+                final_price_eur,
+                delivery_method: shippingMethod,
+                bike_url: bikeUrl,
+                addons,
+                booking_form: { ...booking_form, contact_method: contactMethod, contact_value: contactValue, city, delivery_option: shippingMethod }
+            });
+
+            if (this._useSupabase()) {
+                await this._mirrorBookingToSupabase({
+                    customer: customerData,
+                    lead,
+                    order,
+                    bikeSnapshot: order.bike_snapshot || bikeSnapshotWithUrl,
+                    bikeUrl,
+                    shippingMethod
+                });
+            }
+        } catch (localError) {
+            if (!this._useSupabase()) throw localError;
+            usedRemoteFallback = true;
+            console.warn('[BookingService] Local-first flow failed, using Supabase fallback:', localError.message || localError);
+
+            customerData = await this._upsertCustomer(customerPayload);
+            if (!customerData) throw new Error('Failed to create customer');
+            await this._assertFreeBookingQuota(customerData.id);
+
+            lead = await this._createLead(customerData.id, bike_id, bikeUrl, bikeSnapshotWithUrl);
+            order = await this._createOrder({
+                customer_id: customerData.id,
+                lead_id: lead.id,
+                bike_id: bike_id,
+                order_code: orderCode,
+                magic_link_token: magicToken,
+                bike_snapshot: bikeSnapshotWithUrl,
+                status: ORDER_STATUS.BOOKED,
+                total_price_rub,
+                booking_amount_rub,
+                exchange_rate,
+                final_price_eur,
+                delivery_method: shippingMethod,
+                bike_url: bikeUrl,
+                addons,
+                booking_form: { ...booking_form, contact_method: contactMethod, contact_value: contactValue, city, delivery_option: shippingMethod }
+            });
+        }
 
         // 4. Auto-dispatch + inspection
         let assignedManager = null;
@@ -322,6 +749,10 @@ class BookingService {
                 const gemini = require('./geminiProcessor');
                 (async () => {
                     try {
+                        if (!gemini || typeof gemini.performInitialInspection !== 'function') {
+                            console.warn('[BookingService] performInitialInspection is unavailable, skip background inspection.');
+                            return;
+                        }
                         const fallbackTitle = bikeSnapshotWithUrl.brand
                             ? `${bikeSnapshotWithUrl.brand} ${bikeSnapshotWithUrl.model || ''}`.trim()
                             : 'Bike';
@@ -375,9 +806,9 @@ class BookingService {
         let userAuth = null;
         try {
             userAuth = await this._ensureLocalUser({
-                name: customer.name || customer.full_name || 'Клиент',
+                name: customer.name || customer.full_name || 'ÐšÐ»Ð¸ÐµÐ½Ñ‚',
                 email: customer.email,
-                phone: customer.phone || (contactMethod === 'phone' ? contactValue : null)
+                phone: customer.phone || ((contactMethod === 'phone' || contactMethod === 'whatsapp') ? contactValue : null)
             });
         } catch (e) {
             console.error('Auto-user creation failed:', e.message || e);
@@ -388,6 +819,7 @@ class BookingService {
             magic_link_url: orderCode ? `/order-tracking/${orderCode}` : null,
             order_code: orderCode,
             status: 'accepted',
+            storage_mode: usedRemoteFallback ? 'supabase_fallback' : 'local_primary',
             auth: userAuth ? {
                 token: userAuth.token,
                 user: {
@@ -434,29 +866,67 @@ class BookingService {
             email: customer.email || null,
             full_name: customer.name,
             phone: customer.phone || null,
-            preferred_channel: customer.contact_method || (customer.telegram_id ? 'telegram' : (customer.email ? 'email' : 'phone')),
+            preferred_channel: this._normalizePreferredChannel(
+                customer.contact_method || (customer.telegram_id ? 'telegram' : (customer.email ? 'email' : 'whatsapp'))
+            ),
             contact_value: customer.contact_value || customer.telegram_id || customer.email || customer.phone,
             city: customer.city || null
         };
 
+        const payloadNoCity = { ...payload };
+        delete payloadNoCity.city;
+
         if (existing) {
-            const { data, error } = await supabase.supabase
+            let result = await supabase.supabase
                 .from('customers')
                 .update(payload)
                 .eq('id', existing.id)
                 .select()
                 .single();
-            if (error) throw error;
-            return data;
-        } else {
-            const { data, error } = await supabase.supabase
+            if (result.error && this._isMissingCustomersCityError(result.error)) {
+                result = await supabase.supabase
+                    .from('customers')
+                    .update(payloadNoCity)
+                    .eq('id', existing.id)
+                    .select()
+                    .single();
+            }
+            if (result.error && this._isPreferredChannelEnumError(result.error)) {
+                const fallbackPayload = { ...payloadNoCity, preferred_channel: 'telegram' };
+                result = await supabase.supabase
+                    .from('customers')
+                    .update(fallbackPayload)
+                    .eq('id', existing.id)
+                    .select()
+                    .single();
+            }
+            if (result.error) throw result.error;
+            await this._mirrorCustomerToLocal(result.data || { ...payload, id: existing.id });
+            return result.data;
+        }
+
+        let result = await supabase.supabase
+            .from('customers')
+            .insert(payload)
+            .select()
+            .single();
+        if (result.error && this._isMissingCustomersCityError(result.error)) {
+            result = await supabase.supabase
                 .from('customers')
-                .insert(payload)
+                .insert(payloadNoCity)
                 .select()
                 .single();
-            if (error) throw error;
-            return data;
         }
+        if (result.error && this._isPreferredChannelEnumError(result.error)) {
+            result = await supabase.supabase
+                .from('customers')
+                .insert({ ...payloadNoCity, preferred_channel: 'telegram' })
+                .select()
+                .single();
+        }
+        if (result.error) throw result.error;
+        await this._mirrorCustomerToLocal(result.data || payload);
+        return result.data;
     }
 
     async _createLead(customerId, bikeId, bikeUrl, bikeSnapshot = null) {
@@ -488,10 +958,12 @@ class BookingService {
         }
 
         if (insertResult.error) throw insertResult.error;
+        await this._mirrorLeadToLocal(insertResult.data || {}, payload);
         return insertResult.data;
     }
 
     async _createOrder({ customer_id, lead_id, bike_id, order_code, magic_link_token, bike_snapshot, status, total_price_rub, booking_amount_rub, exchange_rate, final_price_eur, delivery_method, bike_url, addons, booking_form }) {
+        this._assertBikePriceWithinCompliance(bike_snapshot);
         if (!this._useSupabase()) {
             return this._createOrderLocal({ customer_id, lead_id, bike_id, order_code, magic_link_token, bike_snapshot, status, total_price_rub, booking_amount_rub, exchange_rate, final_price_eur, delivery_method, bike_url, addons, booking_form });
         }
@@ -514,6 +986,13 @@ class BookingService {
             }
         } catch (e) {
             console.error('Gemini Parsing Failed:', e.message);
+        }
+
+        if (price < 500) {
+            throw new Error('400: Bike price below EUR 500 minimum policy');
+        }
+        if (price > 5000) {
+            throw new Error('400: Bike price exceeds EUR 5,000 compliance limit');
         }
 
         const shippingMethod = delivery_method || 'Cargo';
@@ -551,7 +1030,7 @@ class BookingService {
                 bike_id: durableSnapshot.bike_id || null,
                 order_code,
                 magic_link_token,
-                status: status || 'pending_manager',
+                status: normalizeOrderStatus(status) || ORDER_STATUS.BOOKED,
                 bike_snapshot: { ...durableSnapshot, financials, booking_meta: bookingMeta },
                 bike_name: bikeName,
                 bike_url: durableSnapshot.bike_url || bike_url || null,
@@ -569,13 +1048,30 @@ class BookingService {
             .single();
 
         if (error) throw error;
+        await this._mirrorOrderToLocal(data || {}, {
+            order_code,
+            customer_id,
+            lead_id,
+            bike_id: durableSnapshot.bike_id || null,
+            bike_url: durableSnapshot.bike_url || bike_url || null,
+            bike_snapshot: { ...durableSnapshot, financials, booking_meta: bookingMeta },
+            final_price_eur: finalEur,
+            commission_eur: 0,
+            status: normalizeOrderStatus(status) || ORDER_STATUS.BOOKED,
+            assigned_manager: null,
+            is_refundable: 1,
+            booking_price: bookingRub,
+            created_at: new Date().toISOString()
+        });
         return data;
     }
 
     async _upsertCustomerLocal(customer) {
         const email = customer.email ? String(customer.email).trim().toLowerCase() : null;
         const phone = customer.phone ? String(customer.phone).trim() : null;
-        const preferred = customer.contact_method || (customer.telegram_id ? 'telegram' : (email ? 'email' : (phone ? 'phone' : 'other')));
+        const preferred = this._normalizePreferredChannel(
+            customer.contact_method || (customer.telegram_id ? 'telegram' : (email ? 'email' : (phone ? 'whatsapp' : 'whatsapp')))
+        );
 
         let existing = null;
         if (email) {
@@ -649,6 +1145,13 @@ class BookingService {
             console.error('Gemini Parsing Failed:', e.message);
         }
 
+        if (price < 500) {
+            throw new Error('400: Bike price below EUR 500 minimum policy');
+        }
+        if (price > 5000) {
+            throw new Error('400: Bike price exceeds EUR 5,000 compliance limit');
+        }
+
         const shippingMethod = delivery_method || 'Cargo';
         const calc = priceCalculator.calculate(price, shippingMethod, true);
         const totalRub = Number(total_price_rub) || calc.total_price_rub;
@@ -674,7 +1177,7 @@ class BookingService {
             booking_form: booking_form || null,
             addons: addons || [],
             financials,
-            queue_hint: booking_form?.queue_hint || 'Вы #2 в очереди (заглушка)'
+            queue_hint: booking_form?.queue_hint || 'Ð’Ñ‹ #2 Ð² Ð¾Ñ‡ÐµÑ€ÐµÐ´Ð¸ (Ð·Ð°Ð³Ð»ÑƒÑˆÐºÐ°)'
         };
 
         const snapshot = { ...durableSnapshot, financials, booking_meta: bookingMeta, magic_link_token };
@@ -691,7 +1194,7 @@ class BookingService {
                 JSON.stringify(snapshot),
                 finalEur,
                 0,
-                status || 'pending_manager',
+                normalizeOrderStatus(status) || ORDER_STATUS.BOOKED,
                 null,
                 1,
                 bookingRub,
@@ -701,7 +1204,7 @@ class BookingService {
 
         await this.db.query(
             'INSERT INTO order_status_events (id, order_id, old_status, new_status, changed_by, created_at) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)',
-            [uuidv4(), id, null, status || 'pending_manager', 'system']
+            [uuidv4(), id, null, normalizeOrderStatus(status) || ORDER_STATUS.BOOKED, 'system']
         );
 
         return {
@@ -709,9 +1212,19 @@ class BookingService {
             order_code,
             customer_id,
             lead_id,
+            bike_id: localBikeId,
             bike_url: normalizedSnapshot.bike_url || bike_url || null,
             bike_snapshot: snapshot,
-            status: status || 'pending_manager'
+            bike_name: bikeName || null,
+            listing_price_eur: price || null,
+            initial_quality: normalizedSnapshot.condition || null,
+            final_price_eur: finalEur,
+            total_price_rub: totalRub,
+            booking_amount_rub: bookingRub,
+            exchange_rate: fx,
+            delivery_method: shippingMethod,
+            status: normalizeOrderStatus(status) || ORDER_STATUS.BOOKED,
+            created_at: new Date().toISOString()
         };
     }
 
@@ -744,7 +1257,7 @@ class BookingService {
         if (!user) {
             const placeholderEmail = emailNorm || `${phoneNorm || 'user'}@placeholder.local`;
             const mustSetEmail = emailNorm ? 0 : 1;
-            const result = await this.db.query('INSERT INTO users (name, email, phone, password, must_change_password, must_set_email, temp_password) VALUES (?, ?, ?, ?, 0, ?, ?)', [name || 'Клиент', placeholderEmail, phoneNorm, hashed, mustSetEmail, tempPassword]);
+            const result = await this.db.query('INSERT INTO users (name, email, phone, password, must_change_password, must_set_email, temp_password) VALUES (?, ?, ?, ?, 0, ?, ?)', [name || 'ÐšÐ»Ð¸ÐµÐ½Ñ‚', placeholderEmail, phoneNorm, hashed, mustSetEmail, tempPassword]);
             user = { id: result.insertId, name, email: placeholderEmail, phone: phoneNorm, role: 'user', must_change_password: 0, must_set_email: mustSetEmail };
         } else {
             await this.db.query('UPDATE users SET password = ?, must_change_password = 0, temp_password = ?, phone = COALESCE(phone, ?) WHERE id = ?', [hashed, tempPassword, phoneNorm, user.id]);
@@ -761,3 +1274,4 @@ class BookingService {
 }
 
 module.exports = new BookingService();
+

@@ -18,8 +18,8 @@ import { ChevronLeft, ChevronRight, Heart, ArrowRight } from "lucide-react";
 type ExtendedBikeData = BikeData & { images: string[] };
 
 function calcTotals(price: number) {
-  const b = calculatePriceBreakdown(price, 'Cargo', true);
-  return { totalEur: Math.round(b.details.finalPriceEur), totalRub: Math.round(b.totalRub) };
+  const calc = calculatePriceBreakdown(price, 'Cargo', false);
+  return { totalEur: Math.round(calc.details.finalPriceEur), totalRub: Math.round(calc.totalRub) };
 }
 
 function mapBikeToCard(b: any): ExtendedBikeData {
@@ -28,14 +28,14 @@ function mapBikeToCard(b: any): ExtendedBikeData {
   const mainImg = b.main_image
     || (Array.isArray(b.images) && (typeof b.images[0] === "string" ? b.images[0] : b.images[0]?.image_url))
     || "";
-    
-  const allImages = Array.isArray(b.images) 
+
+  const allImages = Array.isArray(b.images)
     ? b.images.map((img: any) => {
-        const url = typeof img === "string" ? img : img?.image_url;
-        return resolveImageUrl(url);
-      }).filter(Boolean)
+      const url = typeof img === "string" ? img : img?.image_url;
+      return resolveImageUrl(url);
+    }).filter(Boolean)
     : (mainImg ? [resolveImageUrl(mainImg)] : []);
-    
+
   const savings = Math.max(0, Number((b.original_price || 0) - (b.price || 0)));
   const status: BikeData["status"] = b.is_new
     ? "new"
@@ -70,7 +70,7 @@ function MiniCatalogCard({ bike, onClick, className }: { bike: ExtendedBikeData;
   const [isHot, setIsHot] = React.useState(!!bike.is_hot);
   const [currentIndex, setCurrentIndex] = React.useState(0);
   const timerRef = React.useRef<number | null>(null);
-  
+
   // Favorites logic
   const [isFavorite, setIsFavorite] = React.useState(false);
   const favKey = "guestFavorites";
@@ -147,7 +147,7 @@ function MiniCatalogCard({ bike, onClick, className }: { bike: ExtendedBikeData;
       setCurrentIndex((idx) => (images.length ? (idx + 1) % images.length : idx));
     }, 1275);
   };
-  
+
   const stopAuto = () => {
     if (timerRef.current != null) {
       window.clearInterval(timerRef.current);
@@ -180,36 +180,36 @@ function MiniCatalogCard({ bike, onClick, className }: { bike: ExtendedBikeData;
         setCurrentIndex(0);
       }}
     >
-      {/* Image Container */}
-      <div className="relative aspect-[4/3] overflow-hidden bg-gray-50">
-        <img 
-          src={images[currentIndex] || "/placeholder-bike.svg"} 
-          alt={bike.name || `${bike.brand} ${bike.model}`} 
-          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" 
+      {/* Image Container with fixed 9:10 aspect ratio */}
+      <div className="relative overflow-hidden bg-gray-50" style={{ aspectRatio: '9 / 10' }}>
+        <img
+          src={images[currentIndex] || "/placeholder-bike.svg"}
+          alt={bike.name || `${bike.brand} ${bike.model}`}
+          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
         />
-        
+
         {/* Badges */}
         <div className="absolute top-3 left-3 flex flex-col gap-2 z-10">
-            {isHot && (
-              <div className="bg-gradient-to-r from-red-600 to-rose-600 text-white text-[10px] uppercase font-bold px-2.5 py-1 rounded-full shadow-md tracking-wide">
-                BEST DEAL
-              </div>
-            )}
-            {bike.savings > 0 && (
-                <div className="bg-emerald-500 text-white text-[10px] uppercase font-bold px-2.5 py-1 rounded-full shadow-sm tracking-wide">
-                  Sale
-                </div>
-            )}
+          {isHot && (
+            <div className="bg-gradient-to-r from-red-600 to-rose-600 text-white text-[10px] uppercase font-bold px-2.5 py-1 rounded-full shadow-md tracking-wide">
+              BEST DEAL
+            </div>
+          )}
+          {bike.savings > 0 && (
+            <div className="bg-emerald-500 text-white text-[10px] uppercase font-bold px-2.5 py-1 rounded-full shadow-sm tracking-wide">
+              Sale
+            </div>
+          )}
         </div>
 
         {/* Favorite Button */}
         <button
-            onClick={toggleFavorite}
-            className="absolute top-3 right-3 rounded-full bg-white/90 p-2.5 shadow-sm hover:bg-white hover:scale-110 transition-all z-20 group/fav"
+          onClick={toggleFavorite}
+          className="absolute top-3 right-3 rounded-full bg-white/90 p-2.5 shadow-sm hover:bg-white hover:scale-110 transition-all z-20 group/fav"
         >
-            <Heart className={cn("w-4 h-4 transition-colors", isFavorite ? "fill-red-500 text-red-500" : "text-gray-400 group-hover/fav:text-red-500")} />
+          <Heart className={cn("w-4 h-4 transition-colors", isFavorite ? "fill-red-500 text-red-500" : "text-gray-400 group-hover/fav:text-red-500")} />
         </button>
-        
+
         {/* Admin Hot Toggle */}
         {user?.role === 'admin' && (
           <button
@@ -238,16 +238,16 @@ function MiniCatalogCard({ bike, onClick, className }: { bike: ExtendedBikeData;
             >
               <ChevronRight className="h-4 w-4" />
             </button>
-            
+
             {/* Dots indicator */}
             <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-10">
               {images.slice(0, 5).map((_, idx) => (
-                <div 
-                  key={idx} 
+                <div
+                  key={idx}
                   className={cn(
-                    "h-1.5 w-1.5 rounded-full transition-colors shadow-sm", 
+                    "h-1.5 w-1.5 rounded-full transition-colors shadow-sm",
                     idx === currentIndex ? "bg-white" : "bg-white/60"
-                  )} 
+                  )}
                 />
               ))}
             </div>
@@ -259,45 +259,45 @@ function MiniCatalogCard({ bike, onClick, className }: { bike: ExtendedBikeData;
       <div className="p-4 flex flex-col flex-grow">
         {/* Brand & Title */}
         <div className="mb-3">
-            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{bike.brand}</span>
-            <h3 className="text-lg font-bold leading-tight line-clamp-2 min-h-[3rem] mt-1" title={`${bike.brand} ${bike.model}`}>
-                {bike.model} {bike.year ? bike.year : ""}
-            </h3>
+          <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{bike.brand}</span>
+          <h3 className="text-lg font-bold leading-tight line-clamp-2 min-h-[3rem] mt-1" title={`${bike.brand} ${bike.model}`}>
+            {bike.model} {bike.year ? bike.year : ""}
+          </h3>
         </div>
 
         {/* Friendly Specs - Chips */}
         <div className="flex flex-wrap gap-2 mb-4">
-             <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
-                Size {bike.size || "L"}
-             </span>
-             <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
-                {conditionText(bike)}
-             </span>
+          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+            Size {bike.size || "L"}
+          </span>
+          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+            {conditionText(bike)}
+          </span>
         </div>
 
         {/* Price & Action */}
         <div className="mt-auto pt-3 border-t border-gray-50">
-            <div className="flex items-baseline gap-2 mb-4">
-                <span className={cn("font-extrabold text-2xl tracking-tight", (bike.savings > 0 || isHot) ? "text-red-600" : "text-gray-900")}>
-                    {bike.priceRUB?.toLocaleString("ru-RU")} ₽
-                </span>
-                {bike.savings > 0 && (
-                    <span className="text-sm text-muted-foreground line-through">
-                        {Math.round(calculateMarketingBreakdown(bike.priceEU + bike.savings).totalRub).toLocaleString("ru-RU")} ₽
-                    </span>
-                )}
-            </div>
+          <div className="flex items-baseline gap-2 mb-4">
+            <span className={cn("font-extrabold text-2xl tracking-tight", (bike.savings > 0 || isHot) ? "text-red-600" : "text-gray-900")}>
+              {bike.priceRUB?.toLocaleString("ru-RU")} ₽
+            </span>
+            {bike.savings > 0 && (
+              <span className="text-sm text-muted-foreground line-through">
+                {Math.round(calculateMarketingBreakdown(bike.priceEU + bike.savings).totalRub).toLocaleString("ru-RU")} ₽
+              </span>
+            )}
+          </div>
 
-            <Button 
-                className="w-full rounded-full bg-black hover:bg-gray-800 text-white font-bold h-11 transition-all shadow-md hover:shadow-lg hover:-translate-y-0.5"
-                onClick={(e) => {
-                    e.preventDefault(); // prevent double navigation if wrapped in link
-                    e.stopPropagation();
-                    window.location.href = `/product/${bike.id}`;
-                }}
-            >
-                Подробнее
-            </Button>
+          <Button
+            className="w-full rounded-full bg-black hover:bg-gray-800 text-white font-bold h-11 transition-all shadow-md hover:shadow-lg hover:-translate-y-0.5"
+            onClick={(e) => {
+              e.preventDefault(); // prevent double navigation if wrapped in link
+              e.stopPropagation();
+              window.location.href = `/product/${bike.id}`;
+            }}
+          >
+            Подробнее
+          </Button>
         </div>
       </div>
     </div>
@@ -343,36 +343,36 @@ export default function MiniCatalogBikeflip({ title = "Подобрали спе
             params.set('offset', String(offset));
 
             if (p.disciplines) {
-                const topDisciplines = Object.entries(p.disciplines)
-                    .sort(([, a], [, b]) => Number(b) - Number(a))
-                    .slice(0, 3)
-                    .map(([d]) => d);
-                const toCategory = (k: string): string => {
-                  const raw = String(k || '').trim();
-                  if (!raw) return '';
-                  const u = raw.toLowerCase();
-                  if (u === 'горный' || u === 'шоссейный' || u === 'гравийный' || u === 'электро' || u === 'детский') return raw;
-                  if (u === 'mtb' || u.startsWith('mtb ') || u === 'dh' || u === 'downhill' || u === 'enduro' || u === 'trail' || u === 'xc' || u === 'xco') return 'Горный';
-                  if (u === 'road' || u.startsWith('road ') || u === 'aero' || u === 'endurance' || u === 'climbing' || u === 'tt' || u === 'triathlon' || u === 'granfondo') return 'Шоссейный';
-                  if (u === 'gravel' || u.startsWith('gravel ') || u === 'race' || u === 'allroad' || u === 'all-road' || u === 'bikepacking') return 'Гравийный';
-                  if (u === 'emtb' || u === 'ebike') return 'Электро';
-                  if (u === 'kids' || u.startsWith('kids ')) return 'Детский';
-                  return '';
-                };
-                const cats = Array.from(new Set(topDisciplines.map(toCategory).filter(Boolean)));
-                if (cats.length) params.set('profile_disciplines', cats.join(','));
+              const topDisciplines = Object.entries(p.disciplines)
+                .sort(([, a], [, b]) => Number(b) - Number(a))
+                .slice(0, 3)
+                .map(([d]) => d);
+              const toCategory = (k: string): string => {
+                const raw = String(k || '').trim();
+                if (!raw) return '';
+                const u = raw.toLowerCase();
+                if (u === 'горный' || u === 'шоссейный' || u === 'гравийный' || u === 'электро' || u === 'детский') return raw;
+                if (u === 'mtb' || u.startsWith('mtb ') || u === 'dh' || u === 'downhill' || u === 'enduro' || u === 'trail' || u === 'xc' || u === 'xco') return 'Горный';
+                if (u === 'road' || u.startsWith('road ') || u === 'aero' || u === 'endurance' || u === 'climbing' || u === 'tt' || u === 'triathlon' || u === 'granfondo') return 'Шоссейный';
+                if (u === 'gravel' || u.startsWith('gravel ') || u === 'race' || u === 'allroad' || u === 'all-road' || u === 'bikepacking') return 'Гравийный';
+                if (u === 'emtb' || u === 'ebike') return 'Электро';
+                if (u === 'kids' || u.startsWith('kids ')) return 'Детский';
+                return '';
+              };
+              const cats = Array.from(new Set(topDisciplines.map(toCategory).filter(Boolean)));
+              if (cats.length) params.set('profile_disciplines', cats.join(','));
             }
             if (p.brands) {
-                const topBrands = Object.entries(p.brands)
-                    .sort(([, a], [, b]) => Number(b) - Number(a))
-                    .slice(0, 3)
-                    .map(([b]) => b);
-                if (topBrands.length) params.set('profile_brands', topBrands.join(','));
+              const topBrands = Object.entries(p.brands)
+                .sort(([, a], [, b]) => Number(b) - Number(a))
+                .slice(0, 3)
+                .map(([b]) => b);
+              if (topBrands.length) params.set('profile_brands', topBrands.join(','));
             }
-            
+
             // Add Price Affinity (Target Price)
             if (p.priceSensitivity && p.priceSensitivity.weightedAverage > 0) {
-                params.set('target_price', String(Math.round(p.priceSensitivity.weightedAverage)));
+              params.set('target_price', String(Math.round(p.priceSensitivity.weightedAverage)));
             }
 
             const respP = await apiGet(`/bikes?${params.toString()}`);
@@ -384,11 +384,11 @@ export default function MiniCatalogBikeflip({ title = "Подобрали спе
           try {
             const resp = await catalogApi.list({ limit: 60, offset, sort: 'rank', hot });
             list = Array.isArray((resp as any)?.bikes) ? (resp as any).bikes : [];
-            
+
             // Fallback for Hot Offers: if empty, show top ranked
             if (hot && list.length === 0) {
-               const respFallback = await catalogApi.list({ limit: 60, offset, sort: 'rank' });
-               list = Array.isArray((respFallback as any)?.bikes) ? (respFallback as any).bikes : [];
+              const respFallback = await catalogApi.list({ limit: 60, offset, sort: 'rank' });
+              list = Array.isArray((respFallback as any)?.bikes) ? (respFallback as any).bikes : [];
             }
           } catch {
             const params2 = new URLSearchParams({
@@ -400,28 +400,28 @@ export default function MiniCatalogBikeflip({ title = "Подобрали спе
             if (hot) params2.append('hot', 'true');
             let resp2 = await apiGet(`/catalog/bikes?${params2.toString()}`);
             list = Array.isArray(resp2?.bikes) ? resp2.bikes : [];
-            
+
             // Fallback in catch block too
             if (hot && list.length === 0) {
-                params2.delete('hot');
-                resp2 = await apiGet(`/catalog/bikes?${params2.toString()}`);
-                list = Array.isArray(resp2?.bikes) ? resp2.bikes : [];
+              params2.delete('hot');
+              resp2 = await apiGet(`/catalog/bikes?${params2.toString()}`);
+              list = Array.isArray(resp2?.bikes) ? resp2.bikes : [];
             }
           }
         }
 
         const scoreById: Record<string, number> = {};
         const mapped = list.map((x: any) => {
-            const m = mapBikeToCard(x);
-            if (x.ranking_score) scoreById[x.id] = x.ranking_score;
-            return m;
+          const m = mapBikeToCard(x);
+          if (x.ranking_score) scoreById[x.id] = x.ranking_score;
+          return m;
         });
 
         if (!cancelled) {
           if (shuffle) {
-             setItems(mapped.sort(() => 0.5 - Math.random()).slice(0, limit));
+            setItems(mapped.sort(() => 0.5 - Math.random()).slice(0, limit));
           } else {
-             setItems(mapped.slice(0, limit));
+            setItems(mapped.slice(0, limit));
           }
         }
       } catch (e: any) {
@@ -466,7 +466,7 @@ export default function MiniCatalogBikeflip({ title = "Подобрали спе
           <CarouselNext className="hidden md:flex -right-4 w-12 h-12 border-none bg-white shadow-lg hover:bg-gray-50" />
         </Carousel>
       )}
-      
+
       <div className="mt-4 flex justify-center md:hidden">
         <Button variant="outline" className="rounded-full w-full max-w-xs border" onClick={() => window.location.href = '/catalog'}>
           Смотреть все <ArrowRight className="ml-2 h-4 w-4" />

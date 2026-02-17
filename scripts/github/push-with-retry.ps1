@@ -19,6 +19,14 @@ if (-not $SkipSecretScan) {
     & (Join-Path $PSScriptRoot "scan-secrets.ps1")
 }
 
+# Ensure hooks are installed and present. If hooksPath points to .githooks but it
+# is missing/corrupted, Git push can fail with "cannot spawn .githooks/pre-push".
+$expectedHook = Join-Path $repoRoot ".githooks\pre-push"
+if (-not (Test-Path $expectedHook)) {
+    Write-Warning "pre-push hook missing. Re-installing git safety hooks..."
+    & (Join-Path $PSScriptRoot "setup-git-safety.ps1")
+}
+
 Write-Host "Configuring robust Git transport settings for slow/unstable upload..."
 git config --local http.postBuffer 524288000 | Out-Null
 git config --local http.lowSpeedLimit 1 | Out-Null
@@ -37,6 +45,10 @@ $success = $false
 
 while ($attempt -le $MaxRetries -and -not $success) {
     Write-Host "Push attempt $attempt/$MaxRetries -> $Remote $Branch"
+
+    # Re-assert hooksPath on every attempt (some environments override it).
+    git config --local core.hooksPath ".githooks" | Out-Null
+
     & git push $Remote $Branch
     if ($LASTEXITCODE -eq 0) {
         $success = $true

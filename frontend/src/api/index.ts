@@ -1,3 +1,6 @@
+import { createMetricsEventId, getMetricsSessionId } from '@/lib/session'
+import { getAttributionHeaders, getAttributionMetadata } from '@/lib/traffic'
+
 // Базовая точка для HTTP-запросов фронта
 export const API_BASE = import.meta.env.PROD
   ? '/api'
@@ -62,67 +65,284 @@ function getTelegramInitData(): string | null {
   }
 }
 
-export async function apiGet(path: string, init?: RequestInit) {
-  const token = getToken()
-  const tgInitData = getTelegramInitData();
-
-  const headers: HeadersInit = {
-    ...(init?.headers || {}),
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...(tgInitData ? { 'x-telegram-init-data': tgInitData } : {})
+function getSourcePath(): string | null {
+  try {
+    return typeof location !== 'undefined' ? (location.pathname || null) : null
+  } catch {
+    return null
   }
-  const res = await fetch(`${API_BASE}${path}`, { method: 'GET', headers, ...init })
-  try { return await res.json() } catch { return { success: false, status: res.status } }
 }
 
-export async function apiPost(path: string, body: unknown, init?: RequestInit) {
-  const token = getToken()
-  const tgInitData = getTelegramInitData();
+const CRM_LEAD_STORAGE_KEY = 'metrics_crm_lead_id_v1'
 
-  const res = await fetch(`${API_BASE}${path}`, {
+function getCrmLeadId(): string | null {
+  try {
+    const value = localStorage.getItem(CRM_LEAD_STORAGE_KEY)
+    if (!value) return null
+    return String(value).trim().slice(0, 128) || null
+  } catch {
+    return null
+  }
+}
+
+function setCrmLeadId(value: unknown) {
+  try {
+    const clean = String(value || '').trim().slice(0, 128)
+    if (!clean) return
+    localStorage.setItem(CRM_LEAD_STORAGE_KEY, clean)
+  } catch {
+    void 0
+  }
+}
+
+function stageFromPath(path: string): string {
+  const value = String(path || '').toLowerCase()
+  if (value.includes('/catalog')) return 'catalog'
+  if (value.includes('/product') || value.includes('/bike/')) return 'product'
+  if (value.includes('/checkout') || value.includes('/guest-order') || value.includes('/booking-checkout')) return 'checkout'
+  if (value.includes('/booking') || value.includes('/order-tracking')) return 'booking'
+  return 'other'
+}
+
+function maybeCaptureLeadId(path: string, payload: unknown) {
+  if (!path.includes('/crm/')) return
+  if (!payload || typeof payload !== 'object') return
+  const data = payload as Record<string, unknown>
+  const lead = data.lead_id ?? data.leadId
+  if (lead != null) setCrmLeadId(lead)
+}
+
+const API_LATENCY_SAMPLE_RATE = (() => {
+  const parsed = Number((import.meta.env?.VITE_API_LATENCY_SAMPLE_RATE as string) || '0.35')
+  if (!Number.isFinite(parsed)) return 0.35
+  return Math.max(0, Math.min(1, parsed))
+})()
+
+function normalizeMetricPath(path: string): string {
+  const p = String(path || '').trim()
+  if (!p) return '/'
+  try {
+    const withoutHash = p.split('#')[0]
+    const withoutQuery = withoutHash.split('?')[0]
+    return withoutQuery || '/'
+  } catch {
+    return p
+  }
+}
+
+function shouldCaptureLatency(path: string, status: number, networkError: boolean): boolean {
+  const normalizedPath = normalizeMetricPath(path)
+  if (normalizedPath === '/metrics/events') return false
+  if (networkError) return true
+  if (status >= 400) return true
+  if (normalizedPath.startsWith('/admin/')) return true
+  return Math.random() < API_LATENCY_SAMPLE_RATE
+}
+
+function reportApiLatency(path: string, method: string, status: number, startedAt: number, networkError: boolean) {
+  if (typeof window === 'undefined') return
+  const now = typeof performance !== 'undefined' ? performance.now() : Date.now()
+  const durationMs = Math.max(0, Math.round(now - startedAt))
+  const normalizedPath = normalizeMetricPath(path)
+  if (!shouldCaptureLatency(normalizedPath, status, networkError)) return
+
+  const sessionId = getMetricsSessionId()
+  const sourcePath = getSourcePath()
+  const trafficMeta = getAttributionMetadata()
+  const event = {
+    type: 'api_latency',
+    timestamp: Date.now(),
+    event_id: createMetricsEventId(sessionId, Date.now()),
+    session_id: sessionId,
+    source_path: sourcePath || normalizedPath,
+    metadata: {
+      ...trafficMeta,
+      path: normalizedPath,
+      method: String(method || 'GET').toUpperCase(),
+      status: Number.isFinite(status) ? status : 0,
+      duration_ms: durationMs,
+      network_error: networkError ? 1 : 0,
+      funnel_stage: stageFromPath(normalizedPath)
+    }
+  }
+  const payload = JSON.stringify({ events: [event] })
+  const endpoint = `${API_BASE}/metrics/events`
+
+  try {
+    if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+      const ok = navigator.sendBeacon(endpoint, new Blob([payload], { type: 'application/json' }))
+      if (ok) return
+    }
+  } catch {
+    // fall through to fetch keepalive
+  }
+
+  fetch(endpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      ...(init?.headers || {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(tgInitData ? { 'x-telegram-init-data': tgInitData } : {})
+      ...(sessionId ? { 'x-session-id': sessionId } : {}),
+      ...(getCrmLeadId() ? { 'x-crm-lead-id': String(getCrmLeadId()) } : {})
     },
-    body: JSON.stringify(body),
-    ...init,
-  })
-  try { return await res.json() } catch { return { success: false, status: res.status } }
+    body: payload,
+    keepalive: true
+  }).catch(() => void 0)
+}
+
+export async function apiGet(path: string, init?: RequestInit) {
+  const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
+  const token = getToken()
+  const tgInitData = getTelegramInitData();
+  const sessionId = getMetricsSessionId();
+  const sourcePath = getSourcePath();
+  const attributionHeaders = getAttributionHeaders();
+  const crmLeadId = getCrmLeadId();
+  const { headers: initHeaders, ...restInit } = init || {}
+
+  const headers: HeadersInit = {
+    ...(initHeaders || {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(tgInitData ? { 'x-telegram-init-data': tgInitData } : {}),
+    ...(sessionId ? { 'x-session-id': sessionId } : {}),
+    ...(sourcePath ? { 'x-source-path': sourcePath } : {}),
+    ...(crmLeadId ? { 'x-crm-lead-id': crmLeadId } : {}),
+    ...attributionHeaders
+  }
+  let res: Response
+  try {
+    res = await fetch(`${API_BASE}${path}`, { method: 'GET', ...restInit, headers })
+  } catch (error) {
+    reportApiLatency(path, 'GET', 0, startedAt, true)
+    throw error
+  }
+  reportApiLatency(path, 'GET', res.status, startedAt, false)
+  try {
+    const data = await res.json()
+    maybeCaptureLeadId(path, data)
+    return data
+  } catch { return { success: false, status: res.status } }
+}
+
+export async function apiPost(path: string, body: unknown, init?: RequestInit) {
+  const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
+  const token = getToken()
+  const tgInitData = getTelegramInitData();
+  const sessionId = getMetricsSessionId();
+  const sourcePath = getSourcePath();
+  const attributionHeaders = getAttributionHeaders();
+  const crmLeadId = getCrmLeadId();
+  const { headers: initHeaders, ...restInit } = init || {}
+
+  let res: Response
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(initHeaders || {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(tgInitData ? { 'x-telegram-init-data': tgInitData } : {}),
+        ...(sessionId ? { 'x-session-id': sessionId } : {}),
+        ...(sourcePath ? { 'x-source-path': sourcePath } : {}),
+        ...(crmLeadId ? { 'x-crm-lead-id': crmLeadId } : {}),
+        ...attributionHeaders
+      },
+      body: JSON.stringify(body),
+      ...restInit,
+    })
+  } catch (error) {
+    reportApiLatency(path, 'POST', 0, startedAt, true)
+    throw error
+  }
+  reportApiLatency(path, 'POST', res.status, startedAt, false)
+  try {
+    const data = await res.json()
+    maybeCaptureLeadId(path, data)
+    return data
+  } catch { return { success: false, status: res.status } }
 }
 
 export async function apiPut(path: string, body: unknown, init?: RequestInit) {
+  const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
   const token = getToken()
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json', ...(init?.headers || {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-    body: JSON.stringify(body),
-    ...init,
-  })
-  try { return await res.json() } catch { return { success: false, status: res.status } }
+  const sessionId = getMetricsSessionId();
+  const sourcePath = getSourcePath();
+  const attributionHeaders = getAttributionHeaders();
+  const crmLeadId = getCrmLeadId();
+  const { headers: initHeaders, ...restInit } = init || {}
+  let res: Response
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...(initHeaders || {}), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(sessionId ? { 'x-session-id': sessionId } : {}), ...(sourcePath ? { 'x-source-path': sourcePath } : {}), ...(crmLeadId ? { 'x-crm-lead-id': crmLeadId } : {}), ...attributionHeaders },
+      body: JSON.stringify(body),
+      ...restInit,
+    })
+  } catch (error) {
+    reportApiLatency(path, 'PUT', 0, startedAt, true)
+    throw error
+  }
+  reportApiLatency(path, 'PUT', res.status, startedAt, false)
+  try {
+    const data = await res.json()
+    maybeCaptureLeadId(path, data)
+    return data
+  } catch { return { success: false, status: res.status } }
 }
 
 export async function apiPatch(path: string, body: unknown, init?: RequestInit) {
+  const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
   const token = getToken()
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', ...(init?.headers || {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-    body: JSON.stringify(body),
-    ...init,
-  })
-  try { return await res.json() } catch { return { success: false, status: res.status } }
+  const sessionId = getMetricsSessionId();
+  const sourcePath = getSourcePath();
+  const attributionHeaders = getAttributionHeaders();
+  const crmLeadId = getCrmLeadId();
+  const { headers: initHeaders, ...restInit } = init || {}
+  let res: Response
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...(initHeaders || {}), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(sessionId ? { 'x-session-id': sessionId } : {}), ...(sourcePath ? { 'x-source-path': sourcePath } : {}), ...(crmLeadId ? { 'x-crm-lead-id': crmLeadId } : {}), ...attributionHeaders },
+      body: JSON.stringify(body),
+      ...restInit,
+    })
+  } catch (error) {
+    reportApiLatency(path, 'PATCH', 0, startedAt, true)
+    throw error
+  }
+  reportApiLatency(path, 'PATCH', res.status, startedAt, false)
+  try {
+    const data = await res.json()
+    maybeCaptureLeadId(path, data)
+    return data
+  } catch { return { success: false, status: res.status } }
 }
 
 export async function apiDelete(path: string, init?: RequestInit) {
+  const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
   const token = getToken()
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: 'DELETE',
-    headers: { ...(init?.headers || {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-    ...init,
-  })
-  try { return await res.json() } catch { return { success: false, status: res.status } }
+  const sessionId = getMetricsSessionId();
+  const sourcePath = getSourcePath();
+  const attributionHeaders = getAttributionHeaders();
+  const crmLeadId = getCrmLeadId();
+  const { headers: initHeaders, ...restInit } = init || {}
+  let res: Response
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      method: 'DELETE',
+      headers: { ...(initHeaders || {}), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(sessionId ? { 'x-session-id': sessionId } : {}), ...(sourcePath ? { 'x-source-path': sourcePath } : {}), ...(crmLeadId ? { 'x-crm-lead-id': crmLeadId } : {}), ...attributionHeaders },
+      ...restInit,
+    })
+  } catch (error) {
+    reportApiLatency(path, 'DELETE', 0, startedAt, true)
+    throw error
+  }
+  reportApiLatency(path, 'DELETE', res.status, startedAt, false)
+  try {
+    const data = await res.json()
+    maybeCaptureLeadId(path, data)
+    return data
+  } catch { return { success: false, status: res.status } }
 }
 
 // Auth helpers
@@ -270,35 +490,121 @@ export const adminApi = {
   }
 }
 
-export const metricsApi = {
-  async sendEvents(events: Array<{ type: string; bikeId?: number; ms?: number; session_id?: string; referrer?: string; source_path?: string }>) {
-    const sessionId = getSessionId()
-    const enhanced = events.map(ev => ({
-      ...ev,
-      session_id: ev.session_id ?? sessionId,
-      referrer: ev.referrer ?? (typeof document !== 'undefined' ? document.referrer : ''),
-      source_path: ev.source_path ?? (typeof location !== 'undefined' ? location.pathname : '')
-    }))
-    return apiPost('/behavior/events', { events: enhanced })
+export const adminMetricsApi = {
+  async getCoreOverview(payload: number | { windowHours?: number; windowPreset?: 'hourly' | 'daily' | 'weekly' | 'monthly' | 'all' } = 24) {
+    const q = new URLSearchParams()
+    if (typeof payload === 'number') {
+      q.set('windowHours', String(payload))
+    } else {
+      if (payload?.windowHours != null) q.set('windowHours', String(payload.windowHours))
+      if (payload?.windowPreset) q.set('windowPreset', String(payload.windowPreset))
+    }
+    const suffix = q.toString() ? `?${q.toString()}` : ''
+    return apiGet(`/admin/metrics/core-overview${suffix}`)
+  },
+  async checkFunnelContract(payload?: { windowHours?: number; windowPreset?: 'hourly' | 'daily' | 'weekly' | 'monthly' | 'all'; minCoveragePct?: number }) {
+    const q = new URLSearchParams()
+    if (payload?.windowHours != null) q.set('windowHours', String(payload.windowHours))
+    if (payload?.windowPreset) q.set('windowPreset', String(payload.windowPreset))
+    if (payload?.minCoveragePct != null) q.set('minCoveragePct', String(payload.minCoveragePct))
+    const suffix = q.toString() ? `?${q.toString()}` : ''
+    return apiGet(`/admin/metrics/funnel-contract${suffix}`)
+  },
+  async getSessionFacts(payload?: { windowHours?: number; windowPreset?: 'hourly' | 'daily' | 'weekly' | 'monthly' | 'all'; limit?: number; offset?: number }) {
+    const q = new URLSearchParams()
+    if (payload?.windowHours != null) q.set('windowHours', String(payload.windowHours))
+    if (payload?.windowPreset) q.set('windowPreset', String(payload.windowPreset))
+    if (payload?.limit != null) q.set('limit', String(payload.limit))
+    if (payload?.offset != null) q.set('offset', String(payload.offset))
+    const suffix = q.toString() ? `?${q.toString()}` : ''
+    return apiGet(`/admin/metrics/session-facts${suffix}`)
+  },
+  async refreshInsights(payload?: { limit?: number; force?: boolean }) {
+    return apiPost('/admin/metrics/insights/refresh', payload || {})
+  },
+  async optimizeExperiments(payload?: { dryRun?: boolean; windowDays?: number; minAssignments?: number }) {
+    return apiPost('/admin/metrics/experiments/optimize', payload || {})
+  },
+  async runAnomalies(payload?: { lookbackHours?: number; baselineHours?: number }) {
+    return apiPost('/admin/metrics/anomalies/run', payload || {})
   }
   ,
-  async trackSearch(payload: { query: string; category?: string; brand?: string; minPrice?: number; maxPrice?: number }) {
-    const sessionId = getSessionId()
-    return apiPost('/metrics/search', payload, { headers: { 'x-session-id': sessionId } })
+  async runDailyDigest(payload?: { lookbackHours?: number; baselineHours?: number }) {
+    return apiPost('/admin/metrics/anomalies/daily-digest', payload || {})
+  },
+  async runReplay(payload?: { windowDays?: number; minAssignments?: number; strategy?: 'causal_best' | 'bandit_mean' }) {
+    return apiPost('/admin/metrics/replay', payload || {})
+  },
+  async runDemoSeed(payload?: { sessions?: number; daysBack?: number; seed?: number }) {
+    return apiPost('/admin/metrics/demo-seed', payload || {})
   }
 }
 
-function getSessionId(): string {
-  try {
-    const key = 'session_id'
-    let sid = localStorage.getItem(key)
-    if (!sid) {
-      sid = Math.random().toString(36).slice(2) + Date.now().toString(36)
-      localStorage.setItem(key, sid)
+export const adminGrowthApi = {
+  async getOverview(payload: number | { windowDays?: number; windowPreset?: 'hourly' | 'daily' | 'weekly' | 'monthly' | 'all' } = 30) {
+    const q = new URLSearchParams()
+    if (typeof payload === 'number') {
+      q.set('windowDays', String(payload))
+    } else {
+      if (payload?.windowDays != null) q.set('windowDays', String(payload.windowDays))
+      if (payload?.windowPreset) q.set('windowPreset', String(payload.windowPreset))
     }
-    return sid
-  } catch {
-    return Math.random().toString(36).slice(2)
+    const suffix = q.toString() ? `?${q.toString()}` : ''
+    const origin = typeof window !== 'undefined' ? window.location.origin : ''
+    return apiGet(`/admin/growth/overview${suffix}`, origin ? { headers: { 'x-public-origin': origin } } : undefined)
+  },
+  async listReferrals(payload?: { windowDays?: number; windowPreset?: 'hourly' | 'daily' | 'weekly' | 'monthly' | 'all'; limit?: number; offset?: number }) {
+    const q = new URLSearchParams()
+    if (payload?.windowDays != null) q.set('windowDays', String(payload.windowDays))
+    if (payload?.windowPreset) q.set('windowPreset', String(payload.windowPreset))
+    if (payload?.limit != null) q.set('limit', String(payload.limit))
+    if (payload?.offset != null) q.set('offset', String(payload.offset))
+    const suffix = q.toString() ? `?${q.toString()}` : ''
+    const origin = typeof window !== 'undefined' ? window.location.origin : ''
+    return apiGet(`/admin/referrals${suffix}`, origin ? { headers: { 'x-public-origin': origin } } : undefined)
+  },
+  async createReferral(payload: {
+    channelName: string
+    codeWord?: string
+    slug?: string
+    targetPath?: string
+    utmSource?: string
+    utmMedium?: string
+    utmCampaign?: string
+    utmContent?: string
+    creatorTag?: string
+    notes?: string
+  }) {
+    const origin = typeof window !== 'undefined' ? window.location.origin : ''
+    return apiPost('/admin/referrals', payload, origin ? { headers: { 'x-public-origin': origin } } : undefined)
+  },
+  async updateReferral(id: number, payload: { isActive?: boolean; targetPath?: string; notes?: string }) {
+    const origin = typeof window !== 'undefined' ? window.location.origin : ''
+    return apiPatch(`/admin/referrals/${id}`, payload, origin ? { headers: { 'x-public-origin': origin } } : undefined)
+  }
+}
+
+export const metricsApi = {
+  async sendEvents(events: Array<{ type: string; bikeId?: number; ms?: number; session_id?: string; referrer?: string; source_path?: string; metadata?: Record<string, unknown>; event_id?: string }>) {
+    const sessionId = getMetricsSessionId()
+    const trafficMeta = getAttributionMetadata()
+    const enhanced = events.map((ev, idx) => ({
+      ...ev,
+      event_id: ev.event_id ?? createMetricsEventId(sessionId, Date.now() + idx),
+      session_id: ev.session_id ?? sessionId,
+      referrer: ev.referrer ?? (typeof document !== 'undefined' ? document.referrer : ''),
+      source_path: ev.source_path ?? (typeof location !== 'undefined' ? location.pathname : ''),
+      metadata: {
+        ...trafficMeta,
+        ...(ev.metadata || {})
+      }
+    }))
+    return apiPost('/metrics/events', { events: enhanced }, { headers: { 'x-session-id': sessionId } })
+  }
+  ,
+  async trackSearch(payload: { query: string; category?: string; brand?: string; minPrice?: number; maxPrice?: number }) {
+    const sessionId = getMetricsSessionId()
+    return apiPost('/metrics/search', payload, { headers: { 'x-session-id': sessionId } })
   }
 }
 

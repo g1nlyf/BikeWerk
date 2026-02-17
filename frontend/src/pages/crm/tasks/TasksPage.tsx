@@ -144,7 +144,8 @@ export default function TasksPage() {
       </div>
 
       <div className="rounded-xl border border-[#e4e4e7] bg-white shadow-sm overflow-hidden">
-        <table className="min-w-full text-sm">
+        <div className="overflow-x-auto">
+          <table className="min-w-[760px] w-full text-sm">
           <thead className="bg-[#f4f4f5] text-slate-500 text-xs uppercase tracking-wide">
             <tr>
               <th className="px-4 py-3 text-left">Статус</th>
@@ -190,7 +191,8 @@ export default function TasksPage() {
               </tr>
             )}
           </tbody>
-        </table>
+          </table>
+        </div>
       </div>
     </div>
   )

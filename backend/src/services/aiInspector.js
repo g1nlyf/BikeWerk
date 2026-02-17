@@ -4,7 +4,16 @@ const dotenv = require('dotenv');
 dotenv.config();
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_API_URL = process.env.GEMINI_API_URL || 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.0-pro-preview:generateContent';
+const GEMINI_API_URL = process.env.GEMINI_API_URL || '';
+const GEMINI_MODEL = process.env.GEMINI_INSPECTOR_MODEL || process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+const GEMINI_API_VERSION = process.env.GEMINI_API_VERSION || 'v1beta';
+const GEMINI_REQUEST_TIMEOUT_MS = Number(process.env.GEMINI_REQUEST_TIMEOUT_MS || 45000);
+const GEMINI_FALLBACK_MODELS = String(
+    process.env.GEMINI_FALLBACK_MODELS || 'gemini-2.5-pro,gemini-2.5-flash,gemini-2.0-flash,gemini-1.5-pro,gemini-1.5-flash'
+)
+    .split(',')
+    .map((m) => m.trim())
+    .filter(Boolean);
 
 const SYSTEM_PROMPT = `
 Системный промпт: «AI Senior Bike Inspector»
@@ -45,6 +54,51 @@ Inspection data: Новые фотографии (узлы, царапины, с
 Выходной формат (JSON): { "final_class": "A|B|C", "confidence_score": 0-100, "expert_comment": "текст вердикта", "degradation_detected": true/false }
 `;
 
+function buildGeminiEndpointCandidates() {
+    const endpoints = [];
+    if (GEMINI_API_URL && typeof GEMINI_API_URL === 'string') {
+        endpoints.push(GEMINI_API_URL.trim());
+    }
+
+    const models = Array.from(new Set([GEMINI_MODEL, ...GEMINI_FALLBACK_MODELS]));
+    const versions = Array.from(new Set([GEMINI_API_VERSION, 'v1beta', 'v1']));
+
+    for (const version of versions) {
+        for (const model of models) {
+            endpoints.push(`https://generativelanguage.googleapis.com/${version}/models/${model}:generateContent`);
+        }
+    }
+
+    return Array.from(new Set(endpoints.filter(Boolean)));
+}
+
+async function callGeminiWithFallback(payload) {
+    if (!GEMINI_API_KEY) {
+        throw new Error('GEMINI_API_KEY is missing');
+    }
+
+    const endpoints = buildGeminiEndpointCandidates();
+    let lastError = null;
+
+    for (const endpoint of endpoints) {
+        try {
+            const response = await axios.post(`${endpoint}?key=${GEMINI_API_KEY}`, payload, {
+                timeout: GEMINI_REQUEST_TIMEOUT_MS
+            });
+            return response;
+        } catch (error) {
+            const msg = error?.response?.data?.error?.message || error?.message || 'Unknown Gemini error';
+            lastError = new Error(`[${endpoint}] ${msg}`);
+
+            const status = Number(error?.response?.status || 0);
+            const retryable = status === 404 || status === 429 || status >= 500;
+            if (!retryable) break;
+        }
+    }
+
+    throw lastError || new Error('Gemini request failed');
+}
+
 class AIInspectorService {
     async inspectBike(data) {
         console.log('AI Inspector processing data...');
@@ -77,7 +131,7 @@ class AIInspectorService {
         }
 
         try {
-            const response = await axios.post(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+            const response = await callGeminiWithFallback({
                 contents: [{ parts }],
                 generationConfig: {
                     response_mime_type: "application/json"

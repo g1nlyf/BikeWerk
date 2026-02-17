@@ -16,6 +16,10 @@ git tag -a $Tag -m $Message
 Write-Host "Created tag: $Tag"
 
 if ($PushTag) {
-    git push origin $Tag
+    & git push origin $Tag
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Failed to push tag to origin: $Tag"
+        exit 1
+    }
     Write-Host "Pushed tag to origin: $Tag"
 }

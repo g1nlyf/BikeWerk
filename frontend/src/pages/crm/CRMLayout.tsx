@@ -45,14 +45,14 @@ export default function CRMLayout() {
   return (
     <ToastProvider>
       <div
-        className="min-h-screen bg-[#f4f4f5] text-[#18181b]"
+        className="min-h-screen bg-[#f4f4f5] text-[#18181b] overflow-x-hidden"
         style={{ fontFamily: '-apple-system, BlinkMacSystemFont, Segoe UI, Arial, sans-serif' }}
       >
         <div className="flex flex-col md:flex-row min-h-screen">
           <CRMSidebar user={user} onLogout={handleLogout} />
           <div className="flex-1 flex flex-col">
             <CRMHeader />
-            <main className="flex-1 p-4 md:p-8">
+            <main className="flex-1 p-3 sm:p-4 md:p-8">
               <Outlet />
             </main>
           </div>

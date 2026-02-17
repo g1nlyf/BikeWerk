@@ -1,0 +1,79 @@
+{
+  "startedAt": "2026-02-14T23:16:44.313Z",
+  "apiRoot": "http://localhost:8082/api",
+  "checks": [
+    {
+      "name": "auth/admin-secret",
+      "ok": true
+    },
+    {
+      "name": "catalog/has-bike",
+      "ok": true,
+      "bikeId": 196,
+      "status": 200
+    },
+    {
+      "name": "metrics/events-ingest",
+      "ok": true,
+      "status": 200,
+      "accepted": 12,
+      "dropped": 0
+    },
+    {
+      "name": "admin/core-overview",
+      "ok": true,
+      "status": 200,
+      "eventsTotal": 39,
+      "sessions": 5,
+      "sessionsWithAttribution": 5
+    },
+    {
+      "name": "admin/session-facts",
+      "ok": true,
+      "status": 200,
+      "total": 4,
+      "matched": {
+        "sessionId": "metrics-e2e-mlmxrh7k",
+        "eventCount": 12,
+        "catalogViews": 1,
+        "productViews": 1,
+        "addToCart": 1,
+        "checkoutSubmitAttempts": 1,
+        "bookingSuccess": 1,
+        "orders": 1,
+        "utmSource": "qa",
+        "utmMedium": "smoke",
+        "utmCampaign": "metrics_e2e"
+      }
+    },
+    {
+      "name": "admin/growth-overview",
+      "ok": true,
+      "status": 200,
+      "sessions": 4,
+      "referralSessions": 0
+    },
+    {
+      "name": "admin/referrals-create",
+      "ok": true,
+      "status": 200,
+      "id": 4
+    },
+    {
+      "name": "public/go-redirect",
+      "ok": true,
+      "status": 302,
+      "location": "/catalog?utm_source=qa&utm_medium=referral&utm_campaign=metrics_e2e_ref&utm_content=Metrics+E2E&rid=e2e-mlmxrha7&ref_code=e2e-mlmxrha7"
+    },
+    {
+      "name": "admin/referrals-list",
+      "ok": true,
+      "status": 200,
+      "visits": 1,
+      "sessions": 0
+    }
+  ],
+  "finishedAt": "2026-02-14T23:16:44.496Z",
+  "total": 9,
+  "failed": 0
+}

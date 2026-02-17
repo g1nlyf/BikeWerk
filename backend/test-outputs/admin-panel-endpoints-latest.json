@@ -1,0 +1,244 @@
+{
+  "startedAt": "2026-02-15T22:19:22.238Z",
+  "finishedAt": "2026-02-15T22:19:57.883Z",
+  "apiRoot": "http://localhost:8082/api",
+  "total": 39,
+  "failed": 0,
+  "cases": [
+    {
+      "name": "GET /admin/stats",
+      "passed": true,
+      "status": 200,
+      "message": "ok"
+    },
+    {
+      "name": "GET /admin/stats/business",
+      "passed": true,
+      "status": 200,
+      "message": "ok"
+    },
+    {
+      "name": "GET /admin/finance/summary",
+      "passed": true,
+      "status": 200,
+      "message": "ok"
+    },
+    {
+      "name": "GET /admin/stats/daily",
+      "passed": true,
+      "status": 200,
+      "message": "ok"
+    },
+    {
+      "name": "GET /admin/finance/overview?window=30d",
+      "passed": true,
+      "status": 200,
+      "message": "ok"
+    },
+    {
+      "name": "GET /admin/orders?window=30d&limit=20",
+      "passed": true,
+      "status": 200,
+      "message": "ok"
+    },
+    {
+      "name": "GET /admin/alerts",
+      "passed": true,
+      "status": 200,
+      "message": "ok"
+    },
+    {
+      "name": "GET /admin/system/status",
+      "passed": true,
+      "status": 200,
+      "message": "ok"
+    },
+    {
+      "name": "GET /admin/logs?limit=20",
+      "passed": true,
+      "status": 200,
+      "message": "ok"
+    },
+    {
+      "name": "GET /admin/analytics/market",
+      "passed": true,
+      "status": 200,
+      "message": "ok"
+    },
+    {
+      "name": "GET /admin/hunter/stats?range=7d",
+      "passed": true,
+      "status": 200,
+      "message": "ok"
+    },
+    {
+      "name": "GET /admin/hunter/logs",
+      "passed": true,
+      "status": 200,
+      "message": "ok"
+    },
+    {
+      "name": "GET /admin/audit/pending",
+      "passed": true,
+      "status": 200,
+      "message": "ok"
+    },
+    {
+      "name": "GET /admin/scoring/config",
+      "passed": true,
+      "status": 200,
+      "message": "ok"
+    },
+    {
+      "name": "GET /admin/tests/logs",
+      "passed": true,
+      "status": 200,
+      "message": "ok"
+    },
+    {
+      "name": "GET /admin/export/orders.csv",
+      "passed": true,
+      "status": 200,
+      "message": "csv ok"
+    },
+    {
+      "name": "GET /admin/bikes?limit=10",
+      "passed": true,
+      "status": 200,
+      "message": "loaded 10"
+    },
+    {
+      "name": "GET /bikes/222",
+      "passed": true,
+      "status": 200,
+      "message": "ok"
+    },
+    {
+      "name": "GET /admin/bikes/222/evaluation",
+      "passed": true,
+      "status": 200,
+      "message": "ok"
+    },
+    {
+      "name": "POST /admin/bikes/222/evaluation",
+      "passed": true,
+      "status": 200,
+      "message": "ok"
+    },
+    {
+      "name": "POST /admin/bikes/222/recompute",
+      "passed": true,
+      "status": 200,
+      "message": "ok"
+    },
+    {
+      "name": "POST /admin/bikes/222/toggle-hot (on)",
+      "passed": true,
+      "status": 200,
+      "message": "ok"
+    },
+    {
+      "name": "POST /admin/bikes/222/toggle-hot (off)",
+      "passed": true,
+      "status": 200,
+      "message": "ok"
+    },
+    {
+      "name": "PUT /admin/bikes/222",
+      "passed": true,
+      "status": 200,
+      "message": "ok"
+    },
+    {
+      "name": "GET /admin/bikes/222/deactivate",
+      "passed": true,
+      "status": 200,
+      "message": "ok"
+    },
+    {
+      "name": "PUT /admin/bikes/222 (reactivate)",
+      "passed": true,
+      "status": 200,
+      "message": "ok"
+    },
+    {
+      "name": "POST /admin/generate-negotiation",
+      "passed": true,
+      "status": 200,
+      "message": "ok"
+    },
+    {
+      "name": "POST /admin/audit/0/resolve",
+      "passed": true,
+      "status": 200,
+      "message": "ok"
+    },
+    {
+      "name": "POST /admin/hunt",
+      "passed": true,
+      "status": 200,
+      "message": "ok"
+    },
+    {
+      "name": "POST /admin/labs/hunt-trigger",
+      "passed": true,
+      "status": 200,
+      "message": "ok"
+    },
+    {
+      "name": "POST /admin/ranking/recompute-all",
+      "passed": true,
+      "status": 200,
+      "message": "ok"
+    },
+    {
+      "name": "POST /admin/tests/run (auto_hunt)",
+      "passed": true,
+      "status": 200,
+      "message": "ok"
+    },
+    {
+      "name": "POST /admin/tests/run (quality_check)",
+      "passed": true,
+      "status": 200,
+      "message": "B"
+    },
+    {
+      "name": "POST /admin/tests/run (cleaner)",
+      "passed": true,
+      "status": 200,
+      "message": "ok"
+    },
+    {
+      "name": "POST /admin/tests/run (financial_sync)",
+      "passed": true,
+      "status": 200,
+      "message": "ok"
+    },
+    {
+      "name": "POST /admin/tests/run (ranking_recalc)",
+      "passed": true,
+      "status": 200,
+      "message": "ok"
+    },
+    {
+      "name": "GET /admin/tests/logs (after run)",
+      "passed": true,
+      "status": 200,
+      "message": "logs=9"
+    },
+    {
+      "name": "POST /admin/labs/toggle-ab",
+      "passed": true,
+      "status": 200,
+      "message": "ok"
+    },
+    {
+      "name": "POST /admin/scoring/config",
+      "passed": true,
+      "status": 200,
+      "message": "ok"
+    }
+  ],
+  "failedCases": []
+}

@@ -12,7 +12,7 @@ export const Footer: React.FC = () => {
       <div className="container mx-auto grid gap-10 px-6 py-8 md:grid-cols-4 md:px-16 md:py-12">
         {/* Company Info */}
         <div className="flex flex-col gap-4">
-          <div className="font-extrabold text-xl tracking-tight text-gray-900 font-manrope">BikeEU</div>
+          <div className="font-extrabold text-xl tracking-tight text-gray-900">BikeWerk</div>
           <p className="text-sm text-muted-foreground leading-relaxed">
             Подбор, выкуп и доставка велосипедов из Европы под ключ.
           </p>
@@ -42,9 +42,9 @@ export const Footer: React.FC = () => {
               <TooltipProvider>
                 <Tooltip delayDuration={0}>
                   <TooltipTrigger asChild>
-                    <a 
-                      href="/documents/Offer_Agreement.pdf" 
-                      target="_blank" 
+                    <a
+                      href="/documents/Offer_Agreement.pdf"
+                      target="_blank"
                       rel="noopener noreferrer"
                       className="hover:text-black transition-colors"
                     >
@@ -61,9 +61,9 @@ export const Footer: React.FC = () => {
               <TooltipProvider>
                 <Tooltip delayDuration={0}>
                   <TooltipTrigger asChild>
-                    <a 
-                      href="/documents/Privacy_Policy.pdf" 
-                      target="_blank" 
+                    <a
+                      href="/documents/Privacy_Policy.pdf"
+                      target="_blank"
                       rel="noopener noreferrer"
                       className="hover:text-black transition-colors"
                     >
@@ -90,7 +90,7 @@ export const Footer: React.FC = () => {
 
       <div className="border-t border-gray-200">
         <div className="container mx-auto flex flex-col md:flex-row items-center justify-center px-6 py-8 text-sm text-gray-500">
-          <span className="text-center">© 2026 BikeEU. Все права защищены.</span>
+          <span className="text-center">© 2026 BikeWerk. Все права защищены.</span>
         </div>
       </div>
     </footer>

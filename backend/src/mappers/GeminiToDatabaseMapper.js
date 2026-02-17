@@ -21,6 +21,7 @@ class GeminiToDatabaseMapper {
         const logistics = geminiJson.logistics || {};
         const ranking = geminiJson.ranking || {};
         const media = geminiJson.media || {};
+        const resolvedCompleteness = this.resolveCompleteness(geminiJson.completeness, meta.completeness_score);
         const sourcePlatform = meta.source_platform || null;
         const shippingOption = this.resolveShippingOption(logistics.shipping_option, sourcePlatform);
         const normalizedWheelSize = this.normalizeWheelSize(specs.wheel_size || specs.wheelDiameter || specs.wheel_diameter);
@@ -112,7 +113,7 @@ class GeminiToDatabaseMapper {
             
             // --- RANKING & ANALYTICS ---
             quality_score: geminiJson.quality_score || 50,
-            completeness: geminiJson.completeness || 0,
+            completeness: resolvedCompleteness,
             hotness_score: ranking.score ? (ranking.score * 100) : 0,
             is_hot: ranking.is_hot_offer ? 1 : 0,
             is_high_demand: ranking.demand_score > 70 ? 1 : 0, // Heuristic
@@ -206,6 +207,24 @@ class GeminiToDatabaseMapper {
         const buycycle = url.match(/-(\d{3,})\/?$/);
         if (buycycle) return buycycle[1];
         return null;
+    }
+
+    resolveCompleteness(completeness, completenessScore) {
+        const normalizeFraction = (value) => {
+            const n = Number(value);
+            if (!Number.isFinite(n)) return null;
+            if (n > 1 && n <= 100) return Math.max(0, Math.min(1, n / 100));
+            if (n >= 0 && n <= 1) return n;
+            return null;
+        };
+
+        const direct = normalizeFraction(completeness);
+        if (direct !== null) return direct;
+
+        const fromScore = normalizeFraction(completenessScore);
+        if (fromScore !== null) return fromScore;
+
+        return 0;
     }
 }
 

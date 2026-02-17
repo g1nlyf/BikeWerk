@@ -120,14 +120,14 @@ html {
 }
 
 @layer base {
-  * {
-    border-color: theme(colors.border);
+  :root {
+    --font-sans: 'Futura', 'Inter', 'Montserrat', 'Helvetica Now', 'SF Pro', 'Arial', sans-serif;
+    --font-heading: 'Futura', 'Inter', 'Montserrat', 'Helvetica Now', 'SF Pro', 'Arial', sans-serif;
   }
 
+  html,
   body {
-    background-color: theme(colors.background);
-    color: theme(colors.foreground);
-    overflow-x: hidden;
+    font-family: var(--font-sans);
   }
 
   h1,
@@ -136,12 +136,63 @@ html {
   h4,
   h5,
   h6 {
-    @apply font-heading tracking-tight;
+    font-family: var(--font-heading);
+    @apply tracking-tight;
   }
 }
 
-/* Утилита для применения шрифта Manrope точечно на страницах/блоках */
+/* Fielmann-style design utilities */
 @layer utilities {
+
+  /* Fielmann-style headings: uppercase, bold, increased letter-spacing */
+  .heading-fielmann {
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    line-height: 1.2;
+  }
+
+  .btn-pill-primary {
+    height: 48px;
+    padding: 0 32px;
+    border-radius: 9999px;
+    background: #000000;
+    color: #ffffff;
+    font-size: 16px;
+    font-weight: 600;
+    border: none;
+    transition: all 0.2s ease;
+  }
+
+  .btn-pill-primary:hover {
+    background: #18181b;
+  }
+
+  /* Pill buttons - secondary (outline) */
+  .btn-pill-secondary {
+    height: 48px;
+    padding: 0 32px;
+    border-radius: 9999px;
+    background: transparent;
+    color: #000000;
+    font-size: 16px;
+    font-weight: 600;
+    border: 1px solid #000000;
+    transition: all 0.2s ease;
+  }
+
+  .btn-pill-secondary:hover {
+    background: #f4f4f5;
+  }
+
+  /* Geometric sans-serif body text */
+  .text-fielmann {
+    font-size: 16px;
+    font-weight: 400;
+    color: #222222;
+    line-height: 1.5;
+  }
+
   .animate-pulse-glow {
     animation: pulse-glow 3s infinite ease-in-out;
   }

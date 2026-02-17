@@ -4,19 +4,24 @@ const { DatabaseManager } = require('../../../js/mysql-config');
 
 const router = Router()
 const crmApiMod = require('../../../../scripts/crm-api.js')
-const crmApi = crmApiMod.initializeCRM()
 const geminiClient = require('../../../services/geminiProcessor');
+const priceCalculator = require('../../../services/PriceCalculatorService');
 const localDb = new DatabaseManager();
+const crmApi = crmApiMod.initializeCRM(undefined, undefined, localDb)
 // const geminiClient = new GeminiProcessor(); // It's already instantiated in the export
 
 // Initialize Supabase for complex queries (requires env vars; never ship hardcoded keys).
-const supabaseUrl = process.env.SUPABASE_URL || null;
-const supabaseKey =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.SUPABASE_KEY ||
-    null;
-const localSupabase = (supabaseUrl && supabaseKey) ? createClient(supabaseUrl, supabaseKey) : null;
-const supabase = crmApi?.supabase || localSupabase;
+const LOCAL_DB_ONLY = ['1', 'true', 'yes', 'on'].includes(String(process.env.LOCAL_DB_ONLY || '1').trim().toLowerCase());
+const supabaseUrl = LOCAL_DB_ONLY ? null : (process.env.SUPABASE_URL || null);
+const supabaseKey = LOCAL_DB_ONLY
+    ? null
+    : (
+        process.env.SUPABASE_SERVICE_ROLE_KEY ||
+        process.env.SUPABASE_KEY ||
+        null
+    );
+const localSupabase = (!LOCAL_DB_ONLY && supabaseUrl && supabaseKey) ? createClient(supabaseUrl, supabaseKey) : null;
+const supabase = LOCAL_DB_ONLY ? null : (crmApi?.supabase || localSupabase);
 
 const ORDER_ID_REGEX = /^ORD-\d{8}-\d{4}$/i;
 const ORDER_CODE_REGEX = /^ORD-\d{6}$/i;
@@ -90,6 +95,102 @@ function safeJsonParse(raw: any) {
     }
 }
 
+const ORDER_RELATION_SELECTS = [
+    '*, users(name), customers(full_name,email,phone,country,city,contact_value,preferred_channel)',
+    '*, users(name), customers(full_name,email,phone,country,contact_value,preferred_channel)',
+    '*, users(name), customers(full_name,email,phone,country)'
+];
+
+const INSPECTION_SELECT_WITH_STAGE = 'id,order_id,bike_id,stage,checklist,photos_status,next_action_suggestion,quality_score,created_at,updated_at';
+const INSPECTION_SELECT_NO_STAGE = 'id,order_id,bike_id,checklist,photos_status,next_action_suggestion,quality_score,created_at,updated_at';
+const INSPECTION_SELECT_MINIMAL = 'id,order_id,checklist,photos_status,next_action_suggestion,quality_score,created_at,updated_at';
+const INSPECTION_SELECT_LEGACY = 'id,order_id,checklist,photos_status,next_action_suggestion,created_at,updated_at';
+
+function getErrorText(error: any): string {
+    return `${error?.message || ''} ${error?.details || ''} ${error?.hint || ''}`.toLowerCase();
+}
+
+function isMissingCustomersColumnError(error: any): boolean {
+    const text = getErrorText(error);
+    if (!text) return false;
+    return (
+        text.includes("column of 'customers'") ||
+        text.includes('column customers_1.') ||
+        text.includes('column customers.')
+    );
+}
+
+function isMissingInspectionColumnError(error: any, column: string): boolean {
+    const text = getErrorText(error);
+    const col = String(column || '').trim().toLowerCase();
+    if (!text || !col) return false;
+    return (
+        text.includes(`could not find the '${col}' column of 'inspections'`) ||
+        text.includes(`column inspections.${col} does not exist`) ||
+        text.includes(`column inspections_1.${col} does not exist`)
+    );
+}
+
+async function fetchOrderWithCustomerFallback(supabaseClient: any, column: string, value: string) {
+    let lastError: any = null;
+    for (const selectExpr of ORDER_RELATION_SELECTS) {
+        const response = await supabaseClient
+            .from('orders')
+            .select(selectExpr)
+            .eq(column, value)
+            .maybeSingle();
+        if (!response.error) {
+            return response.data || null;
+        }
+        lastError = response.error;
+        if (!isMissingCustomersColumnError(response.error)) {
+            break;
+        }
+    }
+    if (lastError) {
+        console.warn(`[CRM] Order fetch error for ${column}=${value}:`, lastError.message || lastError);
+    }
+    return null;
+}
+
+async function fetchLatestInspectionByOrderId(supabaseClient: any, orderId: string) {
+    const selectVariants = [
+        INSPECTION_SELECT_WITH_STAGE,
+        INSPECTION_SELECT_NO_STAGE,
+        INSPECTION_SELECT_MINIMAL,
+        INSPECTION_SELECT_LEGACY
+    ];
+
+    let lastError: any = null;
+    for (const selectExpr of selectVariants) {
+        const response = await supabaseClient
+            .from('inspections')
+            .select(selectExpr)
+            .eq('order_id', orderId)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+        if (!response.error) {
+            return response.data || null;
+        }
+
+        lastError = response.error;
+        const isRecoverable =
+            isMissingInspectionColumnError(response.error, 'stage') ||
+            isMissingInspectionColumnError(response.error, 'status') ||
+            isMissingInspectionColumnError(response.error, 'bike_id') ||
+            isMissingInspectionColumnError(response.error, 'quality_score');
+
+        if (!isRecoverable) {
+            throw response.error;
+        }
+    }
+
+    if (lastError) throw lastError;
+    return null;
+}
+
 function getSnapshotContact(snapshot: any) {
     const bookingMeta = snapshot?.booking_meta || {};
     const bookingForm = bookingMeta?.booking_form || {};
@@ -140,7 +241,12 @@ function normalizeLocalDeliveryMethod(method: any) {
     const normalized = String(method || '').trim();
     if (!normalized) return 'Cargo';
     if (normalized === 'CargoProtected') return 'Cargo';
+    if (normalized === 'Premium') return 'PremiumIndividual';
     return normalized;
+}
+
+function hasCargoInsurance(method: any) {
+    return String(method || '').trim() === 'CargoProtected';
 }
 
 function getInspectionFromBikeRow(row: any) {
@@ -371,13 +477,7 @@ async function getOrCreateInspection(orderId: string, supabase: any) {
     const inspectionOrderId = resolved.orderId || orderId;
 
     // Legacy fallback: keep old inspections support if bike row is unavailable.
-    const { data: existing } = await supabase
-        .from('inspections')
-        .select('*')
-        .eq('order_id', inspectionOrderId)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+    const existing = await fetchLatestInspectionByOrderId(supabase, inspectionOrderId);
 
     if (existing) {
         const normalized = normalizeChecklist(existing.checklist);
@@ -393,19 +493,44 @@ async function getOrCreateInspection(orderId: string, supabase: any) {
     }
 
     const defaultChecklist = buildDefaultChecklist();
-    const { data: newInspection, error: createError } = await supabase
+    const baseInspectionInsert = {
+        order_id: inspectionOrderId,
+        checklist: defaultChecklist,
+        photos_status: {}
+    };
+    let createResponse = await supabase
         .from('inspections')
         .insert({
-            order_id: inspectionOrderId,
-            checklist: defaultChecklist,
-            photos_status: {},
-            status: 'pending'
+            ...baseInspectionInsert,
+            stage: 'inspection'
         })
-        .select()
+        .select('id')
         .single();
 
-    if (createError) throw createError;
-    return { ...(newInspection || {}), _storage: 'inspections' };
+    if (
+        createResponse.error
+        && (isMissingInspectionColumnError(createResponse.error, 'stage') || isMissingInspectionColumnError(createResponse.error, 'status'))
+    ) {
+        createResponse = await supabase
+            .from('inspections')
+            .insert(baseInspectionInsert)
+            .select('id')
+            .single();
+    }
+
+    if (createResponse.error) throw createResponse.error;
+
+    const created = await fetchLatestInspectionByOrderId(supabase, inspectionOrderId);
+    if (created) return { ...created, _storage: 'inspections' };
+
+    return {
+        id: `inspection-${inspectionOrderId}`,
+        order_id: inspectionOrderId,
+        checklist: defaultChecklist,
+        photos_status: {},
+        next_action_suggestion: null,
+        _storage: 'inspections'
+    };
 }
 
 // GET /api/v1/crm/orders/:orderId/checklist
@@ -1127,25 +1252,8 @@ router.get('/orders/search', async (req, res) => {
 
 // Helper for fetching order by various means (ID, Code, Token)
 async function fetchOrderDetails(identifier: string, supabase: any, type: 'id' | 'code' | 'token' | 'auto' = 'auto') {
-    const selectWithRelations = '*, users(name), customers(full_name,email,phone,country,city,contact_value,preferred_channel)';
-    const selectFallback = '*, customers(full_name,email,phone,country,city,contact_value,preferred_channel)';
-
     const tryFetch = async (column: string, value: string) => {
-        let { data, error } = await supabase
-            .from('orders')
-            .select(selectWithRelations)
-            .eq(column, value)
-            .maybeSingle();
-        if (error) {
-            console.warn(`[CRM] Order fetch error for ${column}=${value}:`, error.message || error);
-            const fallback = await supabase
-                .from('orders')
-                .select(selectFallback)
-                .eq(column, value)
-                .maybeSingle();
-            data = fallback.data || null;
-        }
-        return data || null;
+        return fetchOrderWithCustomerFallback(supabase, column, value);
     };
 
     let orderData: any = null;
@@ -1178,7 +1286,7 @@ async function fetchOrderDetails(identifier: string, supabase: any, type: 'id' |
 
     // Fetch relations from both possible key formats (text order id + legacy uuid id).
     const relationIds = buildOrderIdCandidates(orderStringID, validUUID);
-    const [tasksRes, negRes, logRes, payRes, inspRes, historyRes] = await Promise.all([
+    const [tasksRes, negRes, logRes, payRes, inspectionRow, historyRes] = await Promise.all([
         relationIds.length
             ? supabase.from('tasks').select('*').in('order_id', relationIds).order('created_at', { ascending: false })
             : Promise.resolve({ data: [] }),
@@ -1191,7 +1299,7 @@ async function fetchOrderDetails(identifier: string, supabase: any, type: 'id' |
         relationIds.length
             ? supabase.from('payments').select('*').in('order_id', relationIds).order('created_at', { ascending: true })
             : Promise.resolve({ data: [] }),
-        supabase.from('inspections').select('*').eq('order_id', orderStringID).order('created_at', { ascending: false }).limit(1),
+        fetchLatestInspectionByOrderId(supabase, orderStringID),
         supabase.from('order_status_events').select('old_status,new_status,change_notes,created_at').eq('order_id', orderStringID).order('created_at', { ascending: true })
     ]);
 
@@ -1199,7 +1307,7 @@ async function fetchOrderDetails(identifier: string, supabase: any, type: 'id' |
     const negotiations = negRes.data || [];
     const logistics = logRes.data || [];
     const payments = payRes.data || [];
-    const inspection = inspRes.data?.[0] || null;
+    const inspection = inspectionRow || null;
     const history = (historyRes?.data || []).map((e: any) => ({
         status: e.old_status || 'created',
         new_status: e.new_status,
@@ -1207,10 +1315,45 @@ async function fetchOrderDetails(identifier: string, supabase: any, type: 'id' |
         created_at: e.created_at
     }));
 
+    // Items derived from bike_snapshot (single object or array)
+    const snapshot = safeJsonParse(orderData.bike_snapshot) || null;
+    const snapshotNode = snapshot && !Array.isArray(snapshot) ? snapshot : null;
+    const snapshotFinancials = snapshotNode?.financials || null;
+
     // Calculate Finances
     const finalPrice = Number(orderData.final_price_eur) || 0;
     const bookingAmount = Number(orderData.booking_amount_eur) || 0;
-    const commission = Number(orderData.commission_eur) || Math.round(finalPrice * 0.1);
+    const explicitCommission = Number(orderData.commission_eur);
+    let commission = Number.isFinite(explicitCommission) && explicitCommission > 0 ? explicitCommission : 0;
+
+    // Legacy order rows may not have commission_eur populated.
+    if (!commission) {
+        const snapshotCommission = Number(
+            snapshotFinancials?.service_fee_eur ?? snapshotFinancials?.margin_total_eur ?? 0
+        );
+        if (Number.isFinite(snapshotCommission) && snapshotCommission > 0) {
+            commission = snapshotCommission;
+        }
+    }
+
+    // Final fallback: recompute service fee using single source of truth.
+    if (!commission) {
+        const bikePriceEur = Number(
+            orderData.listing_price_eur ?? snapshotFinancials?.bike_price_eur ?? 0
+        );
+        const shippingMethod = String(
+            orderData.delivery_method || snapshotFinancials?.shipping_method || 'Cargo'
+        );
+        const cargoInsurance = Number(snapshotFinancials?.cargo_insurance_eur || 0) > 0;
+
+        if (Number.isFinite(bikePriceEur) && bikePriceEur > 0) {
+            const calc = priceCalculator.calculate(bikePriceEur, shippingMethod, cargoInsurance);
+            const recomputedCommission = Number(calc?.details?.service_fee_eur || 0);
+            if (Number.isFinite(recomputedCommission) && recomputedCommission > 0) {
+                commission = recomputedCommission;
+            }
+        }
+    }
 
     const paidAmount = payments
         .filter((p: any) => ['completed', 'pending'].includes(p.status) && p.direction === 'incoming')
@@ -1226,8 +1369,6 @@ async function fetchOrderDetails(identifier: string, supabase: any, type: 'id' |
         ledger: payments
     };
 
-    // Items derived from bike_snapshot (single object or array)
-    const snapshot = safeJsonParse(orderData.bike_snapshot) || null;
     const items = snapshot ? (Array.isArray(snapshot) ? snapshot : [snapshot]) : [];
 
     const customerRaw = Array.isArray(orderData.customers) ? orderData.customers[0] : orderData.customers;
@@ -1251,7 +1392,7 @@ async function fetchOrderDetails(identifier: string, supabase: any, type: 'id' |
             total_amount: orderData.final_price_eur,
             total_amount_rub: orderData.total_price_rub,
             booking_amount: orderData.booking_amount_eur,
-            commission: orderData.commission_eur,
+            commission,
             bike_name: orderData.bike_name,
             bike_snapshot: orderData.bike_snapshot,
             manager_notes: orderData.manager_notes,
@@ -1369,16 +1510,10 @@ router.post('/orders/:orderId/ask', async (req, res) => {
 router.post('/orders/:orderId/delivery', async (req, res) => {
     try {
         const { orderId } = req.params;
-        const method = normalizeLocalDeliveryMethod(req.body?.method);
+        const methodRaw = String(req.body?.method || '').trim();
+        const method = normalizeLocalDeliveryMethod(methodRaw);
+        const cargoInsurance = hasCargoInsurance(methodRaw);
         if (!method) return res.status(400).json({ error: 'Method required' });
-
-        const shippingRates: any = {
-            Cargo: 170,
-            CargoProtected: 170,
-            EMS: 220,
-            Premium: 650
-        };
-        const newShippingCost = Number(shippingRates[method] ?? 170);
 
         let orderCodeForNotify = orderId;
         let newTotalEur = 0;
@@ -1402,26 +1537,27 @@ router.post('/orders/:orderId/delivery', async (req, res) => {
                 || (Number(order.final_price_eur || 0) * 0.85);
             const rate = Number(currentFinancials.exchange_rate || snapshot.exchange_rate || 105) || 105;
 
-            let mAgent = 0;
-            if (bikePriceEur < 1500) mAgent = 250;
-            else if (bikePriceEur < 3500) mAgent = 400;
-            else if (bikePriceEur < 6000) mAgent = 600;
-            else mAgent = bikePriceEur * 0.10;
+            const calc = priceCalculator.calculate(bikePriceEur, method, cargoInsurance);
+            const details = calc?.details || {};
+            const shippingCostEur = Number(details.shipping_cost_eur || 0);
+            const serviceFeeEur = Number(details.service_fee_eur || 0);
+            const insuranceFeesEur = Number(details.insurance_fees_eur || 0);
+            const cargoInsuranceEur = Number(details.cargo_insurance_eur || 0);
+            const paymentCommissionEur = Number(details.payment_commission_eur || 0);
 
-            const fTransfer = (bikePriceEur + newShippingCost) * 0.07;
-            const fWarehouse = 80;
-            const fService = Math.max(0, mAgent - fWarehouse);
-            newTotalEur = Number((bikePriceEur + newShippingCost + fTransfer + fWarehouse + fService).toFixed(2));
+            newTotalEur = Number(details.final_price_eur || 0);
             newTotalRub = Math.ceil(newTotalEur * rate);
 
             const nextFinancials = {
                 ...currentFinancials,
                 bike_price_eur: bikePriceEur,
-                shipping_cost_eur: newShippingCost,
-                payment_commission_eur: Number(fTransfer.toFixed(2)),
-                warehouse_fee_eur: fWarehouse,
-                service_fee_eur: Number(fService.toFixed(2)),
-                margin_total_eur: Number((fWarehouse + fService).toFixed(2)),
+                shipping_cost_eur: shippingCostEur,
+                service_fee_eur: serviceFeeEur,
+                insurance_fees_eur: insuranceFeesEur,
+                cargo_insurance_eur: cargoInsuranceEur,
+                payment_commission_eur: paymentCommissionEur,
+                warehouse_fee_eur: 0,
+                margin_total_eur: serviceFeeEur,
                 exchange_rate: rate,
                 final_price_eur: newTotalEur,
                 total_price_rub: newTotalRub,
@@ -1446,8 +1582,8 @@ router.post('/orders/:orderId/delivery', async (req, res) => {
             const { error } = await supabase.from('orders')
                 .update({
                     delivery_method: method,
-                    shipping_cost_eur: newShippingCost,
-                    payment_commission_eur: Number(fTransfer.toFixed(2)),
+                    shipping_cost_eur: shippingCostEur,
+                    payment_commission_eur: paymentCommissionEur,
                     final_price_eur: newTotalEur,
                     total_price_rub: newTotalRub,
                     bike_snapshot: nextSnapshot
@@ -1470,26 +1606,27 @@ router.post('/orders/:orderId/delivery', async (req, res) => {
                 || (Number(order.final_price_eur || 0) * 0.85);
             const rate = Number(currentFinancials.exchange_rate || snapshot.exchange_rate || 105) || 105;
 
-            let mAgent = 0;
-            if (bikePriceEur < 1500) mAgent = 250;
-            else if (bikePriceEur < 3500) mAgent = 400;
-            else if (bikePriceEur < 6000) mAgent = 600;
-            else mAgent = bikePriceEur * 0.10;
+            const calc = priceCalculator.calculate(bikePriceEur, method, cargoInsurance);
+            const details = calc?.details || {};
+            const shippingCostEur = Number(details.shipping_cost_eur || 0);
+            const serviceFeeEur = Number(details.service_fee_eur || 0);
+            const insuranceFeesEur = Number(details.insurance_fees_eur || 0);
+            const cargoInsuranceEur = Number(details.cargo_insurance_eur || 0);
+            const paymentCommissionEur = Number(details.payment_commission_eur || 0);
 
-            const fTransfer = (bikePriceEur + newShippingCost) * 0.07;
-            const fWarehouse = 80;
-            const fService = Math.max(0, mAgent - fWarehouse);
-            newTotalEur = Number((bikePriceEur + newShippingCost + fTransfer + fWarehouse + fService).toFixed(2));
+            newTotalEur = Number(details.final_price_eur || 0);
             newTotalRub = Math.ceil(newTotalEur * rate);
 
             const nextFinancials = {
                 ...currentFinancials,
                 bike_price_eur: bikePriceEur,
-                shipping_cost_eur: newShippingCost,
-                payment_commission_eur: Number(fTransfer.toFixed(2)),
-                warehouse_fee_eur: fWarehouse,
-                service_fee_eur: Number(fService.toFixed(2)),
-                margin_total_eur: Number((fWarehouse + fService).toFixed(2)),
+                shipping_cost_eur: shippingCostEur,
+                service_fee_eur: serviceFeeEur,
+                insurance_fees_eur: insuranceFeesEur,
+                cargo_insurance_eur: cargoInsuranceEur,
+                payment_commission_eur: paymentCommissionEur,
+                warehouse_fee_eur: 0,
+                margin_total_eur: serviceFeeEur,
                 exchange_rate: rate,
                 final_price_eur: newTotalEur,
                 total_price_rub: newTotalRub,
@@ -1512,8 +1649,23 @@ router.post('/orders/:orderId/delivery', async (req, res) => {
             };
 
             await localDb.query(
-                'UPDATE orders SET final_price_eur = ?, bike_snapshot = ? WHERE id = ?',
-                [newTotalEur, JSON.stringify(nextSnapshot), order.id]
+                `UPDATE orders
+                 SET delivery_method = ?,
+                     shipping_cost_eur = ?,
+                     payment_commission_eur = ?,
+                     final_price_eur = ?,
+                     total_price_rub = ?,
+                     bike_snapshot = ?
+                 WHERE id = ?`,
+                [
+                    method,
+                    shippingCostEur,
+                    paymentCommissionEur,
+                    newTotalEur,
+                    newTotalRub,
+                    JSON.stringify(nextSnapshot),
+                    order.id
+                ]
             );
         }
 

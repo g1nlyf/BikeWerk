@@ -1,18 +1,37 @@
 const fs = require('fs');
 const path = require('path');
 const sqlite3 = require('sqlite3').verbose();
+const { DB_PATH: CANONICAL_DB_PATH } = require('../backend/config/db-path');
 
 class BikesDatabase {
     constructor() {
         this.categories = ['Горный', 'Шоссейный', 'Городской', 'Электро', 'BMX', 'Детский'];
         this.brands = ['trek', 'specialized', 'giant', 'cannondale', 'scott', 'merida', 'cube', 'bianchi'];
         
-        // Use canonical DB path and resolve relative env values against project root
+        // Use canonical DB path and robustly resolve relative env values.
         const envPath = process.env.BOT_DB_PATH || process.env.DB_PATH;
         const projectRoot = path.resolve(__dirname, '..');
-        this.dbPath = envPath
-            ? (path.isAbsolute(envPath) ? envPath : path.resolve(projectRoot, envPath))
-            : path.resolve(__dirname, '../backend/database/eubike.db');
+        const backendRoot = path.resolve(projectRoot, 'backend');
+        const resolveDbPath = (inputPath) => {
+            if (!inputPath) return CANONICAL_DB_PATH;
+            if (path.isAbsolute(inputPath)) return inputPath;
+
+            const normalized = String(inputPath).replace(/^\.\/?/, '').replace(/\\/g, '/');
+            if (normalized === 'database/eubike.db' || normalized.startsWith('database/')) {
+                return path.resolve(backendRoot, normalized);
+            }
+            if (normalized.endsWith('backend/database/eubike.db')) {
+                return path.resolve(backendRoot, 'database/eubike.db');
+            }
+
+            const fromProject = path.resolve(projectRoot, normalized);
+            const fromBackend = path.resolve(backendRoot, normalized);
+            for (const candidate of [fromProject, fromBackend]) {
+                if (fs.existsSync(path.dirname(candidate))) return candidate;
+            }
+            return CANONICAL_DB_PATH;
+        };
+        this.dbPath = resolveDbPath(envPath);
             
         console.log(`[BikesDatabase] Using DB at: ${this.dbPath}`);
         

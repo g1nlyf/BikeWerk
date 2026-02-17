@@ -598,7 +598,10 @@ class UnifiedNormalizer {
         const total = fields.length + 1;
         const filled = fields.filter(value => value !== null && value !== undefined && value !== '').length
             + (Array.isArray(result.media.gallery) && result.media.gallery.length > 0 ? 1 : 0);
-        result.meta.completeness_score = Math.round((filled / total) * 100);
+        const pct = Math.round((filled / total) * 100);
+        result.meta.completeness_score = pct;
+        // Keep completeness as 0..1 fraction for DB/API consistency.
+        result.completeness = pct / 100;
     }
 
     applyDuplicateCheck(result) {

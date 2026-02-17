@@ -13,6 +13,7 @@ import { Search, CheckCircle, Truck, Clock, Bell, Package, Copy, Check, Info, Ch
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion"
 import { cn } from "@/lib/utils"
+import { ORDER_STATUS, getOrderStatusPresentation, normalizeOrderStatus } from '@/lib/orderLifecycle'
 import createGlobe from "cobe"
 
 // Globe Config
@@ -214,8 +215,39 @@ const FLAT_CHECKLIST_ITEMS = [
 ];
 
 function getStatusInfo(s?: string | null) {
-    const k = String(s || "new").toLowerCase();
-    return STATUS_CONFIG[k] || { label: s || 'В обработке', description: 'Статус обновляется...', progress: 1, color: 'bg-gray-500' };
+    const normalized = normalizeOrderStatus(s) || ORDER_STATUS.BOOKED;
+    const presentation = getOrderStatusPresentation(normalized);
+    const legacy = STATUS_CONFIG[String(s || '').toLowerCase()];
+    const byStatus: Record<string, { description: string; progress: number; color: string }> = {
+        [ORDER_STATUS.BOOKED]: { description: 'Booking is created. Manager will start processing shortly.', progress: 1, color: 'bg-blue-500' },
+        [ORDER_STATUS.RESERVE_PAYMENT_PENDING]: { description: 'Optional reserve payment is available.', progress: 1, color: 'bg-yellow-500' },
+        [ORDER_STATUS.RESERVE_PAID]: { description: 'Reserve is paid and bike is locked for you.', progress: 2, color: 'bg-indigo-500' },
+        [ORDER_STATUS.SELLER_CHECK_IN_PROGRESS]: { description: 'Manager is checking bike details with seller.', progress: 2, color: 'bg-purple-500' },
+        [ORDER_STATUS.CHECK_READY]: { description: 'Check is ready for your decision.', progress: 3, color: 'bg-cyan-500' },
+        [ORDER_STATUS.AWAITING_CLIENT_DECISION]: { description: 'Waiting for your decision after check.', progress: 3, color: 'bg-cyan-500' },
+        [ORDER_STATUS.FULL_PAYMENT_PENDING]: { description: 'Waiting for full payment.', progress: 3, color: 'bg-yellow-500' },
+        [ORDER_STATUS.FULL_PAYMENT_RECEIVED]: { description: 'Payment received, buyout starts.', progress: 3, color: 'bg-green-500' },
+        [ORDER_STATUS.BIKE_BUYOUT_COMPLETED]: { description: 'Bike buyout completed.', progress: 4, color: 'bg-blue-500' },
+        [ORDER_STATUS.SELLER_SHIPPED]: { description: 'Seller shipped the bike.', progress: 4, color: 'bg-blue-500' },
+        [ORDER_STATUS.EXPERT_RECEIVED]: { description: 'Bike received by expert.', progress: 4, color: 'bg-blue-500' },
+        [ORDER_STATUS.EXPERT_INSPECTION_IN_PROGRESS]: { description: 'Expert inspection in progress.', progress: 4, color: 'bg-blue-500' },
+        [ORDER_STATUS.EXPERT_REPORT_READY]: { description: 'Expert report is ready.', progress: 4, color: 'bg-blue-500' },
+        [ORDER_STATUS.AWAITING_CLIENT_DECISION_POST_INSPECTION]: { description: 'Waiting for your decision after report.', progress: 4, color: 'bg-cyan-500' },
+        [ORDER_STATUS.WAREHOUSE_RECEIVED]: { description: 'Bike received at warehouse.', progress: 4, color: 'bg-indigo-500' },
+        [ORDER_STATUS.WAREHOUSE_REPACKED]: { description: 'Bike repacked at warehouse.', progress: 4, color: 'bg-indigo-500' },
+        [ORDER_STATUS.SHIPPED_TO_RUSSIA]: { description: 'Bike shipped to Russia.', progress: 4, color: 'bg-indigo-500' },
+        [ORDER_STATUS.DELIVERED]: { description: 'Order delivered.', progress: 5, color: 'bg-green-500' },
+        [ORDER_STATUS.CLOSED]: { description: 'Order fully closed.', progress: 5, color: 'bg-green-500' },
+        [ORDER_STATUS.CANCELLED]: { description: 'Order cancelled.', progress: 0, color: 'bg-red-500' },
+    };
+    const config = byStatus[normalized] || byStatus[ORDER_STATUS.BOOKED];
+    return {
+        code: normalized,
+        label: presentation.label || legacy?.label || String(s || ORDER_STATUS.BOOKED),
+        description: config.description || legacy?.description || presentation.description,
+        progress: Number.isFinite(Number(legacy?.progress)) ? Number(legacy?.progress) : config.progress,
+        color: legacy?.color || config.color,
+    };
 }
 
 export default function OrderTrackingPage() {
@@ -458,12 +490,13 @@ export default function OrderTrackingPage() {
 
   const currentStatus = details?.order?.status
   const statusInfo = getStatusInfo(currentStatus);
+  const normalizedCurrentStatus = String(statusInfo.code || '');
   const progress = statusInfo.progress;
   const financials = (details as any)?.order?.bike_snapshot?.financials || (details as any)?.order?.bike_snapshot?.booking_meta?.financials || {};
   const bookingMeta = (details as any)?.order?.bike_snapshot?.booking_meta || {};
   const totalPriceRub = (details as any)?.order?.total_price_rub ?? financials.total_price_rub ?? null;
   const bookingAmountRub = (details as any)?.order?.booking_amount_rub ?? financials.booking_amount_rub ?? (totalPriceRub ? Math.ceil(totalPriceRub * 0.02) : null);
-  const reservationPaid = currentStatus === 'deposit_paid' || Boolean((details as any)?.order?.reservation_paid_at || bookingMeta?.reservation_paid_at);
+  const reservationPaid = normalizedCurrentStatus === ORDER_STATUS.RESERVE_PAID || Boolean((details as any)?.order?.reservation_paid_at || bookingMeta?.reservation_paid_at);
   const queueLabel = details?.order?.queue_hint || bookingMeta.queue_hint || null;
   const managerName =
       details?.order?.assigned_manager_name ||
@@ -473,8 +506,25 @@ export default function OrderTrackingPage() {
       "Ваш менеджер";
   const routeFrom = details?.order?.route_from || bookingMeta?.route_from || "Марбург";
   const routeTo = details?.order?.route_to || details?.order?.customer?.city || bookingMeta?.booking_form?.city || "Город доставки";
-  const showQueue = ['awaiting_deposit', 'deposit_paid', 'under_inspection', 'quality_confirmed', 'quality_degraded', 'confirmed', 'processing', 'shipped', 'delivered']
-      .includes(String(currentStatus || '').toLowerCase());
+  const showQueue = [
+      ORDER_STATUS.RESERVE_PAYMENT_PENDING,
+      ORDER_STATUS.RESERVE_PAID,
+      ORDER_STATUS.SELLER_CHECK_IN_PROGRESS,
+      ORDER_STATUS.CHECK_READY,
+      ORDER_STATUS.AWAITING_CLIENT_DECISION,
+      ORDER_STATUS.FULL_PAYMENT_PENDING,
+      ORDER_STATUS.FULL_PAYMENT_RECEIVED,
+      ORDER_STATUS.BIKE_BUYOUT_COMPLETED,
+      ORDER_STATUS.SELLER_SHIPPED,
+      ORDER_STATUS.EXPERT_RECEIVED,
+      ORDER_STATUS.EXPERT_INSPECTION_IN_PROGRESS,
+      ORDER_STATUS.EXPERT_REPORT_READY,
+      ORDER_STATUS.AWAITING_CLIENT_DECISION_POST_INSPECTION,
+      ORDER_STATUS.WAREHOUSE_RECEIVED,
+      ORDER_STATUS.WAREHOUSE_REPACKED,
+      ORDER_STATUS.SHIPPED_TO_RUSSIA,
+      ORDER_STATUS.DELIVERED
+  ].includes(normalizedCurrentStatus);
   const addonsSelection = bookingMeta.addons_selection || bookingMeta.booking_form?.addons_selection || {};
   const addonsLines = Array.isArray(bookingMeta.addons)
         ? bookingMeta.addons.map((a: any) => ({ ...a, title: a.title || getAddonTitle(a.id) }))
@@ -974,7 +1024,7 @@ export default function OrderTrackingPage() {
                                     <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
                                         <div className="text-sm font-bold text-zinc-900">Пакет документов по заказу {details?.order?.order_number}</div>
                                         <div className="text-xs text-zinc-500 mt-1">
-                                            {['processing', 'shipped', 'delivered', 'closed'].includes(String(currentStatus || '').toLowerCase())
+                                            {[ORDER_STATUS.WAREHOUSE_RECEIVED, ORDER_STATUS.WAREHOUSE_REPACKED, ORDER_STATUS.SHIPPED_TO_RUSSIA, ORDER_STATUS.DELIVERED, ORDER_STATUS.CLOSED].includes(normalizedCurrentStatus)
                                                 ? 'Документы формируются менеджером и будут доступны по запросу.'
                                                 : 'Документы будут подготовлены после подтверждения и оплаты заказа.'}
                                         </div>
@@ -1152,7 +1202,10 @@ export default function OrderTrackingPage() {
                 {reserveStep === 'success' ? (
                     <div className="space-y-4 pt-2">
                         <div className="rounded-xl bg-emerald-50 text-emerald-700 p-4 text-sm font-medium">
-                            Резерв успешно оплачен. Байк закреплен за вами в очереди.
+                            Спасибо за оплату. Резерв успешно зачислен, байк закреплен за вами в очереди.
+                        </div>
+                        <div className="rounded-xl bg-zinc-50 text-zinc-600 p-3 text-xs">
+                            Текущий режим оплаты: placeholder (тестовый шлюз). Позже заменим на реальный платежный API.
                         </div>
                         <Button className="w-full h-12 rounded-[8px] bg-black text-white" onClick={() => setReserveDialogOpen(false)}>
                             Закрыть
@@ -1234,3 +1287,6 @@ export default function OrderTrackingPage() {
     </div>
   )
 }
+
+
+

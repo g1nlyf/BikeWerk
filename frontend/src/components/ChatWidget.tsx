@@ -156,7 +156,7 @@ const ChatWidget: React.FC = () => {
     if (!mounted) return null;
 
     return createPortal(
-        <div 
+        <div
             id="chat-widget-root"
             ref={(el) => { rootElRef.current = el; }}
             className="fixed bottom-4 right-4 md:bottom-8 md:right-8 z-[999999] flex flex-col items-end font-sans"
@@ -178,7 +178,7 @@ const ChatWidget: React.FC = () => {
                                     <div className="relative">
                                         <div className="w-12 h-12 rounded-full bg-gradient-to-br from-emerald-500 to-blue-600 p-[2px]">
                                             <div className="w-full h-full rounded-full bg-background/50 backdrop-blur-sm flex items-center justify-center overflow-hidden">
-                                                 <img src="/minilogo1.png" alt="AI" className="w-full h-full object-cover opacity-90" onError={(e) => e.currentTarget.src = 'https://ui-avatars.com/api/?name=EU+Bike&background=random'} />
+                                                <img src="/minilogo1.png" alt="AI" className="w-full h-full object-cover opacity-90" onError={(e) => e.currentTarget.src = 'https://ui-avatars.com/api/?name=Bike+Werk&background=random'} />
                                             </div>
                                         </div>
                                         <div className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-full border-2 border-background shadow-[0_0_10px_rgba(16,185,129,0.55)] animate-pulse"></div>
@@ -191,8 +191,8 @@ const ChatWidget: React.FC = () => {
                                         </div>
                                     </div>
                                 </div>
-                                <button 
-                                    onClick={() => setIsOpen(false)} 
+                                <button
+                                    onClick={() => setIsOpen(false)}
                                     className="p-2 rounded-full hover:bg-muted/50 transition-colors text-muted-foreground hover:text-foreground"
                                 >
                                     <X className="w-5 h-5" />
@@ -203,7 +203,7 @@ const ChatWidget: React.FC = () => {
                         {/* Messages Area */}
                         <div className="flex-1 overflow-y-auto p-4 space-y-6 bg-transparent">
                             {messages.length === 0 && (
-                                <motion.div 
+                                <motion.div
                                     initial={{ opacity: 0, y: 10 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     transition={{ delay: 0.2 }}
@@ -211,14 +211,14 @@ const ChatWidget: React.FC = () => {
                                 >
                                     <div className="inline-block p-4 rounded-2xl bg-muted/40 border border-border/60 backdrop-blur-md">
                                         <p className="text-sm text-foreground/90 leading-relaxed">
-                                            Привет! Я ваш персональный вело-эксперт. <br/>
+                                            Привет! Я ваш персональный вело-эксперт. <br />
                                             Спросите меня о чем угодно: от нюансов навески <span className="text-emerald-400">Shimano GRX</span> до сроков доставки в ваш регион.
                                         </p>
                                     </div>
                                     <p className="text-xs text-muted-foreground uppercase tracking-widest font-medium">Я знаю всё о байках в нашем каталоге</p>
                                 </motion.div>
                             )}
-                            
+
                             {messages.map((msg) => (
                                 <motion.div
                                     initial={{ opacity: 0, y: 10, scale: 0.95 }}
@@ -232,11 +232,10 @@ const ChatWidget: React.FC = () => {
                                         </div>
                                     )}
                                     <div
-                                        className={`max-w-[80%] p-3.5 rounded-2xl text-[14px] leading-relaxed shadow-sm backdrop-blur-sm ${
-                                            msg.sender === 'user'
+                                        className={`max-w-[80%] p-3.5 rounded-2xl text-[14px] leading-relaxed shadow-sm backdrop-blur-sm ${msg.sender === 'user'
                                                 ? 'bg-primary text-primary-foreground rounded-tr-none shadow-[0_6px_20px_rgba(0,0,0,0.18)]'
                                                 : 'bg-muted/50 text-foreground border border-border/60 rounded-tl-none'
-                                        }`}
+                                            }`}
                                     >
                                         {msg.text}
                                     </div>
@@ -250,7 +249,7 @@ const ChatWidget: React.FC = () => {
 
                             {isTyping && (
                                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start items-center gap-2">
-                                     <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-500/10 to-blue-500/10 border border-border/60 flex items-center justify-center shrink-0">
+                                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-500/10 to-blue-500/10 border border-border/60 flex items-center justify-center shrink-0">
                                         <img src="/minilogo1.png" className="w-5 h-5 opacity-80" alt="Bot" />
                                     </div>
                                     <div className="bg-muted/40 border border-border/60 px-4 py-3 rounded-2xl rounded-tl-none flex items-center gap-2">
@@ -277,19 +276,18 @@ const ChatWidget: React.FC = () => {
                                 <button
                                     onClick={handleSendMessage}
                                     disabled={!inputValue.trim() || isTyping}
-                                    className={`p-2 rounded-full transition-all duration-300 ${
-                                        inputValue.trim() 
-                                            ? 'bg-gradient-to-r from-emerald-500 to-blue-600 text-white shadow-[0_0_18px_rgba(16,185,129,0.25)] hover:shadow-[0_0_24px_rgba(16,185,129,0.35)] transform hover:scale-105' 
+                                    className={`p-2 rounded-full transition-all duration-300 ${inputValue.trim()
+                                            ? 'bg-gradient-to-r from-emerald-500 to-blue-600 text-white shadow-[0_0_18px_rgba(16,185,129,0.25)] hover:shadow-[0_0_24px_rgba(16,185,129,0.35)] transform hover:scale-105'
                                             : 'bg-muted/40 text-muted-foreground cursor-not-allowed'
-                                    }`}
+                                        }`}
                                 >
                                     <Send className="w-4 h-4" />
                                 </button>
                             </div>
                             <div className="text-center mt-3">
-                                <a 
-                                    href="https://t.me/EUBikeBot" 
-                                    target="_blank" 
+                                <a
+                                    href="https://t.me/EUBikeBot"
+                                    target="_blank"
                                     rel="noreferrer"
                                     className="text-[10px] text-emerald-600/90 hover:text-emerald-600 transition-colors flex items-center justify-center gap-1.5 group"
                                 >
@@ -314,7 +312,7 @@ const ChatWidget: React.FC = () => {
             >
                 <div className="absolute inset-0 bg-emerald-500 rounded-full blur-lg opacity-25 group-hover:opacity-40 transition-opacity duration-500"></div>
                 <div className="relative bg-background/80 border border-border/60 text-foreground p-4 rounded-full shadow-2xl flex items-center justify-center overflow-hidden backdrop-blur-xl">
-                     <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 to-blue-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                    <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 to-blue-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
                     {isOpen ? <X className="w-6 h-6 relative z-10" /> : <MessageCircle className="w-6 h-6 relative z-10" />}
                 </div>
                 {!isOpen && (
@@ -328,16 +326,16 @@ const ChatWidget: React.FC = () => {
 
 // Helper Icon
 const ArrowRight = ({ className }: { className?: string }) => (
-    <svg 
-        xmlns="http://www.w3.org/2000/svg" 
-        width="24" 
-        height="24" 
-        viewBox="0 0 24 24" 
-        fill="none" 
-        stroke="currentColor" 
-        strokeWidth="2" 
-        strokeLinecap="round" 
-        strokeLinejoin="round" 
+    <svg
+        xmlns="http://www.w3.org/2000/svg"
+        width="24"
+        height="24"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
         className={className}
     >
         <path d="M5 12h14" />

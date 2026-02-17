@@ -8,5 +8,5 @@ export { default as CustomersPage } from './customers/CustomersPage'
 export { default as CustomerDetailPage } from './customers/CustomerDetailPage'
 export { default as LeadsPage } from './leads/LeadsPage'
 export { default as TasksPage } from './tasks/TasksPage'
-
+export { default as AiRopPage } from './AiRopPage'
 

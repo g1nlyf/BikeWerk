@@ -1,5 +1,6 @@
 import * as React from 'react'
 import { resolveImageUrl } from '@/api'
+import { CRM_KANBAN_COLUMNS, getOrderStatusPresentation, normalizeOrderStatus } from '@/lib/orderLifecycle'
 
 type OrderSummary = {
   order_id: string
@@ -37,17 +38,6 @@ type Props = {
   onOrderClick: (orderId: string) => void
   onStatusChange: (orderId: string, newStatus: string) => Promise<void>
 }
-
-const KANBAN_COLUMNS: { status: string; label: string; color: string }[] = [
-  { status: 'pending_manager', label: 'Ждут менеджера', color: 'border-t-[#18181b]' },
-  { status: 'under_inspection', label: 'Проверка', color: 'border-t-[#18181b]' },
-  { status: 'awaiting_deposit', label: 'Ожидают резерв', color: 'border-t-[#18181b]' },
-  { status: 'deposit_paid', label: 'Резерв оплачен', color: 'border-t-[#18181b]' },
-  { status: 'awaiting_payment', label: 'Ожидают оплату', color: 'border-t-[#18181b]' },
-  { status: 'ready_for_shipment', label: 'Готовы к отправке', color: 'border-t-[#18181b]' },
-  { status: 'in_transit', label: 'В пути', color: 'border-t-[#18181b]' },
-  { status: 'delivered', label: 'Доставлено', color: 'border-t-[#18181b]' }
-]
 
 function extractOrderImage(order: OrderSummary): string | null {
   const snapshot = (() => {
@@ -87,9 +77,11 @@ export default function KanbanBoard({ orders, onOrderClick, onStatusChange }: Pr
   const [dragOverColumn, setDragOverColumn] = React.useState<string | null>(null)
 
   const columns: Column[] = React.useMemo(() => {
-    return KANBAN_COLUMNS.map((column) => ({
-      ...column,
-      orders: orders.filter((order) => order.status === column.status)
+    return CRM_KANBAN_COLUMNS.map((column) => ({
+      status: column.status,
+      label: getOrderStatusPresentation(column.status).shortLabel,
+      color: column.color,
+      orders: orders.filter((order) => normalizeOrderStatus(order.status) === column.status)
     }))
   }, [orders])
 
@@ -118,7 +110,8 @@ export default function KanbanBoard({ orders, onOrderClick, onStatusChange }: Pr
     e.preventDefault()
     setDragOverColumn(null)
 
-    if (!draggedOrder || draggedOrder.status === status) return
+    const currentStatus = normalizeOrderStatus(draggedOrder?.status)
+    if (!draggedOrder || currentStatus === status) return
 
     try {
       await onStatusChange(draggedOrder.order_id, status)

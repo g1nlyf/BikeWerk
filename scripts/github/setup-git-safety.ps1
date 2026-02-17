@@ -26,7 +26,10 @@ else
 fi
 '@
 
-Set-Content -Path $prePushPath -Value $hookContent -Encoding UTF8
+# Git on Windows is sensitive to BOM/CRLF in shebang scripts. Write LF + UTF-8 no BOM.
+$hookContent = $hookContent -replace "`r`n", "`n"
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllText($prePushPath, $hookContent, $utf8NoBom)
 
 git -C $repoRoot config core.hooksPath ".githooks"
 

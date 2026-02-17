@@ -2,18 +2,20 @@ const { NodeSSH } = require('node-ssh');
 const path = require('path');
 const fs = require('fs');
 const { glob } = require('glob');
-const chalk = require('chalk');
-const ora = require('ora');
+const chalkImport = require('chalk');
+const oraImport = require('ora');
+const chalk = chalkImport.default || chalkImport;
+const ora = oraImport.default || oraImport;
 const { execSync } = require('child_process');
 
 // Configuration
 const config = {
     host: '45.9.41.232',
     username: 'root',
-    password: '&9&%4q6631vI',
     remoteBase: '/root/eubike',
     localBase: path.resolve(__dirname, '..')
 };
+const deployPasswordPath = path.join(config.localBase, 'deploy_password.txt');
 
 const ssh = new NodeSSH();
 
@@ -36,6 +38,22 @@ function runLocal(command, cwd) {
         console.error(chalk.red(`Command failed: ${command}`));
         return false;
     }
+}
+
+function getDeployPassword() {
+    const fromEnv = process.env.EUBIKE_DEPLOY_PASSWORD?.trim();
+    if (fromEnv) return fromEnv;
+
+    if (!fs.existsSync(deployPasswordPath)) {
+        throw new Error('Missing deploy password. Set EUBIKE_DEPLOY_PASSWORD or create deploy_password.txt');
+    }
+
+    const fromFile = fs.readFileSync(deployPasswordPath, 'utf8').trim();
+    if (!fromFile || fromFile.includes('PASTE_YOUR_ROOT_PASSWORD_HERE')) {
+        throw new Error('deploy_password.txt is empty or placeholder.');
+    }
+
+    return fromFile;
 }
 
 // Helper: Parse .env contents into a map
@@ -214,10 +232,11 @@ async function main() {
     // 2. Connect SSH
     const spinner = ora('Connecting to server...').start();
     try {
+        const deployPassword = getDeployPassword();
         await ssh.connect({
             host: config.host,
             username: config.username,
-            password: config.password,
+            password: deployPassword,
             tryKeyboard: true
         });
         spinner.succeed('Connected to server');
@@ -333,6 +352,18 @@ async function main() {
         iSpinner.succeed('Manager Bot dependencies installed');
     }
 
+    // Hot Deals Bot
+    const hotDealsBotSync = await syncDirectory(
+        path.join(config.localBase, 'hot-deals-bot'),
+        `${config.remoteBase}/hot-deals-bot`,
+        ['node_modules/**', '.env', '.git/**']
+    );
+    if (hotDealsBotSync.uploadedFiles.includes('package.json')) {
+        const iSpinner = ora('Installing Hot Deals Bot dependencies...').start();
+        await ssh.execCommand('npm install', { cwd: `${config.remoteBase}/hot-deals-bot` });
+        iSpinner.succeed('Hot Deals Bot dependencies installed');
+    }
+
     // Scripts (for maintenance)
     await syncDirectory(
         path.join(config.localBase, 'scripts'),
@@ -346,6 +377,13 @@ async function main() {
         `${config.remoteBase}/frontend/dist`,
         []
     );
+
+    // Root runtime config needed by PM2 on server
+    const ecosystemLocal = path.join(config.localBase, 'ecosystem.config.js');
+    const ecosystemRemote = `${config.remoteBase}/ecosystem.config.js`;
+    const ecosystemSpinner = ora('Syncing PM2 ecosystem config...').start();
+    await ssh.putFile(ecosystemLocal, ecosystemRemote);
+    ecosystemSpinner.succeed('PM2 ecosystem config synced');
 
     // Copy frontend to /var/www/html (for Nginx)
     console.log(chalk.cyan('🔄 Updating Nginx static files...'));
@@ -375,16 +413,16 @@ async function main() {
     // 5. Restart Services
     const restartSpinner = ora('Restarting services...').start();
     try {
-        // Global Restart for all PM2 processes
-        const pm2Result = await ssh.execCommand('pm2 restart all && pm2 save', { cwd: config.remoteBase });
+        // Reload process definitions and restart declared services (includes new bots)
+        const pm2Result = await ssh.execCommand('pm2 startOrReload ecosystem.config.js --update-env && pm2 save', { cwd: config.remoteBase });
         
         if (pm2Result.code !== 0) {
-            // If restart all fails, try individual starts as fallback
-            console.log(chalk.yellow('pm2 restart all failed, attempting individual starts...'));
-            await ssh.execCommand('pm2 restart eubike-backend || pm2 start API/server.js --name "eubike-backend"', { cwd: `${config.remoteBase}/backend` });
-            await ssh.execCommand('pm2 restart eubike-bot || pm2 start bot.js --name "eubike-bot"', { cwd: `${config.remoteBase}/telegram-bot` });
-            await ssh.execCommand('pm2 restart eubike-client-bot || pm2 start src/index.js --name "eubike-client-bot"', { cwd: `${config.remoteBase}/client-telegram-bot` });
-            await ssh.execCommand('pm2 restart eubike-manager-bot || pm2 start index.js --name "eubike-manager-bot"', { cwd: `${config.remoteBase}/manager-bot` });
+            // Fallback to direct starts for critical services
+            console.log(chalk.yellow('pm2 startOrReload failed, attempting individual starts...'));
+            await ssh.execCommand('pm2 restart eubike-backend || pm2 start ./backend/server.js --name "eubike-backend"', { cwd: `${config.remoteBase}` });
+            await ssh.execCommand('pm2 restart telegram-bot || pm2 start ./telegram-bot/bot.js --name "telegram-bot"', { cwd: `${config.remoteBase}` });
+            await ssh.execCommand('pm2 restart manager-bot || pm2 start ./manager-bot/index.js --name "manager-bot"', { cwd: `${config.remoteBase}` });
+            await ssh.execCommand('pm2 restart hot-deals-bot || pm2 start ./hot-deals-bot/index.js --name "hot-deals-bot"', { cwd: `${config.remoteBase}` });
         }
 
         // Reload Nginx

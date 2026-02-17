@@ -68,7 +68,7 @@ export default function CustomersPage() {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-[#e4e4e7] bg-white p-4 shadow-sm flex items-center justify-between">
+      <div className="rounded-xl border border-[#e4e4e7] bg-white p-4 shadow-sm flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="text-xs uppercase tracking-wide text-slate-400">Клиенты</div>
           <div className="text-lg font-semibold text-[#18181b]">База клиентов</div>
@@ -77,12 +77,13 @@ export default function CustomersPage() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Поиск по имени или контакту"
-          className="h-12 w-64 rounded-xl border border-[#e4e4e7] bg-[#f4f4f5] px-3 text-sm"
+          className="h-12 w-full sm:w-64 rounded-xl border border-[#e4e4e7] bg-[#f4f4f5] px-3 text-sm"
         />
       </div>
 
       <div className="rounded-xl border border-[#e4e4e7] bg-white shadow-sm overflow-hidden">
-        <table className="min-w-full text-sm">
+        <div className="overflow-x-auto">
+          <table className="min-w-[700px] w-full text-sm">
           <thead className="bg-[#f4f4f5] text-slate-500 text-xs uppercase tracking-wide">
             <tr>
               <th className="px-4 py-3 text-left">Имя</th>
@@ -110,7 +111,8 @@ export default function CustomersPage() {
               </tr>
             )}
           </tbody>
-        </table>
+          </table>
+        </div>
       </div>
     </div>
   )

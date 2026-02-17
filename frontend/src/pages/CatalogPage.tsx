@@ -359,6 +359,27 @@ export default function CatalogPage() {
       next.set("hot", "true");
       next.set("page", "1");
       setSearchParams(next, { replace: true });
+      return;
+    }
+
+    const hashCategory = hash.replace(/^#/, "").trim().toLowerCase();
+    const categoryAliases: Record<string, string> = {
+      mtb: "mtb",
+      emtb: "emtb",
+      road: "road",
+      gravel: "gravel",
+      kids: "kids",
+    };
+    const normalizedCategory = categoryAliases[hashCategory];
+    if (!normalizedCategory) return;
+    if (!next.get("category")) {
+      next.set("category", normalizedCategory);
+      next.delete("sub_category");
+      if (normalizedCategory === "mtb") {
+        for (const sub of ["xc", "trail", "enduro", "dh"]) next.append("sub_category", sub);
+      }
+      next.set("page", "1");
+      setSearchParams(next, { replace: true });
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -373,6 +394,19 @@ export default function CatalogPage() {
   const shippingOptions = searchParams.getAll("shipping_option");
   const status = searchParams.get("status") || "all";
   const hot = searchParams.get("hot") === "true";
+
+  const hashCategoryPreset = React.useMemo(() => {
+    if (typeof window === "undefined") return null;
+    const value = String(window.location.hash || "").replace(/^#/, "").trim().toLowerCase();
+    if (["mtb", "emtb", "road", "gravel", "kids"].includes(value)) return value;
+    return null;
+  }, [searchParams]);
+
+  const effectiveCategory = category !== "all" ? category : (hashCategoryPreset || "all");
+  const effectiveSubs =
+    subs.length > 0
+      ? subs
+      : (category === "all" && hashCategoryPreset === "mtb" ? ["xc", "trail", "enduro", "dh"] : subs);
 
   const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10) || 1);
 
@@ -521,12 +555,14 @@ export default function CatalogPage() {
 
   const setParams = React.useCallback(
     (mutator: (next: URLSearchParams) => void) => {
-      const next = new URLSearchParams(searchParams);
+      // Always mutate the latest URL params to avoid stale-closure overwrites
+      // when debounced effects run right after hash/category deep links.
+      const next = new URLSearchParams(window.location.search);
       mutator(next);
       if (!next.get("page")) next.set("page", "1");
       setSearchParams(next, { replace: true });
     },
-    [searchParams, setSearchParams]
+    [setSearchParams]
   );
 
   const setMulti = React.useCallback(
@@ -543,6 +579,17 @@ export default function CatalogPage() {
   const clearAll = React.useCallback(() => {
     setSearchParams(new URLSearchParams(), { replace: true });
   }, [setSearchParams]);
+
+  const setListingStatus = React.useCallback(
+    (nextStatus: "all" | "new" | "used") => {
+      setParams((next) => {
+        if (nextStatus === "all") next.delete("status");
+        else next.set("status", nextStatus);
+        next.set("page", "1");
+      });
+    },
+    [setParams]
+  );
 
   React.useEffect(() => {
     setParams((next) => {
@@ -569,12 +616,12 @@ export default function CatalogPage() {
 
   const fetchFacetsKey = React.useMemo(() => {
     const k = new URLSearchParams();
-    if (category !== "all") k.set("category", category);
-    for (const s of subs) k.append("sub_category", s);
+    if (effectiveCategory !== "all") k.set("category", effectiveCategory);
+    for (const s of effectiveSubs) k.append("sub_category", s);
     if (status !== "all") k.set("status", status);
     if (hot) k.set("hot", "true");
     return k.toString();
-  }, [category, subs.join("|"), status, hot]);
+  }, [effectiveCategory, effectiveSubs.join("|"), status, hot]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -614,8 +661,8 @@ export default function CatalogPage() {
   const bikesQueryKey = React.useMemo(() => {
     const p = new URLSearchParams();
 
-    if (category !== "all") p.set("category", category);
-    subs.forEach((s) => p.append("sub_category", s));
+    if (effectiveCategory !== "all") p.set("category", effectiveCategory);
+    effectiveSubs.forEach((s) => p.append("sub_category", s));
 
     brands.forEach((b) => p.append("brand", b));
     sizes.forEach((s) => p.append("size", s));
@@ -647,8 +694,8 @@ export default function CatalogPage() {
 
     return p.toString();
   }, [
-    category,
-    subs.join("|"),
+    effectiveCategory,
+    effectiveSubs.join("|"),
     brands.join("|"),
     sizes.join("|"),
     wheels.join("|"),
@@ -746,11 +793,11 @@ export default function CatalogPage() {
     const serverSubs = facets.sub_categories || [];
     if (serverSubs.length > 0) return serverSubs;
 
-    const node = CATEGORY_TREE[0]?.children?.find((c) => c.value === category);
+    const node = CATEGORY_TREE[0]?.children?.find((c) => c.value === effectiveCategory);
     return (node?.children || [])
       .map((x) => x.value || "")
       .filter(Boolean);
-  }, [facets.sub_categories, category]);
+  }, [facets.sub_categories, effectiveCategory]);
 
   const facetOptions = React.useMemo(() => {
     const map = (kind: string, values: string[]): MultiSelectOption[] =>
@@ -794,11 +841,12 @@ export default function CatalogPage() {
               <AccordionContent className="pb-2">
                 <div className="space-y-1">
                   {(group.children || []).map((cat) => {
-                    const isSelected = category === (cat.value || "");
+                    const isSelected = effectiveCategory === (cat.value || "");
                     return (
                       <div key={cat.key} className="space-y-1">
                         <button
                           type="button"
+                          data-testid={cat.value ? `sidebar-group-${cat.value}` : undefined}
                           className={cn(
                             "flex w-full items-center justify-between rounded-[12px] px-3 py-2 text-left text-sm transition-colors",
                             isSelected
@@ -825,10 +873,17 @@ export default function CatalogPage() {
                         {isSelected && (cat.children || []).length > 0 && (
                           <div className="ml-2 space-y-1 border-l border-zinc-200 pl-3">
                             {(cat.children || []).map((sub) => {
-                              const active = subs.includes(sub.value || "");
+                              const active = effectiveSubs.includes(sub.value || "");
                               return (
                                 <label
                                   key={sub.key}
+                                  data-testid={
+                                    cat.value && sub.value
+                                      ? `sub-checkbox-${cat.value}-${sub.value}`
+                                      : undefined
+                                  }
+                                  data-state={active ? "checked" : "unchecked"}
+                                  aria-checked={active ? "true" : "false"}
                                   className={cn(
                                     "flex cursor-pointer items-center gap-2 rounded-[10px] px-2 py-1.5 text-sm",
                                     active ? "bg-[#f4f4f5]" : "hover:bg-[#f4f4f5]"
@@ -837,7 +892,7 @@ export default function CatalogPage() {
                                   <Checkbox
                                     checked={active}
                                     onCheckedChange={(v) => {
-                                      const next = new Set(subs);
+                                      const next = new Set(effectiveSubs);
                                       if (v) next.add(sub.value || "");
                                       else next.delete(sub.value || "");
                                       setMulti(
@@ -864,7 +919,10 @@ export default function CatalogPage() {
         <Separator className="my-3" />
 
         <div className="space-y-3">
-          <label className="flex cursor-pointer items-center justify-between rounded-[12px] bg-[#f4f4f5] px-3 py-2">
+          <label
+            data-testid="sidebar-hot-toggle"
+            className="flex cursor-pointer items-center justify-between rounded-[12px] bg-[#f4f4f5] px-3 py-2"
+          >
             <span className="text-sm font-medium text-[#18181b]">Горячие предложения</span>
             <Checkbox
               checked={hot}
@@ -878,7 +936,7 @@ export default function CatalogPage() {
             />
           </label>
 
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-3 gap-2">
             <Button
               type="button"
               className={cn(
@@ -887,15 +945,23 @@ export default function CatalogPage() {
                   ? "bg-[#18181b] text-white"
                   : "bg-white text-[#18181b] border border-zinc-200 hover:bg-[#f4f4f5]"
               )}
-              onClick={() =>
-                setParams((next) => {
-                  next.delete("status");
-                  next.set("page", "1");
-                })
-              }
+              onClick={() => setListingStatus("all")}
               variant={status === "all" ? "default" : "outline"}
             >
               Все
+            </Button>
+            <Button
+              type="button"
+              className={cn(
+                "h-11 rounded-[12px] px-4 text-sm",
+                status === "new"
+                  ? "bg-[#18181b] text-white"
+                  : "bg-white text-[#18181b] border border-zinc-200 hover:bg-[#f4f4f5]"
+              )}
+              onClick={() => setListingStatus("new")}
+              variant={status === "new" ? "default" : "outline"}
+            >
+              Новые
             </Button>
             <Button
               type="button"
@@ -905,12 +971,7 @@ export default function CatalogPage() {
                   ? "bg-[#18181b] text-white"
                   : "bg-white text-[#18181b] border border-zinc-200 hover:bg-[#f4f4f5]"
               )}
-              onClick={() =>
-                setParams((next) => {
-                  next.set("status", "used");
-                  next.set("page", "1");
-                })
-              }
+              onClick={() => setListingStatus("used")}
               variant={status === "used" ? "default" : "outline"}
             >
               Б/У
@@ -1056,7 +1117,7 @@ export default function CatalogPage() {
                   />
 
                   <MultiSelectDropdown
-                    label="Размер"
+                    label="Размеры"
                     options={facetOptions.sizes}
                     selected={sizes}
                     onChange={(next) => setMulti("size", next)}
@@ -1159,7 +1220,7 @@ export default function CatalogPage() {
                       variant="outline"
                       className={cn(
                         "h-9 rounded-full px-4 text-sm",
-                        subs.length === 0
+                        effectiveSubs.length === 0
                           ? "bg-[#18181b] text-white hover:bg-[#18181b]"
                           : "border-zinc-200 bg-white text-[#18181b] hover:bg-[#f4f4f5]"
                       )}
@@ -1168,7 +1229,7 @@ export default function CatalogPage() {
                       Все
                     </Button>
                     {subChips.map((s) => {
-                      const active = subs.includes(s);
+                      const active = effectiveSubs.includes(s);
                       return (
                         <Button
                           key={s}
@@ -1181,7 +1242,7 @@ export default function CatalogPage() {
                               : "border-zinc-200 bg-white text-[#18181b] hover:bg-[#f4f4f5]"
                           )}
                           onClick={() => {
-                            const next = new Set(subs);
+                            const next = new Set(effectiveSubs);
                             if (active) next.delete(s);
                             else next.add(s);
                             setMulti("sub_category", Array.from(next));
@@ -1193,6 +1254,51 @@ export default function CatalogPage() {
                     })}
                   </div>
                 )}
+
+                <div
+                  data-testid="listing-type-block"
+                  className="grid grid-cols-3 gap-2 rounded-[12px] border border-zinc-200 bg-white p-1"
+                >
+                  <Button
+                    type="button"
+                    className={cn(
+                      "h-9 rounded-[10px] px-3 text-sm",
+                      status === "all"
+                        ? "bg-[#18181b] text-white"
+                        : "bg-white text-[#18181b] border border-zinc-200 hover:bg-[#f4f4f5]"
+                    )}
+                    onClick={() => setListingStatus("all")}
+                    variant={status === "all" ? "default" : "outline"}
+                  >
+                    Все
+                  </Button>
+                  <Button
+                    type="button"
+                    className={cn(
+                      "h-9 rounded-[10px] px-3 text-sm",
+                      status === "new"
+                        ? "bg-[#18181b] text-white"
+                        : "bg-white text-[#18181b] border border-zinc-200 hover:bg-[#f4f4f5]"
+                    )}
+                    onClick={() => setListingStatus("new")}
+                    variant={status === "new" ? "default" : "outline"}
+                  >
+                    Новые
+                  </Button>
+                  <Button
+                    type="button"
+                    className={cn(
+                      "h-9 rounded-[10px] px-3 text-sm",
+                      status === "used"
+                        ? "bg-[#18181b] text-white"
+                        : "bg-white text-[#18181b] border border-zinc-200 hover:bg-[#f4f4f5]"
+                    )}
+                    onClick={() => setListingStatus("used")}
+                    variant={status === "used" ? "default" : "outline"}
+                  >
+                    Б/У
+                  </Button>
+                </div>
               </div>
             </div>
 
@@ -1316,7 +1422,7 @@ export default function CatalogPage() {
                           <div className="text-sm font-semibold text-[#18181b]">{group.label}</div>
                           <div className="mt-2 space-y-1">
                             {(group.children || []).map((cat) => {
-                              const isSelected = category === (cat.value || "");
+                              const isSelected = effectiveCategory === (cat.value || "");
                               return (
                                 <div key={cat.key} className="space-y-1">
                                   <button
@@ -1347,10 +1453,17 @@ export default function CatalogPage() {
                                   {isSelected && (cat.children || []).length > 0 && (
                                     <div className="ml-2 space-y-1 border-l border-zinc-200 pl-3">
                                       {(cat.children || []).map((sub) => {
-                                        const active = subs.includes(sub.value || "");
+                                        const active = effectiveSubs.includes(sub.value || "");
                                         return (
                                           <label
                                             key={sub.key}
+                                            data-testid={
+                                              cat.value && sub.value
+                                                ? `sub-checkbox-${cat.value}-${sub.value}`
+                                                : undefined
+                                            }
+                                            data-state={active ? "checked" : "unchecked"}
+                                            aria-checked={active ? "true" : "false"}
                                             className={cn(
                                               "flex cursor-pointer items-center gap-2 rounded-[10px] px-2 py-1.5 text-sm",
                                               active ? "bg-[#f4f4f5]" : "hover:bg-[#f4f4f5]"
@@ -1359,7 +1472,7 @@ export default function CatalogPage() {
                                             <Checkbox
                                               checked={active}
                                               onCheckedChange={(v) => {
-                                                const next = new Set(subs);
+                                                const next = new Set(effectiveSubs);
                                                 if (v) next.add(sub.value || "");
                                                 else next.delete(sub.value || "");
                                                 setMulti("sub_category", Array.from(next).filter(Boolean));
@@ -1699,7 +1812,7 @@ export default function CatalogPage() {
                         />
                       </label>
 
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-3 gap-2">
                         <Button
                           type="button"
                           className={cn(
@@ -1708,15 +1821,23 @@ export default function CatalogPage() {
                               ? "bg-[#18181b] text-white"
                               : "bg-white text-[#18181b] border border-zinc-200 hover:bg-[#f4f4f5]"
                           )}
-                          onClick={() =>
-                            setParams((next) => {
-                              next.delete("status");
-                              next.set("page", "1");
-                            })
-                          }
+                          onClick={() => setListingStatus("all")}
                           variant={status === "all" ? "default" : "outline"}
                         >
                           Все
+                        </Button>
+                        <Button
+                          type="button"
+                          className={cn(
+                            "h-12 rounded-[12px] px-4 text-sm",
+                            status === "new"
+                              ? "bg-[#18181b] text-white"
+                              : "bg-white text-[#18181b] border border-zinc-200 hover:bg-[#f4f4f5]"
+                          )}
+                          onClick={() => setListingStatus("new")}
+                          variant={status === "new" ? "default" : "outline"}
+                        >
+                          Новые
                         </Button>
                         <Button
                           type="button"
@@ -1726,12 +1847,7 @@ export default function CatalogPage() {
                               ? "bg-[#18181b] text-white"
                               : "bg-white text-[#18181b] border border-zinc-200 hover:bg-[#f4f4f5]"
                           )}
-                          onClick={() =>
-                            setParams((next) => {
-                              next.set("status", "used");
-                              next.set("page", "1");
-                            })
-                          }
+                          onClick={() => setListingStatus("used")}
                           variant={status === "used" ? "default" : "outline"}
                         >
                           Б/У

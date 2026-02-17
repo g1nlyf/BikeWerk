@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
-import { apiGet, crmApi } from "@/api";
+import { apiGet, crmApi, metricsApi } from "@/api";
 import { useAuth } from "@/lib/auth";
 import { formatRUB, getEurRate, normalizeEurToRubRate } from "@/lib/pricing";
 import { DELIVERY_OPTIONS, ADDON_OPTIONS, calculateAddonsTotals } from "@/data/buyoutOptions";
@@ -79,6 +79,7 @@ export default function BookingFinalizePage() {
 
   const [authOverlayOpen, setAuthOverlayOpen] = useState(false);
   const [authOverlayMode, setAuthOverlayMode] = useState<"login" | "register">("login");
+  const [showBookingForm, setShowBookingForm] = useState(false);
 
   useEffect(() => {
     if (!bikeId) return;
@@ -168,18 +169,39 @@ export default function BookingFinalizePage() {
   };
 
   const scrollToBooking = () => {
-    const el = document.getElementById("booking-form");
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    setShowBookingForm(true);
+    setTimeout(() => {
+      const el = document.getElementById("booking-form");
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 100);
   };
 
   const handleSubmitBooking = async () => {
     if (!bike) return;
     if (!name.trim() || !contact.trim() || !city.trim()) {
+      const missingFields: string[] = [];
+      if (!name.trim()) missingFields.push("name");
+      if (!contact.trim()) missingFields.push("contact");
+      if (!city.trim()) missingFields.push("city");
+      metricsApi.sendEvents([
+        {
+          type: "checkout_validation_error",
+          bikeId: Number((bike as any)?.id || bikeId),
+          metadata: { flow: "booking_finalize", missing_fields: missingFields }
+        }
+      ]).catch(() => void 0);
       setError("Заполните имя, контакт и город.");
       return;
     }
     setSubmitting(true);
     setError(null);
+    metricsApi.sendEvents([
+      {
+        type: "checkout_submit_attempt",
+        bikeId: Number((bike as any)?.id || bikeId),
+        metadata: { flow: "booking_finalize", contact_method: contactMethod, delivery_option: deliveryOption.id }
+      }
+    ]).catch(() => void 0);
     try {
       const payload: any = {
         bike_id: (bike as any)?.id || bikeId,
@@ -217,6 +239,13 @@ export default function BookingFinalizePage() {
 
       const resp = await crmApi.createBooking(payload);
       if (!resp?.success) throw new Error(resp?.error || "Не удалось создать бронь");
+      metricsApi.sendEvents([
+        {
+          type: "checkout_submit_success",
+          bikeId: Number((bike as any)?.id || bikeId),
+          metadata: { flow: "booking_finalize", order_code: resp?.order_code || null }
+        }
+      ]).catch(() => void 0);
 
       if (resp?.auth?.token) {
         localStorage.setItem("authToken", resp.auth.token);
@@ -238,6 +267,13 @@ export default function BookingFinalizePage() {
         // no-op
       }
     } catch (e: any) {
+      metricsApi.sendEvents([
+        {
+          type: "checkout_submit_failed",
+          bikeId: Number((bike as any)?.id || bikeId),
+          metadata: { flow: "booking_finalize", error: String(e?.message || "unknown") }
+        }
+      ]).catch(() => void 0);
       setError(e?.message || "Ошибка при бронировании");
     } finally {
       setSubmitting(false);
@@ -350,50 +386,50 @@ export default function BookingFinalizePage() {
 
         <div className="mt-4 grid gap-8 lg:grid-cols-[1fr_420px]">
           <div className="space-y-6">
-            <section className="rounded-[16px] border border-zinc-200 bg-white p-6 shadow-sm">
-              <h1 className="text-3xl font-semibold tracking-tight">BikeWerk аккаунт</h1>
-              <p className="mt-2 max-w-xl text-sm text-zinc-500">
+            <section className="rounded-[24px] border border-zinc-200 bg-white p-8 shadow-sm">
+              <h1 className="heading-fielmann text-3xl md:text-4xl">BikeWerk аккаунт</h1>
+              <p className="text-fielmann mt-3 max-w-xl">
                 Войдите или создайте аккаунт, чтобы сохранить бронь, избранное и получать уведомления по проверке.
               </p>
 
               {user ? (
-                <div className="mt-6 rounded-[12px] border border-zinc-200 bg-[#f4f4f5] p-4 text-sm">
+                <div className="mt-6 rounded-[16px] border border-zinc-200 bg-[#f4f4f5] p-4 text-sm">
                   Вы уже в аккаунте: <span className="font-medium">{user.email || user.phone || `#${user.id}`}</span>
                 </div>
               ) : (
-                <div className="mt-6 grid gap-3">
+                <div className="mt-8 grid gap-4">
                   <Button
-                    className="h-14 rounded-full bg-[#18181b] px-10 text-white hover:bg-black"
+                    className="btn-pill-primary h-14"
                     onClick={openLogin}
                   >
-                    <LogIn className="mr-2 h-4 w-4" />
+                    <LogIn className="mr-2 h-5 w-5" />
                     Войти
                   </Button>
                   <Button
                     variant="outline"
-                    className="h-14 rounded-full border-zinc-200 bg-white px-10 hover:bg-[#f4f4f5]"
+                    className="btn-pill-secondary h-14"
                     onClick={scrollToBooking}
                   >
                     Продолжить как гость
                   </Button>
-                  <Button
-                    variant="outline"
-                    className="h-14 rounded-full border-zinc-200 bg-white px-10 hover:bg-[#f4f4f5]"
-                    onClick={openRegister}
-                  >
-                    <UserPlus className="mr-2 h-4 w-4" />
-                    Создать аккаунт
-                  </Button>
 
-                  <div className="text-xs text-zinc-500">
-                    Можно продолжить без аккаунта, но тогда не будут доступны сохраненные поиски и история бронирований.
+                  <div className="mt-2 flex flex-col items-center gap-3">
+                    <div className="text-sm text-zinc-500">Нет аккаунта?</div>
+                    <Button
+                      variant="outline"
+                      className="btn-pill-secondary h-14 w-full"
+                      onClick={openRegister}
+                    >
+                      <UserPlus className="mr-2 h-5 w-5" />
+                      Создать аккаунт
+                    </Button>
                   </div>
                 </div>
               )}
             </section>
 
-            <section className="rounded-[16px] border border-zinc-200 bg-[#eef6ff] p-6 shadow-sm">
-              <div className="text-base font-semibold">Преимущества аккаунта</div>
+            <section className="rounded-[24px] border border-zinc-200 bg-[#f8f9fa] p-8 shadow-sm">
+              <div className="text-lg font-semibold">Преимущества аккаунта</div>
               <div className="mt-4 grid gap-3 text-sm">
                 {[
                   "Все брони и статусы проверки в одном месте.",
@@ -409,84 +445,86 @@ export default function BookingFinalizePage() {
               </div>
             </section>
 
-            <section id="booking-form" className="rounded-[16px] border border-zinc-200 bg-white p-6 shadow-sm">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-lg font-semibold">К бронированию</div>
-                  <div className="mt-1 text-sm text-zinc-500">
-                    Оплата будет производиться только после полной проверки байка и продавца.
+            {(showBookingForm || user) && (
+              <section id="booking-form" className="rounded-[24px] border border-zinc-200 bg-white p-8 shadow-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-lg font-semibold">К бронированию</div>
+                    <div className="mt-1 text-sm text-zinc-500">
+                      Оплата будет производиться только после полной проверки байка и продавца.
+                    </div>
+                  </div>
+                  <Badge className="rounded-full bg-[#f4f4f5] px-3 py-1 text-xs text-[#18181b]">
+                    бесплатно
+                  </Badge>
+                </div>
+
+                <Separator className="my-5" />
+
+                <div className="grid gap-3">
+                  <Input
+                    placeholder="Имя"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="h-12 rounded-[12px] border-zinc-200 bg-white"
+                  />
+                  <Input
+                    placeholder={contactPlaceholder}
+                    value={contact}
+                    onChange={(e) => setContact(e.target.value)}
+                    className="h-12 rounded-[12px] border-zinc-200 bg-white"
+                  />
+                  <div className="grid grid-cols-3 gap-2">
+                    {contactOptions.map((opt) => (
+                      <Button
+                        key={opt.id}
+                        type="button"
+                        variant={contactMethod === opt.id ? "default" : "outline"}
+                        className={cn(
+                          "h-11 rounded-[12px]",
+                          contactMethod === opt.id
+                            ? "bg-[#18181b] text-white hover:bg-black"
+                            : "border-zinc-200 bg-white text-[#18181b] hover:bg-[#f4f4f5]"
+                        )}
+                        onClick={() => setContactMethod(opt.id)}
+                      >
+                        {opt.label}
+                      </Button>
+                    ))}
+                  </div>
+                  <Input
+                    placeholder="Город доставки"
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                    className="h-12 rounded-[12px] border-zinc-200 bg-white"
+                  />
+                  <Input
+                    placeholder="Комментарий (необязательно)"
+                    value={comment}
+                    onChange={(e) => setComment(e.target.value)}
+                    className="h-12 rounded-[12px] border-zinc-200 bg-white"
+                  />
+
+                  {error && (
+                    <div className="rounded-[12px] border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                      {error}
+                    </div>
+                  )}
+
+                  <Button
+                    className="h-12 rounded-[12px] bg-[#18181b] px-8 text-white hover:bg-black"
+                    disabled={submitting}
+                    onClick={handleSubmitBooking}
+                  >
+                    {submitting ? "Бронируем..." : "Забронировать"}
+                  </Button>
+
+                  <div className="text-xs text-zinc-500">
+                    Бронь бесплатная. Резерв 2% оплачивается позже, после проверки, на странице отслеживания.
                   </div>
                 </div>
-                <Badge className="rounded-full bg-[#f4f4f5] px-3 py-1 text-xs text-[#18181b]">
-                  бесплатно
-                </Badge>
-              </div>
-
-              <Separator className="my-5" />
-
-              <div className="grid gap-3">
-                <Input
-                  placeholder="Имя"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="h-12 rounded-[12px] border-zinc-200 bg-white"
-                />
-                <Input
-                  placeholder={contactPlaceholder}
-                  value={contact}
-                  onChange={(e) => setContact(e.target.value)}
-                  className="h-12 rounded-[12px] border-zinc-200 bg-white"
-                />
-                <div className="grid grid-cols-3 gap-2">
-                  {contactOptions.map((opt) => (
-                    <Button
-                      key={opt.id}
-                      type="button"
-                      variant={contactMethod === opt.id ? "default" : "outline"}
-                      className={cn(
-                        "h-11 rounded-[12px]",
-                        contactMethod === opt.id
-                          ? "bg-[#18181b] text-white hover:bg-black"
-                          : "border-zinc-200 bg-white text-[#18181b] hover:bg-[#f4f4f5]"
-                      )}
-                      onClick={() => setContactMethod(opt.id)}
-                    >
-                      {opt.label}
-                    </Button>
-                  ))}
-                </div>
-                <Input
-                  placeholder="Город доставки"
-                  value={city}
-                  onChange={(e) => setCity(e.target.value)}
-                  className="h-12 rounded-[12px] border-zinc-200 bg-white"
-                />
-                <Input
-                  placeholder="Комментарий (необязательно)"
-                  value={comment}
-                  onChange={(e) => setComment(e.target.value)}
-                  className="h-12 rounded-[12px] border-zinc-200 bg-white"
-                />
-
-                {error && (
-                  <div className="rounded-[12px] border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-                    {error}
-                  </div>
-                )}
-
-                <Button
-                  className="h-12 rounded-[12px] bg-[#18181b] px-8 text-white hover:bg-black"
-                  disabled={submitting}
-                  onClick={handleSubmitBooking}
-                >
-                  {submitting ? "Бронируем..." : "Забронировать"}
-                </Button>
-
-                <div className="text-xs text-zinc-500">
-                  Бронь бесплатная. Резерв 2% оплачивается позже, после проверки, на странице отслеживания.
-                </div>
-              </div>
-            </section>
+              </section>
+            )}
           </div>
 
           <aside className="lg:sticky lg:top-24">

@@ -14,8 +14,8 @@ export const crmManagerApi = {
   getManagers() {
     return apiGet('/v1/crm/managers')
   },
-  getDashboardStats() {
-    return apiGet('/v1/crm/dashboard/stats')
+  getDashboardStats(params: Record<string, unknown> = {}) {
+    return apiGet(`/v1/crm/dashboard/stats${toQuery(params)}`)
   },
   getOrders(filters: Record<string, unknown> = {}) {
     return apiGet(`/v1/crm/orders${toQuery(filters)}`)
@@ -125,6 +125,17 @@ export const crmManagerApi = {
   },
   bulkAssignManager(orderIds: string[], managerId: string) {
     return apiPatch('/v1/crm/orders/bulk/assign', { order_ids: orderIds, manager_id: managerId })
+  },
+
+  // AI-ROP workspace
+  getAiRopWorkspace(params: Record<string, unknown> = {}) {
+    return apiGet(`/v1/crm/ai-rop/workspace${toQuery(params)}`)
+  },
+  runAiRopCycle(syncLocal = false) {
+    return apiPost('/v1/crm/ai-rop/run', { sync_local: syncLocal })
+  },
+  decideAiRopSignal(signalId: string, payload: { decision: string; note?: string; assignee_id?: string; snooze_until?: string; due_at?: string }) {
+    return apiPost(`/v1/crm/ai-rop/signals/${encodeURIComponent(signalId)}/decision`, payload)
   }
 }
 

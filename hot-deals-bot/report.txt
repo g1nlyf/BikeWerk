@@ -1,0 +1,2 @@
+Cols: chat_id, username, first_name, role, created_at, last_active
+Bikes: 7

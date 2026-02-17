@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MessageCircle, Check, X, Bike, ArrowRight, Lock, Zap, Search, ChevronDown, Wallet, ShieldCheck, Pencil, Truck, Phone, Send } from "lucide-react";
 import { useAuth } from "@/lib/auth";
-import { apiPost } from "@/api";
+import { apiPost, metricsApi } from "@/api";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { motion, AnimatePresence } from "framer-motion";
@@ -94,11 +94,28 @@ export function BookingOverlay({
 
   const handleSubmit = async () => {
     if (!name.trim() || !contactValue.trim()) {
+      const missingFields: string[] = [];
+      if (!name.trim()) missingFields.push("name");
+      if (!contactValue.trim()) missingFields.push("contact");
+      metricsApi.sendEvents([
+        {
+          type: "checkout_validation_error",
+          bikeId: Number(items[0]?.id || 0),
+          metadata: { flow: "booking_overlay", missing_fields: missingFields }
+        }
+      ]).catch(() => void 0);
       setError("Представьтесь, пожалуйста");
       return;
     }
     setSubmitting(true);
     setError(null);
+    metricsApi.sendEvents([
+      {
+        type: "checkout_submit_attempt",
+        bikeId: Number(items[0]?.id || 0),
+        metadata: { flow: "booking_overlay", contact_method: contactMethod, delivery_option: shippingOption || 'Cargo' }
+      }
+    ]).catch(() => void 0);
 
     try {
       // SPRINT 3.1: Ensure delivery method is never empty
@@ -130,6 +147,13 @@ export function BookingOverlay({
       const res = await apiPost('/v1/booking', payload);
       
       if (res?.success) {
+        metricsApi.sendEvents([
+          {
+            type: "checkout_submit_success",
+            bikeId: Number(items[0]?.id || 0),
+            metadata: { flow: "booking_overlay", order_code: res?.order_code || null }
+          }
+        ]).catch(() => void 0);
         // SPRINT 2: NO REDIRECT - Show Success Overlay
         setSuccessOrderCode(res.order_code);
         // Do NOT close the modal immediately, switch content
@@ -137,6 +161,13 @@ export function BookingOverlay({
         throw new Error(res?.error || "Ошибка создания заявки");
       }
     } catch (e: any) {
+      metricsApi.sendEvents([
+        {
+          type: "checkout_submit_failed",
+          bikeId: Number(items[0]?.id || 0),
+          metadata: { flow: "booking_overlay", error: String(e?.message || "unknown") }
+        }
+      ]).catch(() => void 0);
       setError(e.message || "Ошибка соединения. Мы уже сохранили ваш черновик.");
     } finally {
       setSubmitting(false);

@@ -29,8 +29,8 @@ export default function CRMHeader({ onSearch }: Props) {
 
   return (
     <header className="sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-[#e4e4e7]">
-      <div className="flex flex-col gap-4 px-6 py-4 md:flex-row md:items-center md:justify-between">
-        <div className="flex items-center gap-2 text-sm text-slate-500">
+      <div className="flex flex-col gap-3 px-3 py-3 sm:px-4 md:flex-row md:items-center md:justify-between md:px-6 md:py-4">
+        <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm text-slate-500">
           {breadcrumb.map((item, idx) => (
             <React.Fragment key={`${item}-${idx}`}>
               <span className={idx === breadcrumb.length - 1 ? 'text-[#18181b] font-medium' : ''}>{item}</span>
@@ -38,8 +38,8 @@ export default function CRMHeader({ onSearch }: Props) {
             </React.Fragment>
           ))}
         </div>
-        <div className="flex items-center gap-3">
-          <div className="relative">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <div className="relative w-full">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
               value={query}
@@ -48,10 +48,10 @@ export default function CRMHeader({ onSearch }: Props) {
                 onSearch?.(e.target.value)
               }}
               placeholder="Поиск заказов"
-              className="h-12 w-64 rounded-xl border border-[#e4e4e7] bg-[#f4f4f5] pl-9 pr-3 text-sm outline-none focus:border-[#18181b]"
+              className="h-11 w-full min-w-0 rounded-xl border border-[#e4e4e7] bg-[#f4f4f5] pl-9 pr-3 text-sm outline-none focus:border-[#18181b] md:w-64"
             />
           </div>
-          <button type="button" className="h-12 w-12 rounded-xl border border-[#e4e4e7] bg-white flex items-center justify-center text-slate-500 hover:text-[#18181b]">
+          <button type="button" className="hidden h-11 w-11 rounded-xl border border-[#e4e4e7] bg-white items-center justify-center text-slate-500 hover:text-[#18181b] sm:flex">
             <Bell className="h-4 w-4" />
           </button>
         </div>

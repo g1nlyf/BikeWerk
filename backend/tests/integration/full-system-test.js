@@ -238,4 +238,12 @@ describe('BikeEU Full System Integration', function() {
         expect(bike).to.have.property('price');
         expect(bike).to.have.property('fmv');
     });
+
+    // 8. CRM enum guard for preferred channel
+    it('8. Booking channel normalization: phone does not leak into Supabase enum payload', async () => {
+        const bookingService = require('../../src/services/BookingService');
+        expect(bookingService._normalizePreferredChannel('phone')).to.equal('whatsapp');
+        expect(bookingService._normalizePreferredChannel('email')).to.equal('email');
+        expect(bookingService._normalizePreferredChannel('telegram')).to.equal('telegram');
+    });
 });

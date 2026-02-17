@@ -6,7 +6,7 @@ export const ProcessStepsSection: React.FC = () => {
       <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="text-center mb-8 md:mb-24">
-          <h2 className="text-[36px] md:text-[56px] leading-[1.05] font-black tracking-tight text-gray-800 mb-4 md:mb-6 font-serif">
+          <h2 className="text-[36px] md:text-[56px] leading-[1.05] font-black tracking-tight text-gray-800 mb-4 md:mb-6">
             Процесс: От выбора в Германии до вашей двери
           </h2>
           <p className="text-base md:text-lg text-gray-500 font-normal">
@@ -16,7 +16,7 @@ export const ProcessStepsSection: React.FC = () => {
 
         {/* Grid Container */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-20 gap-y-4 lg:gap-y-24">
-          
+
           {/* --- ROW 1 LEFT (01) --- */}
           {/* Text Left, Image Right */}
           <div className="flex flex-col lg:flex-row items-start gap-2 lg:gap-8">
@@ -34,27 +34,27 @@ export const ProcessStepsSection: React.FC = () => {
               </p>
             </div>
             {/* Image Placeholder */}
-             <div className="flex-shrink-0 relative order-2 lg:order-none w-full lg:w-auto flex justify-center lg:block -mt-2 lg:mt-0 z-0">
-               <img 
-                 src="/ext photos/stage1.png" 
-                 alt="Умный подбор" 
-                 className="w-full max-w-[320px] md:max-w-[390px] h-auto object-contain"
-               />
-             </div>
-           </div>
+            <div className="flex-shrink-0 relative order-2 lg:order-none w-full lg:w-auto flex justify-center lg:block -mt-2 lg:mt-0 z-0">
+              <img
+                src="/ext photos/stage1.png"
+                alt="Умный подбор"
+                className="w-full max-w-[320px] md:max-w-[390px] h-auto object-contain"
+              />
+            </div>
+          </div>
 
           {/* --- ROW 1 RIGHT (02) --- */}
           {/* Image Left, Text Right */}
           <div className="flex flex-col lg:flex-row items-start gap-2 lg:gap-8">
             {/* Image Placeholder */}
             <div className="flex-shrink-0 relative order-2 lg:order-none w-full lg:w-auto flex justify-center lg:block -mt-2 lg:mt-0 z-0">
-              <img 
-                src="/ext photos/stage2.png" 
-                alt="Удаленный техосмотр" 
+              <img
+                src="/ext photos/stage2.png"
+                alt="Удаленный техосмотр"
                 className="w-full max-w-[280px] md:max-w-[315px] h-auto object-contain"
               />
             </div>
-            
+
             <div className="flex-1 pt-2 order-1 lg:order-none relative z-10">
               <div className="relative mb-0 md:mb-4">
                 <span className="text-[75px] md:text-[100px] leading-none font-bold text-gray-200 block">02</span>
@@ -86,24 +86,24 @@ export const ProcessStepsSection: React.FC = () => {
                 Байк прибывает к нам. Механик досконально проверяет каждый узел вживую, демонстрируя процесс и состояние байка вам по видеосвязи.
               </p>
             </div>
-             {/* Image Placeholder */}
-             <div className="flex-shrink-0 relative order-2 lg:order-none w-full lg:w-auto flex justify-center lg:block -mt-2 lg:-mt-16 z-0">
-               <img 
-                 src="/ext photos/Stage 3.png" 
-                 alt="Экспертный техосмотр" 
-                 className="w-full max-w-[320px] md:max-w-[380px] h-auto object-contain"
-               />
-             </div>
-           </div>
+            {/* Image Placeholder */}
+            <div className="flex-shrink-0 relative order-2 lg:order-none w-full lg:w-auto flex justify-center lg:block -mt-2 lg:-mt-16 z-0">
+              <img
+                src="/ext photos/Stage 3.png"
+                alt="Экспертный техосмотр"
+                className="w-full max-w-[320px] md:max-w-[380px] h-auto object-contain"
+              />
+            </div>
+          </div>
 
           {/* --- ROW 2 RIGHT (04) --- */}
           {/* Image Left, Text Right */}
           <div className="flex flex-col lg:flex-row items-start gap-2 lg:gap-8">
             {/* Image Placeholder */}
             <div className="flex-shrink-0 relative order-2 lg:order-none w-full lg:w-auto flex justify-center lg:block -mt-2 lg:-mt-16 z-0">
-              <img 
-                src="/ext photos/stage 4.png" 
-                alt="Надежная упаковка" 
+              <img
+                src="/ext photos/stage 4.png"
+                alt="Надежная упаковка"
                 className="w-full max-w-[330px] md:max-w-[400px] h-auto object-contain"
               />
             </div>

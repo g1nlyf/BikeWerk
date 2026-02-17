@@ -21,7 +21,7 @@ export default function JournalArticlePage() {
 
   if (!article) {
     return (
-      <div className="min-h-screen bg-[#F5F1ED] flex items-center justify-center font-manrope">
+      <div className="min-h-screen bg-[#F5F1ED] flex items-center justify-center">
         <SEOHead title="Статья не найдена - BikeWerk" />
         <div className="text-center">
           <h1 className="text-4xl font-bold mb-4">Статья не найдена</h1>
@@ -36,8 +36,8 @@ export default function JournalArticlePage() {
   const category = CATEGORIES.find(c => c.id === article.category);
 
   return (
-    <div className="min-h-screen bg-[#F5F1ED] font-manrope">
-      <SEOHead 
+    <div className="min-h-screen bg-[#F5F1ED]">
+      <SEOHead
         title={`${article.title} - Журнал BikeWerk`}
         description={article.subtitle}
         url={`https://bikewerk.ru/journal/${article.slug}`}
@@ -47,8 +47,8 @@ export default function JournalArticlePage() {
       {/* Hero Section */}
       <div className="relative h-[60vh] min-h-[500px] w-full overflow-hidden">
         <div className="absolute inset-0">
-          <img 
-            src={article.image} 
+          <img
+            src={article.image}
             alt={article.title}
             className="w-full h-full object-cover"
           />
@@ -57,13 +57,13 @@ export default function JournalArticlePage() {
 
         <div className="absolute inset-0 pt-32 pb-12 flex flex-col justify-end">
           <div className="max-w-[1000px] mx-auto px-4 sm:px-6 lg:px-8 w-full">
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6 }}
             >
-              <Button 
-                variant="ghost" 
+              <Button
+                variant="ghost"
                 className="text-white/80 hover:text-white hover:bg-white/10 mb-8 pl-0 gap-2"
                 onClick={() => navigate('/journal')}
               >
@@ -85,7 +85,7 @@ export default function JournalArticlePage() {
               <h1 className="text-4xl md:text-6xl lg:text-7xl font-extrabold text-white leading-[1.1] mb-6 tracking-tight">
                 {article.title}
               </h1>
-              
+
               <p className="text-xl md:text-2xl text-white/90 font-medium max-w-3xl leading-relaxed">
                 {article.subtitle}
               </p>
@@ -96,9 +96,9 @@ export default function JournalArticlePage() {
 
       <main className="max-w-[1000px] mx-auto px-4 sm:px-6 lg:px-8 py-16 relative z-10">
         <div className="flex flex-col lg:flex-row gap-12">
-          
+
           {/* Main Content */}
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.2 }}
@@ -106,52 +106,52 @@ export default function JournalArticlePage() {
           >
             {/* Author/Date Block */}
             <div className="flex items-center justify-between border-b border-gray-200 pb-8 mb-10">
-               <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-full bg-black flex items-center justify-center text-white font-bold text-lg">
-                    BF
-                  </div>
-                  <div>
-                    <div className="font-bold text-gray-900">Bikeflip Team</div>
-                    <div className="text-sm text-gray-500">Экспертный разбор</div>
-                  </div>
-               </div>
-               <div className="flex gap-2">
-                 <Button variant="outline" size="icon" className="rounded-full">
-                   <Share2 className="w-4 h-4" />
-                 </Button>
-               </div>
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-full bg-black flex items-center justify-center text-white font-bold text-lg">
+                  BF
+                </div>
+                <div>
+                  <div className="font-bold text-gray-900">Bikeflip Team</div>
+                  <div className="text-sm text-gray-500">Экспертный разбор</div>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" size="icon" className="rounded-full">
+                  <Share2 className="w-4 h-4" />
+                </Button>
+              </div>
             </div>
 
             {/* Article Body */}
-            <article 
+            <article
               className="prose prose-lg prose-gray max-w-none 
-                prose-headings:font-bold prose-headings:text-gray-900 prose-headings:font-manrope prose-headings:mt-8 prose-headings:mb-4
-                prose-p:text-gray-600 prose-p:leading-loose prose-p:mb-6
-                prose-strong:text-gray-900
-                prose-li:text-gray-600 prose-li:marker:text-orange-500
-                prose-img:rounded-[2rem] prose-img:shadow-xl prose-img:my-10
-                prose-a:text-black prose-a:font-bold prose-a:no-underline hover:prose-a:underline
-              "
+                  prose-headings:font-bold prose-headings:text-gray-900 prose-headings:mt-8 prose-headings:mb-4
+                  prose-p:text-gray-600 prose-p:leading-loose prose-p:mb-6
+                  prose-strong:text-gray-900
+                  prose-li:text-gray-600 prose-li:marker:text-orange-500
+                  prose-img:rounded-[2rem] prose-img:shadow-xl prose-img:my-10
+                  prose-a:text-black prose-a:font-bold prose-a:no-underline hover:prose-a:underline
+                "
               dangerouslySetInnerHTML={{ __html: article.content }}
             />
 
             {/* CTA Block */}
             <div className="mt-16 p-8 md:p-12 rounded-[2.5rem] bg-black text-white relative overflow-hidden">
-               <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-orange-500/20 rounded-full blur-[100px] -translate-y-1/2 translate-x-1/2" />
-               
-               <div className="relative z-10">
-                 <h3 className="text-3xl font-bold mb-4">Остались вопросы?</h3>
-                 <p className="text-white/70 text-lg mb-8 max-w-xl">
-                   Если после прочтения вы все еще сомневаетесь — просто напишите нам. Мы не роботы, мы живые люди, которые любят велосипеды.
-                 </p>
-                 <Button 
-                   className="h-14 px-8 rounded-full bg-white text-black hover:bg-gray-200 font-bold text-lg"
-                   onClick={() => window.open('https://t.me/bikeflip_bot', '_blank')}
-                 >
-                   <MessageCircle className="w-5 h-5 mr-2" />
-                   Написать эксперту
-                 </Button>
-               </div>
+              <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-orange-500/20 rounded-full blur-[100px] -translate-y-1/2 translate-x-1/2" />
+
+              <div className="relative z-10">
+                <h3 className="text-3xl font-bold mb-4">Остались вопросы?</h3>
+                <p className="text-white/70 text-lg mb-8 max-w-xl">
+                  Если после прочтения вы все еще сомневаетесь — просто напишите нам. Мы не роботы, мы живые люди, которые любят велосипеды.
+                </p>
+                <Button
+                  className="h-14 px-8 rounded-full bg-white text-black hover:bg-gray-200 font-bold text-lg"
+                  onClick={() => window.open('https://t.me/bikeflip_bot', '_blank')}
+                >
+                  <MessageCircle className="w-5 h-5 mr-2" />
+                  Написать эксперту
+                </Button>
+              </div>
             </div>
 
           </motion.div>

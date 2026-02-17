@@ -4,6 +4,9 @@ import { crmManagerApi } from '@/api/crmManagerApi'
 import OrderStatusBadge from '@/components/crm/OrderStatusBadge'
 import KanbanBoard from '@/components/crm/KanbanBoard'
 import { useToast } from '@/components/crm/ToastProvider'
+import { ORDER_STATUS_OPTIONS, getOrderStatusPresentation, normalizeOrderStatus } from '@/lib/orderLifecycle'
+import type { CrmScope } from '@/lib/crmScope'
+import { getCurrentCrmUser, isCrmAdmin, resolveCrmScope, setGlobalCrmScope, subscribeCrmScopeChange } from '@/lib/crmScope'
 
 type ViewMode = 'table' | 'kanban'
 
@@ -46,19 +49,10 @@ type Filters = {
   max_amount: string
 }
 
-const STATUS_OPTIONS = [
-  { value: 'pending_manager', label: 'Ждет менеджера' },
-  { value: 'under_inspection', label: 'Инспекция' },
-  { value: 'deposit_paid', label: 'Резерв оплачен' },
-  { value: 'awaiting_payment', label: 'Ожидает оплату' },
-  { value: 'awaiting_deposit', label: 'Ожидает резерв' },
-  { value: 'ready_for_shipment', label: 'Готов к отправке' },
-  { value: 'in_transit', label: 'В пути' },
-  { value: 'delivered', label: 'Доставлен' },
-  { value: 'closed', label: 'Закрыт' },
-  { value: 'cancelled', label: 'Отменен' },
-  { value: 'refunded', label: 'Возврат' }
-]
+const STATUS_OPTIONS = ORDER_STATUS_OPTIONS.map((status) => ({
+  value: status.value,
+  label: getOrderStatusPresentation(status.value).label
+}))
 
 const STORAGE_KEY = 'crm_orders_filters_v2'
 const MAX_BULK = 50
@@ -115,14 +109,11 @@ export default function OrdersListPage() {
   const page = Math.max(0, parseInt(searchParams.get('page') || '0', 10) || 0)
   const limit = viewMode === 'table' ? 20 : 200
 
-  const currentUser = React.useMemo(() => {
-    try {
-      const raw = localStorage.getItem('currentUser')
-      return raw ? JSON.parse(raw) : null
-    } catch {
-      return null
-    }
-  }, [])
+  const currentUser = React.useMemo(() => getCurrentCrmUser(), [])
+  const isAdmin = isCrmAdmin(currentUser)
+  const scope = React.useMemo<CrmScope>(() => {
+    return resolveCrmScope(currentUser, searchParams.get('scope'))
+  }, [currentUser, searchParams])
 
   const currentManagerId = React.useMemo(() => {
     if (!currentUser?.email) return ''
@@ -144,6 +135,45 @@ export default function OrdersListPage() {
       console.warn('Failed to restore CRM order filters', error)
     }
   }, [searchParams, setSearchParams])
+
+  React.useEffect(() => {
+    if (!restoredRef.current) return
+    const next = new URLSearchParams(searchParams)
+    let changed = false
+
+    if (!isAdmin) {
+      if (next.get('scope') !== 'mine') {
+        next.set('scope', 'mine')
+        changed = true
+      }
+      if (next.has('manager')) {
+        next.delete('manager')
+        changed = true
+      }
+    } else {
+      const desiredScope = resolveCrmScope(currentUser, next.get('scope'))
+      if (next.get('scope') !== desiredScope) {
+        next.set('scope', desiredScope)
+        changed = true
+      }
+    }
+
+    if (isAdmin) {
+      const appliedScope = resolveCrmScope(currentUser, next.get('scope'))
+      setGlobalCrmScope(appliedScope, currentUser)
+    } else {
+      setGlobalCrmScope('mine', currentUser)
+    }
+
+    if (isAdmin && !next.get('scope')) {
+      next.set('scope', resolveCrmScope(currentUser))
+      changed = true
+    }
+
+    if (changed) {
+      setSearchParams(next, { replace: true })
+    }
+  }, [isAdmin, currentUser, searchParams, setSearchParams])
 
   React.useEffect(() => {
     try {
@@ -174,6 +204,15 @@ export default function OrdersListPage() {
     setSearchParams(next, { replace: true })
   }, [searchParams, setSearchParams])
 
+  React.useEffect(() => {
+    return subscribeCrmScopeChange(() => {
+      if (!isAdmin) return
+      const desiredScope = resolveCrmScope(currentUser)
+      if (desiredScope === scope) return
+      updateParams({ scope: desiredScope }, true)
+    })
+  }, [isAdmin, currentUser, scope, updateParams])
+
   const totalPages = Math.max(1, Math.ceil(total / limit))
   const showEmpty = !loading && orders.length === 0
 
@@ -184,6 +223,7 @@ export default function OrdersListPage() {
     try {
       const ordersRes = await crmManagerApi.getOrders({
         ...filters,
+        scope,
         limit,
         offset: page * limit,
         sort_by: sortBy,
@@ -193,7 +233,12 @@ export default function OrdersListPage() {
       if (requestId !== requestIdRef.current) return
 
       if (ordersRes?.success) {
-        setOrders(ordersRes.orders || [])
+        setOrders(
+          (ordersRes.orders || []).map((order: OrderSummary) => ({
+            ...order,
+            status: normalizeOrderStatus(order.status) || order.status
+          }))
+        )
         const nextTotal = Number(ordersRes.total)
         setTotal(Number.isFinite(nextTotal) ? nextTotal : (ordersRes.orders || []).length)
       }
@@ -205,7 +250,7 @@ export default function OrdersListPage() {
         setLoading(false)
       }
     }
-  }, [filters, page, limit, sortBy, sortDir])
+  }, [filters, scope, page, limit, sortBy, sortDir])
 
   React.useEffect(() => {
     load()
@@ -321,6 +366,7 @@ export default function OrdersListPage() {
       toast.info('Формирую выгрузку...')
       const res = await crmManagerApi.exportOrders({
         ...filters,
+        scope,
         sort_by: sortBy,
         sort_dir: sortDir,
         format: exportFormat
@@ -433,16 +479,22 @@ export default function OrdersListPage() {
               <option key={s.value} value={s.value}>{s.label}</option>
             ))}
           </select>
-          <select
-            value={filters.manager}
-            onChange={(e) => updateParams({ manager: e.target.value }, true)}
-            className="h-12 rounded-xl border border-[#e4e4e7] bg-[#f4f4f5] px-3 text-sm"
-          >
-            <option value="">Все менеджеры</option>
-            {managers.map((m) => (
-              <option key={m.id} value={m.id}>{m.name || m.email}</option>
-            ))}
-          </select>
+          {isAdmin && scope === 'all' ? (
+            <select
+              value={filters.manager}
+              onChange={(e) => updateParams({ manager: e.target.value }, true)}
+              className="h-12 rounded-xl border border-[#e4e4e7] bg-[#f4f4f5] px-3 text-sm"
+            >
+              <option value="">Все менеджеры</option>
+              {managers.map((m) => (
+                <option key={m.id} value={m.id}>{m.name || m.email}</option>
+              ))}
+            </select>
+          ) : (
+            <div className="h-12 rounded-xl border border-[#e4e4e7] bg-[#f4f4f5] px-3 text-sm flex items-center text-slate-500">
+              {scope === 'mine' ? 'Режим: только мои заказы' : 'Режим: все заказы'}
+            </div>
+          )}
           <input
             type="date"
             value={filters.date_from}
@@ -476,6 +528,43 @@ export default function OrdersListPage() {
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
           <div className="text-xs text-slate-500">Всего заказов: {total}</div>
           <div className="flex flex-wrap items-center gap-3">
+            {isAdmin ? (
+              <div className="flex rounded-lg border border-[#e4e4e7] overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setGlobalCrmScope('mine', currentUser)
+                    updateParams({ scope: 'mine', manager: null }, true)
+                  }}
+                  className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                    scope === 'mine'
+                      ? 'bg-[#18181b] text-white'
+                      : 'bg-white text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  Только мои
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setGlobalCrmScope('all', currentUser)
+                    updateParams({ scope: 'all' }, true)
+                  }}
+                  className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                    scope === 'all'
+                      ? 'bg-[#18181b] text-white'
+                      : 'bg-white text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  Все заказы
+                </button>
+              </div>
+            ) : (
+              <div className="rounded-full border border-[#e4e4e7] bg-[#f4f4f5] px-3 py-1.5 text-xs text-slate-600">
+                Показаны только ваши заказы
+              </div>
+            )}
+
             <div className="flex items-center gap-2">
               <select
                 value={exportFormat}
@@ -607,9 +696,10 @@ export default function OrdersListPage() {
           orders={orders}
           onOrderClick={(orderId) => navigate(`/crm/orders/${orderId}`)}
           onStatusChange={async (orderId, status) => {
+            const normalized = normalizeOrderStatus(status) || status
             const res = await crmManagerApi.updateOrderStatus(orderId, status)
             if (res?.success) {
-              setOrders((prev) => prev.map((o) => (o.order_id === orderId ? { ...o, status } : o)))
+              setOrders((prev) => prev.map((o) => (o.order_id === orderId ? { ...o, status: normalized } : o)))
             }
           }}
         />
@@ -733,12 +823,13 @@ export default function OrdersListPage() {
                       <td className="px-4 py-4" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center gap-2">
                           <select
-                            value={order.status}
+                            value={normalizeOrderStatus(order.status) || ''}
                             onChange={(e) => {
                               e.stopPropagation()
                               crmManagerApi.updateOrderStatus(order.order_id, e.target.value).then((res) => {
                                 if (res?.success) {
-                                  setOrders((prev) => prev.map((o) => (o.order_id === order.order_id ? { ...o, status: e.target.value } : o)))
+                                  const normalized = normalizeOrderStatus(e.target.value) || e.target.value
+                                  setOrders((prev) => prev.map((o) => (o.order_id === order.order_id ? { ...o, status: normalized } : o)))
                                 }
                               })
                             }}

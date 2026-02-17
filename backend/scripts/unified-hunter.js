@@ -225,8 +225,15 @@ class UnifiedHunter {
     async run() {
         const options = this.options;
         const mode = options.mode || 'gap';
-        const limit = options.limit ?? (mode === 'full' ? 100 : mode === 'test' ? 5 : 20);
-        const maxTargets = options.targets && options.targets.length > 0 ? options.targets.length : (mode === 'test' ? 1 : mode === 'full' ? 12 : 6);
+        const isSmartMode = mode === 'smart';
+        const limit = options.limit ?? (mode === 'full' ? 100 : mode === 'test' ? 5 : isSmartMode ? 40 : 20);
+        const computedDefaultTargets = mode === 'test' ? 1 : mode === 'full' ? 16 : isSmartMode ? 14 : 6;
+        const maxTargets = options.targets && options.targets.length > 0
+            ? options.targets.length
+            : (Number.isFinite(Number(options.maxTargets)) ? Math.max(1, Number(options.maxTargets)) : computedDefaultTargets);
+        const effectiveSources = options.sources && options.sources.length > 0
+            ? options.sources
+            : (isSmartMode ? ['both'] : []);
         const start = Date.now();
         const dbService = new DatabaseServiceV2();
         // SmartModelSelector expects a service with .query(), which V2 now has
@@ -255,7 +262,7 @@ class UnifiedHunter {
         };
         let remainingQuota = Number.isFinite(limit) ? Math.max(0, limit) : 0;
         const collected = [];
-        const sourceLabel = options.sources && options.sources.length > 0 ? options.sources.join(', ') : 'auto';
+        const sourceLabel = effectiveSources.length > 0 ? effectiveSources.join(', ') : 'auto';
         log(`Старт режима ${mode} (лимит: ${limit}, источник: ${sourceLabel})`);
         logEvent('hunt_start', { mode, limit, targets: targets.length });
 
@@ -278,7 +285,7 @@ class UnifiedHunter {
 
             log(`Фильтры: minPrice=${filters.minPrice}, maxPrice=${filters.maxPrice}, sizes=${filters.targetSizes?.join(', ') || 'all'}, targetLimit=${targetLimit}, remaining=${remainingQuota}`);
 
-            const sources = resolveSources(options.sources, target.gaps, filters);
+            const sources = resolveSources(effectiveSources, target.gaps, filters);
             summary.sourcesUsed = Array.from(new Set([...summary.sourcesUsed, ...sources]));
             const collectorLog = createLogger(`${target.brand} ${target.model}`);
             logEvent('collector_start', { brand: target.brand, model: target.model, sources, filters, limit: targetLimit, remainingQuota });

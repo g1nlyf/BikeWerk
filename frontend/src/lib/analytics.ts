@@ -1,4 +1,6 @@
 import { apiPost, API_BASE } from '@/api';
+import { createMetricsEventId, getMetricsSessionId } from '@/lib/session';
+import { getAttributionMetadata } from '@/lib/traffic';
 
 export type EventType = 
   | 'impression'      // Bike visible in viewport
@@ -13,8 +15,12 @@ export type EventType =
 export interface AnalyticsEvent {
   type: EventType;
   bikeId: number;
-  metadata?: Record<string, any>; // e.g., { index: 2 } for gallery_swipe
+  metadata?: Record<string, unknown>; // e.g., { index: 2 } for gallery_swipe
   timestamp: number;
+  event_id?: string;
+  session_id?: string;
+  referrer?: string;
+  source_path?: string;
 }
 
 export interface UserInterestProfile {
@@ -131,19 +137,32 @@ class UserActivityTracker {
 
     const batch = [...this.queue];
     this.queue = [];
+    const sessionId = getMetricsSessionId();
+    const trafficMeta = getAttributionMetadata();
+    const enhanced = batch.map((event, idx) => ({
+      ...event,
+      event_id: event.event_id ?? createMetricsEventId(sessionId, Date.now() + idx),
+      session_id: event.session_id ?? sessionId,
+      referrer: event.referrer ?? (typeof document !== 'undefined' ? document.referrer : ''),
+      source_path: event.source_path ?? (typeof location !== 'undefined' ? location.pathname : ''),
+      metadata: {
+        ...trafficMeta,
+        ...(event.metadata || {})
+      }
+    }));
 
     try {
-      const payload = JSON.stringify({ events: batch });
+      const payload = JSON.stringify({ events: enhanced });
 
       if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
         const ok = navigator.sendBeacon(
-          `${API_BASE}/behavior/events`,
+          `${API_BASE}/metrics/events`,
           new Blob([payload], { type: 'application/json' })
         );
         if (ok) return;
       }
 
-      apiPost('/behavior/events', { events: batch }, { keepalive: true }).catch(() => void 0);
+      apiPost('/metrics/events', { events: enhanced }, { keepalive: true, headers: { 'x-session-id': sessionId } }).catch(() => void 0);
     } catch (e) {
       void e;
     }
@@ -157,6 +176,7 @@ class UserActivityTracker {
   public getProfile(): UserInterestProfile {
     return this.profile;
   }
+
 }
 
 export const tracker = new UserActivityTracker();

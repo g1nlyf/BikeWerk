@@ -31,9 +31,9 @@ export const ContactsSection: React.FC = () => {
                 <Send className="h-5 w-5" />
               </div>
               <div className="font-bold text-lg mb-1">Telegram</div>
-              <div className="text-sm text-muted-foreground group-hover:text-blue-600 transition-colors">@bikeflip_eu</div>
+              <div className="text-sm text-muted-foreground group-hover:text-blue-600 transition-colors">@bikewerk</div>
             </a>
-            
+
             <a href="https://wa.me/123456789" target="_blank" rel="noreferrer" className="group p-6 rounded-2xl border bg-muted/30 hover:bg-green-500/5 hover:border-green-500/20 transition-all duration-300">
               <div className="h-10 w-10 rounded-full bg-green-500/10 flex items-center justify-center text-green-500 mb-4 group-hover:scale-110 transition-transform">
                 <MessageSquare className="h-5 w-5" />
@@ -42,12 +42,12 @@ export const ContactsSection: React.FC = () => {
               <div className="text-sm text-muted-foreground group-hover:text-green-600 transition-colors">Написать нам</div>
             </a>
 
-            <a href="mailto:hello@bikeflip.eu" className="group p-6 rounded-2xl border bg-muted/30 hover:bg-orange-500/5 hover:border-orange-500/20 transition-all duration-300">
+            <a href="mailto:hello@bikewerk.eu" className="group p-6 rounded-2xl border bg-muted/30 hover:bg-orange-500/5 hover:border-orange-500/20 transition-all duration-300">
               <div className="h-10 w-10 rounded-full bg-orange-500/10 flex items-center justify-center text-orange-500 mb-4 group-hover:scale-110 transition-transform">
                 <Mail className="h-5 w-5" />
               </div>
               <div className="font-bold text-lg mb-1">Email</div>
-              <div className="text-sm text-muted-foreground group-hover:text-orange-600 transition-colors">hello@bikeflip.eu</div>
+              <div className="text-sm text-muted-foreground group-hover:text-orange-600 transition-colors">hello@bikewerk.eu</div>
             </a>
 
             <a href="tel:+490000000" className="group p-6 rounded-2xl border bg-muted/30 hover:bg-purple-500/5 hover:border-purple-500/20 transition-all duration-300">
@@ -66,7 +66,7 @@ export const ContactsSection: React.FC = () => {
             <div>
               <div className="font-bold text-lg mb-1">Офис в Берлине</div>
               <div className="text-sm text-muted-foreground leading-relaxed">
-                Alexanderplatz 1, 10178 Berlin, Deutschland<br/>
+                Alexanderplatz 1, 10178 Berlin, Deutschland<br />
                 Работаем пн-пт с 10:00 до 19:00
               </div>
             </div>
@@ -98,7 +98,7 @@ export const ContactsSection: React.FC = () => {
                     Заполните форму, и мы ответим на любые вопросы о доставке, оплате или подборе байка.
                   </p>
                 </div>
-                
+
                 <div className="space-y-4">
                   <div className="grid sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
@@ -110,13 +110,13 @@ export const ContactsSection: React.FC = () => {
                       <Input type="email" className="h-12 rounded-xl bg-muted/50 border-transparent focus:bg-background focus:border-primary/20 transition-all" placeholder="example@mail.com" required />
                     </div>
                   </div>
-                  
+
                   <div className="space-y-2">
                     <label className="text-sm font-medium ml-1">Сообщение</label>
-                    <Textarea 
-                      className="min-h-[120px] rounded-xl bg-muted/50 border-transparent focus:bg-background focus:border-primary/20 transition-all resize-none p-4" 
-                      placeholder="Расскажите, какой велосипед вы ищете или задайте вопрос..." 
-                      required 
+                    <Textarea
+                      className="min-h-[120px] rounded-xl bg-muted/50 border-transparent focus:bg-background focus:border-primary/20 transition-all resize-none p-4"
+                      placeholder="Расскажите, какой велосипед вы ищете или задайте вопрос..."
+                      required
                     />
                   </div>
                 </div>
@@ -124,7 +124,7 @@ export const ContactsSection: React.FC = () => {
                 <Button type="submit" className="w-full h-12 rounded-full text-base font-medium shadow-lg shadow-primary/20 hover:shadow-primary/30 transition-all">
                   Отправить сообщение
                 </Button>
-                
+
                 <p className="text-xs text-center text-muted-foreground">
                   Нажимая кнопку, вы соглашаетесь с политикой обработки персональных данных
                 </p>

@@ -7,6 +7,7 @@ import OrderStatusBadge from '@/components/crm/OrderStatusBadge'
 import InspectionChecklist from '@/components/crm/InspectionChecklist'
 import ChecklistItemModal from '@/components/crm/ChecklistItemModal'
 import { useToast } from '@/components/crm/ToastProvider'
+import { ORDER_STATUS_OPTIONS, getOrderStatusPresentation, normalizeOrderStatus } from '@/lib/orderLifecycle'
 
 type Manager = {
     id: string
@@ -34,10 +35,21 @@ type OrderDetail = {
     assigned_manager?: string
     assigned_manager_name?: string
     bike_name?: string
+    bike_url?: string
     bike_snapshot?: {
         bike_id?: string
         archived_bike?: boolean
         external_bike_ref?: string
+        bike_url?: string
+        source_url?: string
+        url?: string
+        listing_url?: string
+        offer_url?: string
+        original_url?: string
+        link?: string
+        links?: { listing?: string; source?: string }
+        source?: { url?: string; link?: string }
+        internal?: { source_url?: string; source_link?: string }
         main_photo_url?: string
         main_image?: string
         image_url?: string
@@ -105,19 +117,10 @@ type OrderDetailResponse = {
     logistics?: Shipment[]
 }
 
-const STATUS_OPTIONS = [
-    { value: 'pending_manager', label: 'Ждет менеджера' },
-    { value: 'under_inspection', label: 'Инспекция' },
-    { value: 'deposit_paid', label: 'Резерв оплачен' },
-    { value: 'awaiting_payment', label: 'Ожидает оплату' },
-    { value: 'awaiting_deposit', label: 'Ожидает резерв' },
-    { value: 'ready_for_shipment', label: 'Готов к отправке' },
-    { value: 'in_transit', label: 'В пути' },
-    { value: 'delivered', label: 'Доставлен' },
-    { value: 'closed', label: 'Закрыт' },
-    { value: 'cancelled', label: 'Отменен' },
-    { value: 'refunded', label: 'Возврат' }
-]
+const STATUS_OPTIONS = ORDER_STATUS_OPTIONS.map((status) => ({
+    value: status.value,
+    label: getOrderStatusPresentation(status.value).label
+}))
 
 export default function OrderDetailPage() {
     const { orderId } = useParams()
@@ -306,6 +309,35 @@ export default function OrderDetailPage() {
     const snapshotImage = firstImage(orderSnapshot?.cached_images)
     const image = resolveImageUrl(snapshotImage)
     const archivedBike = !image && Boolean(orderSnapshot?.archived_bike || orderSnapshot?.external_bike_ref || orderSnapshot?.bike_id || order?.bike_name)
+    const listingUrl = (() => {
+        const candidates = [
+            order?.bike_url,
+            orderSnapshot?.bike_url,
+            orderSnapshot?.source_url,
+            orderSnapshot?.url,
+            orderSnapshot?.listing_url,
+            orderSnapshot?.offer_url,
+            orderSnapshot?.original_url,
+            orderSnapshot?.link,
+            orderSnapshot?.links?.listing,
+            orderSnapshot?.links?.source,
+            orderSnapshot?.source?.url,
+            orderSnapshot?.source?.link,
+            orderSnapshot?.internal?.source_url,
+            orderSnapshot?.internal?.source_link,
+            (item as { source_url?: string; bike_url?: string; url?: string } | undefined)?.source_url,
+            (item as { source_url?: string; bike_url?: string; url?: string } | undefined)?.bike_url,
+            (item as { source_url?: string; bike_url?: string; url?: string } | undefined)?.url
+        ]
+        for (const raw of candidates) {
+            if (typeof raw !== 'string') continue
+            const value = raw.trim()
+            if (!value) continue
+            if (/^https?:\/\//i.test(value)) return value
+            if (value.startsWith('//')) return `https:${value}`
+        }
+        return null
+    })()
 
     const customer = order?.customer
 
@@ -319,9 +351,10 @@ export default function OrderDetailPage() {
 
     const updateStatus = async (status: string) => {
         if (!canonicalOrderId) return
+        const normalized = normalizeOrderStatus(status) || status
         const res = await crmManagerApi.updateOrderStatus(canonicalOrderId, status)
         if (res?.success) {
-            setDetail((prev) => prev ? { ...prev, order: { ...prev.order, status } } : prev)
+            setDetail((prev) => prev ? { ...prev, order: { ...prev.order, status: normalized } } : prev)
             toast.success('Статус заказа обновлен')
             return
         }
@@ -424,6 +457,18 @@ export default function OrderDetailPage() {
                                 <OrderStatusBadge status={order.status} />
                             </div>
                             <div className="mt-2 text-sm text-slate-500">{order.order_number}</div>
+                            {listingUrl ? (
+                                <div className="mt-2">
+                                    <a
+                                        href={listingUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex h-9 items-center rounded-lg border border-[#18181b] px-3 text-xs font-medium text-[#18181b] hover:bg-[#18181b] hover:text-white"
+                                    >
+                                        Открыть объявление
+                                    </a>
+                                </div>
+                            ) : null}
                             <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
                                 <div>
                                     <div className="text-xs uppercase text-slate-400">Сумма</div>
@@ -462,7 +507,7 @@ export default function OrderDetailPage() {
                             </div>
                             <div className="mt-4 flex flex-wrap gap-3">
                                 <select
-                                    value={order.status}
+                                    value={normalizeOrderStatus(order.status) || ''}
                                     onChange={(e) => updateStatus(e.target.value)}
                                     className="h-12 rounded-lg border border-[#e4e4e7] bg-white px-3 text-sm"
                                 >
@@ -925,3 +970,5 @@ export default function OrderDetailPage() {
         </div>
     )
 }
+
+

@@ -414,7 +414,7 @@ function BikeImportWebsite() {
   )
 
   return (
-    <div className="min-h-screen bg-background font-manrope">
+    <div className="min-h-screen bg-background">
       {/* Header */}
       <Header />
 

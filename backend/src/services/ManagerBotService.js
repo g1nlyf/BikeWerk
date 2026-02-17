@@ -5,6 +5,7 @@ const Database = require('better-sqlite3');
 const bcrypt = require('bcryptjs');
 const supabase = require('./supabase');
 const gemini = require('./geminiProcessor');
+const { ORDER_STATUS, normalizeOrderStatus } = require('../domain/orderLifecycle');
 
 class ManagerBotService {
     constructor() {
@@ -297,7 +298,7 @@ class ManagerBotService {
         // Actions: Generate Report
         this.bot.action(/^generate_report:(.+)$/, async (ctx) => {
              const orderCode = ctx.match[1];
-             await supabase.supabase.from('orders').update({ status: 'negotiation_finished' }).eq('order_code', orderCode);
+             await supabase.supabase.from('orders').update({ status: ORDER_STATUS.CHECK_READY }).eq('order_code', orderCode);
              await ctx.reply(`✅ Отчет сформирован и отправлен клиенту!`);
              await this.refreshOrderView(ctx, orderCode);
         });
@@ -692,7 +693,7 @@ class ManagerBotService {
 
         if (!order) return { text: '❌ Заказ не найден', buttons: [] };
 
-        const { status } = order;
+        const status = normalizeOrderStatus(order.status) || String(order.status || '').toLowerCase();
         let text = `📂 <b>Заказ ${orderCode}</b>\n`;
         const customerName = order.customers?.full_name || order.customer_name || 'Unknown';
         text += `👤 Клиент: ${customerName}\n`;
@@ -704,7 +705,7 @@ class ManagerBotService {
 
         // Fetch Inspection Data for progress
         let inspection = null;
-        if (['inspection', 'chat_negotiation'].includes(status)) {
+        if (status === ORDER_STATUS.SELLER_CHECK_IN_PROGRESS) {
             const { data: insp } = await supabase.supabase
                 .from('inspections')
                 .select('*')
@@ -715,9 +716,8 @@ class ManagerBotService {
 
         // Dynamic View based on Status
         switch (status) {
-            case 'new':
-            case 'awaiting_payment': 
-            case 'awaiting_deposit':
+            case ORDER_STATUS.BOOKED:
+            case ORDER_STATUS.RESERVE_PAYMENT_PENDING:
                 text += `⏳ <b>Ожидание задатка</b>\n`;
                 text += `Клиент должен внести бронь. Проверьте поступление.\n`;
                 
@@ -729,16 +729,13 @@ class ManagerBotService {
                 }
                 break;
 
-            case 'deposit_paid':
-            case 'hunting':
+            case ORDER_STATUS.RESERVE_PAID:
                 text += `✅ <b>Задаток получен!</b>\n`;
                 text += `🚀 <b>Задача:</b> Начать переговоры и проверку байка.\n`;
                 buttons.push([Markup.button.callback('🏁 Начать проверку (AI)', `start_inspection:${orderCode}`)]);
                 break;
 
-            case 'inspection':
-            case 'under_inspection':
-            case 'chat_negotiation':
+            case ORDER_STATUS.SELLER_CHECK_IN_PROGRESS:
                 // Render Checklist (21 Points)
                 text += `🕵️ <b>Инспекция (Gemini 2.5 Flash)</b>\n\n`;
                 
@@ -842,7 +839,7 @@ class ManagerBotService {
                 // But user wants "Next" button always available for flow
                 break;
 
-            case 'negotiation_finished':
+            case ORDER_STATUS.CHECK_READY:
                 text += `🎉 <b>Проверка завершена.</b>\n`;
                 text += `Отчет готов к отправке клиенту.\n`;
                 break;
@@ -906,8 +903,16 @@ class ManagerBotService {
         const { data: orders } = await supabase.supabase
             .from('orders')
             .select('order_code')
-            .in('status', ['new', 'awaiting_payment', 'awaiting_deposit', 'deposit_paid', 'hunting', 'inspection', 'chat_negotiation'])
-            // Logic: assigned to me OR (new/awaiting_payment/deposit and unassigned)
+            .in('status', [
+                ORDER_STATUS.BOOKED,
+                ORDER_STATUS.RESERVE_PAYMENT_PENDING,
+                ORDER_STATUS.RESERVE_PAID,
+                ORDER_STATUS.SELLER_CHECK_IN_PROGRESS,
+                ORDER_STATUS.CHECK_READY,
+                ORDER_STATUS.AWAITING_CLIENT_DECISION,
+                ORDER_STATUS.FULL_PAYMENT_PENDING
+            ])
+            // Logic: assigned to me OR unassigned
             .or(`assigned_manager.eq.${managerId},assigned_manager.is.null`)
             .order('created_at', { ascending: false });
             
@@ -945,7 +950,7 @@ class ManagerBotService {
             if (!orderCode) throw new Error('Order Code is missing');
 
             const updatePayload = {
-                status: 'awaiting_deposit',
+                status: ORDER_STATUS.SELLER_CHECK_IN_PROGRESS,
                 manager_notes: `Accepted by ${managerName} at ${new Date().toISOString()}`
             };
 
@@ -975,7 +980,7 @@ class ManagerBotService {
         try {
             const { error } = await supabase.supabase
                 .from('orders')
-                .update({ status: 'deposit_paid' })
+                .update({ status: ORDER_STATUS.RESERVE_PAID })
                 .eq('order_code', orderCode);
 
             if (error) throw error;
@@ -1053,17 +1058,17 @@ class ManagerBotService {
                 throw new Error(`DB Upsert Failed: ${upsertError.message}`);
             }
 
-            // Update order status (Use 'under_inspection' for DB enum compatibility)
+            // Update order status
             const { error: statusError } = await supabase.supabase
                 .from('orders')
-                .update({ status: 'under_inspection' })
+                .update({ status: ORDER_STATUS.SELLER_CHECK_IN_PROGRESS })
                 .eq('order_code', orderCode);
 
             if (statusError) {
                 console.warn(`[ManagerBot] Status update warning for ${orderCode}:`, statusError.message);
-                // Fallback: try 'inspection' if 'under_inspection' fails (backward compatibility)
+                // Backward-compatible fallback for legacy enum schemas.
                 if (statusError.message.includes('invalid input value')) {
-                     await supabase.supabase.from('orders').update({ status: 'inspection' }).eq('order_code', orderCode);
+                     await supabase.supabase.from('orders').update({ status: 'under_inspection' }).eq('order_code', orderCode);
                 } else {
                     throw statusError;
                 }

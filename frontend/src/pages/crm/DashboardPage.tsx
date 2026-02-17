@@ -4,6 +4,9 @@ import { crmManagerApi } from '@/api/crmManagerApi'
 import StatsCard from '@/components/crm/StatsCard'
 import OrderCard from '@/components/crm/OrderCard'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
+import { ORDER_STATUS, getOrderStatusPresentation } from '@/lib/orderLifecycle'
+import type { CrmScope } from '@/lib/crmScope'
+import { getCurrentCrmUser, isCrmAdmin, resolveCrmScope, setGlobalCrmScope, subscribeCrmScopeChange } from '@/lib/crmScope'
 
 type DashboardStats = {
     total_orders?: number
@@ -35,11 +38,14 @@ type Task = {
 }
 
 const kanbanStatuses = [
-    { key: 'pending_manager', label: 'Ждет менеджера' },
-    { key: 'under_inspection', label: 'Проверка' },
-    { key: 'deposit_paid', label: 'Резерв оплачен' },
-    { key: 'delivered', label: 'Доставлен' }
-]
+    ORDER_STATUS.BOOKED,
+    ORDER_STATUS.SELLER_CHECK_IN_PROGRESS,
+    ORDER_STATUS.FULL_PAYMENT_PENDING,
+    ORDER_STATUS.DELIVERED
+].map((status) => ({
+    key: status,
+    label: getOrderStatusPresentation(status).shortLabel
+}))
 
 export default function DashboardPage() {
     const navigate = useNavigate()
@@ -47,14 +53,46 @@ export default function DashboardPage() {
     const [kanban, setKanban] = React.useState<Record<string, OrderSummary[]>>({})
     const [tasks, setTasks] = React.useState<Task[]>([])
     const [loading, setLoading] = React.useState(true)
+    const currentUser = React.useMemo(() => getCurrentCrmUser(), [])
+    const [scope, setScope] = React.useState<CrmScope>(() => resolveCrmScope(currentUser))
+    const isAdmin = isCrmAdmin(currentUser)
+    const currentUserId = String(currentUser?.id || '').trim()
+
+    React.useEffect(() => {
+        setScope(resolveCrmScope(currentUser))
+    }, [currentUser, isAdmin])
+
+    React.useEffect(() => {
+        if (!isAdmin && scope !== 'mine') {
+            setScope('mine')
+            return
+        }
+        setGlobalCrmScope(scope, currentUser)
+    }, [scope, isAdmin, currentUser])
+
+    React.useEffect(() => {
+        return subscribeCrmScopeChange(() => {
+            setScope(resolveCrmScope(currentUser))
+        })
+    }, [currentUser])
 
     React.useEffect(() => {
         let mounted = true
         const load = async () => {
             try {
+                const statsFilters = { scope }
+                const ordersFilters = { scope }
+                const taskFilters: Record<string, unknown> = {
+                    status: 'pending',
+                    limit: 5
+                }
+                if (scope === 'mine' && currentUserId) {
+                    taskFilters.manager = currentUserId
+                }
+
                 const [statsRes, ...boards] = await Promise.all([
-                    crmManagerApi.getDashboardStats(),
-                    ...kanbanStatuses.map((s) => crmManagerApi.getOrders({ status: s.key, limit: 5 }))
+                    crmManagerApi.getDashboardStats(statsFilters),
+                    ...kanbanStatuses.map((s) => crmManagerApi.getOrders({ status: s.key, limit: 5, ...ordersFilters }))
                 ])
 
                 if (!mounted) return
@@ -67,7 +105,7 @@ export default function DashboardPage() {
                 })
                 setKanban(next)
 
-                const taskRes = await crmManagerApi.getTasks({ status: 'pending', limit: 5 })
+                const taskRes = await crmManagerApi.getTasks(taskFilters)
                 if (mounted) setTasks(Array.isArray(taskRes?.tasks) ? taskRes.tasks : [])
             } catch (e) {
                 console.error('Dashboard load error', e)
@@ -77,7 +115,7 @@ export default function DashboardPage() {
         }
         load()
         return () => { mounted = false }
-    }, [])
+    }, [scope, currentUserId])
 
     const chartData = React.useMemo(() => {
         const daily = Array.isArray(stats?.daily_orders) ? stats?.daily_orders || [] : []
@@ -98,29 +136,72 @@ export default function DashboardPage() {
         ? `${Number(stats.revenue_rub).toLocaleString('ru-RU')} ₽`
         : '--'
 
-    const activeFilter = 'pending_manager,under_inspection,awaiting_deposit,deposit_paid,awaiting_payment,ready_for_shipment,in_transit'
+    const activeFilter = [ORDER_STATUS.BOOKED, ORDER_STATUS.RESERVE_PAYMENT_PENDING, ORDER_STATUS.RESERVE_PAID, ORDER_STATUS.SELLER_CHECK_IN_PROGRESS, ORDER_STATUS.CHECK_READY, ORDER_STATUS.AWAITING_CLIENT_DECISION, ORDER_STATUS.FULL_PAYMENT_PENDING, ORDER_STATUS.FULL_PAYMENT_RECEIVED, ORDER_STATUS.BIKE_BUYOUT_COMPLETED, ORDER_STATUS.SELLER_SHIPPED, ORDER_STATUS.EXPERT_RECEIVED, ORDER_STATUS.EXPERT_INSPECTION_IN_PROGRESS, ORDER_STATUS.EXPERT_REPORT_READY, ORDER_STATUS.AWAITING_CLIENT_DECISION_POST_INSPECTION, ORDER_STATUS.WAREHOUSE_RECEIVED, ORDER_STATUS.WAREHOUSE_REPACKED, ORDER_STATUS.SHIPPED_TO_RUSSIA].join(',')
 
     return (
         <div className="space-y-6">
+            <div className="rounded-xl border border-[#e4e4e7] bg-white p-4 shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                        <div className="text-xs uppercase tracking-wide text-slate-400">Режим данных</div>
+                        <div className="text-sm font-semibold text-[#18181b]">
+                            {scope === 'mine' ? 'Показываются только ваши заказы и KPI' : 'Показываются все заказы и KPI'}
+                        </div>
+                    </div>
+                    {isAdmin ? (
+                        <div className="flex rounded-lg border border-[#e4e4e7] overflow-hidden">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setGlobalCrmScope('mine', currentUser)
+                                    setScope('mine')
+                                }}
+                                className={`px-3 py-2 text-xs font-medium transition-colors ${
+                                    scope === 'mine' ? 'bg-[#18181b] text-white' : 'bg-white text-slate-600 hover:bg-slate-50'
+                                }`}
+                            >
+                                Только мои
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setGlobalCrmScope('all', currentUser)
+                                    setScope('all')
+                                }}
+                                className={`px-3 py-2 text-xs font-medium transition-colors ${
+                                    scope === 'all' ? 'bg-[#18181b] text-white' : 'bg-white text-slate-600 hover:bg-slate-50'
+                                }`}
+                            >
+                                Все заказы
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="rounded-full border border-[#e4e4e7] bg-[#f4f4f5] px-3 py-1.5 text-xs text-slate-600">
+                            Режим менеджера: только мои
+                        </div>
+                    )}
+                </div>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
                 <StatsCard
                     title="Всего заказов"
                     value={stats?.total_orders ?? 0}
                     hint="За все время"
                     delta={stats?.last_7_days ? `+${stats.last_7_days} за 7 дней` : undefined}
-                    onClick={() => navigate('/crm/orders')}
+                    onClick={() => navigate(`/crm/orders?scope=${scope}`)}
                 />
                 <StatsCard
                     title="Активные"
                     value={stats?.active_orders ?? 0}
                     hint="В работе"
-                    onClick={() => navigate(`/crm/orders?status=${encodeURIComponent(activeFilter)}`)}
+                    onClick={() => navigate(`/crm/orders?status=${encodeURIComponent(activeFilter)}&scope=${scope}`)}
                 />
                 <StatsCard
                     title="Ждут менеджера"
                     value={stats?.pending_manager ?? 0}
                     hint="Новые заявки"
-                    onClick={() => navigate('/crm/orders?status=pending_manager')}
+                    onClick={() => navigate(`/crm/orders?status=${encodeURIComponent([ORDER_STATUS.BOOKED, ORDER_STATUS.RESERVE_PAYMENT_PENDING].join(','))}&scope=${scope}`)}
                 />
                 <StatsCard
                     title="Конверсия"
@@ -131,7 +212,7 @@ export default function DashboardPage() {
                     title="Выручка"
                     value={revenueValue}
                     hint="Сумма заказов"
-                    onClick={() => navigate('/crm/orders')}
+                    onClick={() => navigate(`/crm/orders?scope=${scope}`)}
                 />
             </div>
 
