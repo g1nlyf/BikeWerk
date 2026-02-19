@@ -6,6 +6,8 @@ const router = Router()
 const crmApiMod = require('../../../../scripts/crm-api.js')
 const geminiClient = require('../../../services/geminiProcessor');
 const priceCalculator = require('../../../services/PriceCalculatorService');
+const addonPricing = require('../../../services/AddonPricingService');
+const telegramHub = require('../../../services/TelegramHubService');
 const localDb = new DatabaseManager();
 const crmApi = crmApiMod.initializeCRM(undefined, undefined, localDb)
 // const geminiClient = new GeminiProcessor(); // It's already instantiated in the export
@@ -1020,10 +1022,20 @@ router.post('/orders/:orderId/notify-tracking', async (req, res, next) => {
         }
         const { data: shipment } = await shipmentQuery.maybeSingle();
 
-        // Log the notification attempt (actual sending would go here)
+        let telegramResult: any = null;
+        if (!method || String(method).toLowerCase() === 'telegram') {
+            const trackingOrderKey = resolved.order?.order_code || resolved.orderId || orderId;
+            telegramResult = await telegramHub.sendTrackingNotification({
+                orderId: trackingOrderKey,
+                includeStatus: true
+            });
+        }
+
+        // Log notification attempt
         console.log(`[NOTIFY] Order ${resolved.order.order_code || resolved.orderId} tracking via ${method}:`, {
             customer,
-            shipment
+            shipment,
+            telegramResult
         });
 
         // Audit log
@@ -1038,7 +1050,11 @@ router.post('/orders/:orderId/notify-tracking', async (req, res, next) => {
             console.warn('Audit log failed:', auditErr);
         }
 
-        res.json({ success: true, message: `Tracking notification sent via ${method}` });
+        res.json({
+            success: true,
+            message: `Tracking notification sent via ${method || 'telegram'}`,
+            telegram: telegramResult
+        });
     } catch (error: any) {
         console.error('Notify Tracking Error:', error.message);
         res.status(500).json({ error: error.message });
@@ -1454,50 +1470,15 @@ router.post('/orders/:orderId/ask', async (req, res) => {
 
         if (error) throw error;
 
-        // --- Telegram Notification Logic ---
+        // Telegram manager notification (non-blocking)
         try {
-            const { ManagerBotService } = require('../../../services/ManagerBotService'); // Adjust path as needed, or use global
-            const botToken = process.env.BOT_TOKEN || process.env.MANAGER_BOT_TOKEN || '';
-            const axios = require('axios');
-            if (!botToken) {
-                console.warn('⚠️ BOT_TOKEN missing. Skipping Telegram notification.');
-                return res.status(200).json({ success: true, task, warning: 'BOT_TOKEN missing' });
-            }
-
-            // Find Manager TG ID
-            let managerTgId = null;
-            if (order.assigned_manager) {
-                // Try to find in users
-                const { data: user } = await supabase.from('users').select('telegram_id').eq('username', order.assigned_manager).single();
-                if (user) managerTgId = user.telegram_id;
-            }
-
-            // Fallback to Admin/Group if no manager or manager has no TG
-            const targetChatId = managerTgId || process.env.ADMIN_CHAT_ID;
-            if (!targetChatId) {
-                console.warn('⚠️ ADMIN_CHAT_ID missing. Skipping Telegram notification.');
-                return;
-            }
-
-            const msg = `
-📩 <b>ВОПРОС ОТ КЛИЕНТА</b>
-Заказ: <b>${order.order_code}</b> (${order.bike_name})
-
-❓ <i>"${question}"</i>
-
-👉 <a href="https://t.me/EubikeManagerBot?start=view_tasks:${order.order_code}">Ответить через бота</a>
-            `.trim();
-
-            await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-                chat_id: targetChatId,
-                text: msg,
-                parse_mode: 'HTML'
+            await telegramHub.notifyManagerClientQuestion({
+                orderCode: order?.order_code || orderId,
+                question: String(question),
+                managerId: order?.assigned_manager || null
             });
-            console.log(`[CRM] Notification sent to ${targetChatId}`);
-
         } catch (notifyError: any) {
             console.error('[CRM] Failed to notify manager:', notifyError.message);
-            // Don't fail the request
         }
 
         res.json({ success: true, task });
@@ -1537,16 +1518,24 @@ router.post('/orders/:orderId/delivery', async (req, res) => {
                 || (Number(order.final_price_eur || 0) * 0.85);
             const rate = Number(currentFinancials.exchange_rate || snapshot.exchange_rate || 105) || 105;
 
-            const calc = priceCalculator.calculate(bikePriceEur, method, cargoInsurance);
-            const details = calc?.details || {};
+            const addonsInput = bookingMeta.addons || bookingMeta.addons_selection || bookingMeta.booking_form?.addons_selection || {};
+            const priced = addonPricing.calculateFinancialsWithAddons({
+                bikePriceEur,
+                shippingMethod: method,
+                exchangeRate: rate,
+                addons: addonsInput,
+                cargoInsurance
+            });
+            const details = priced?.details || {};
             const shippingCostEur = Number(details.shipping_cost_eur || 0);
             const serviceFeeEur = Number(details.service_fee_eur || 0);
             const insuranceFeesEur = Number(details.insurance_fees_eur || 0);
             const cargoInsuranceEur = Number(details.cargo_insurance_eur || 0);
             const paymentCommissionEur = Number(details.payment_commission_eur || 0);
+            const bookingAmountRub = Number(details.booking_amount_rub || 0) || null;
 
             newTotalEur = Number(details.final_price_eur || 0);
-            newTotalRub = Math.ceil(newTotalEur * rate);
+            newTotalRub = Number(details.total_price_rub || 0) || Math.ceil(newTotalEur * rate);
 
             const nextFinancials = {
                 ...currentFinancials,
@@ -1555,12 +1544,18 @@ router.post('/orders/:orderId/delivery', async (req, res) => {
                 service_fee_eur: serviceFeeEur,
                 insurance_fees_eur: insuranceFeesEur,
                 cargo_insurance_eur: cargoInsuranceEur,
+                subtotal_eur: Number(details.subtotal_eur || 0),
+                addons_total_eur: Number(details.addons_total_eur || 0),
+                addons_total_rub: Number(details.addons_total_rub || 0),
+                addons_lines: Array.isArray(details.addons_lines) ? details.addons_lines : [],
+                subtotal_with_addons_eur: Number(details.subtotal_with_addons_eur || 0),
                 payment_commission_eur: paymentCommissionEur,
                 warehouse_fee_eur: 0,
                 margin_total_eur: serviceFeeEur,
                 exchange_rate: rate,
                 final_price_eur: newTotalEur,
                 total_price_rub: newTotalRub,
+                booking_amount_rub: bookingAmountRub,
                 shipping_method: method
             };
 
@@ -1571,6 +1566,7 @@ router.post('/orders/:orderId/delivery', async (req, res) => {
                 financials: nextFinancials,
                 booking_meta: {
                     ...bookingMeta,
+                    addons: priced.normalizedAddons || bookingMeta.addons || [],
                     financials: nextFinancials,
                     booking_form: {
                         ...bookingForm,
@@ -1586,6 +1582,7 @@ router.post('/orders/:orderId/delivery', async (req, res) => {
                     payment_commission_eur: paymentCommissionEur,
                     final_price_eur: newTotalEur,
                     total_price_rub: newTotalRub,
+                    booking_amount_rub: bookingAmountRub,
                     bike_snapshot: nextSnapshot
                 })
                 .eq('id', order.id);
@@ -1606,16 +1603,24 @@ router.post('/orders/:orderId/delivery', async (req, res) => {
                 || (Number(order.final_price_eur || 0) * 0.85);
             const rate = Number(currentFinancials.exchange_rate || snapshot.exchange_rate || 105) || 105;
 
-            const calc = priceCalculator.calculate(bikePriceEur, method, cargoInsurance);
-            const details = calc?.details || {};
+            const addonsInput = bookingMeta.addons || bookingMeta.addons_selection || bookingMeta.booking_form?.addons_selection || {};
+            const priced = addonPricing.calculateFinancialsWithAddons({
+                bikePriceEur,
+                shippingMethod: method,
+                exchangeRate: rate,
+                addons: addonsInput,
+                cargoInsurance
+            });
+            const details = priced?.details || {};
             const shippingCostEur = Number(details.shipping_cost_eur || 0);
             const serviceFeeEur = Number(details.service_fee_eur || 0);
             const insuranceFeesEur = Number(details.insurance_fees_eur || 0);
             const cargoInsuranceEur = Number(details.cargo_insurance_eur || 0);
             const paymentCommissionEur = Number(details.payment_commission_eur || 0);
+            const bookingAmountRub = Number(details.booking_amount_rub || 0) || null;
 
             newTotalEur = Number(details.final_price_eur || 0);
-            newTotalRub = Math.ceil(newTotalEur * rate);
+            newTotalRub = Number(details.total_price_rub || 0) || Math.ceil(newTotalEur * rate);
 
             const nextFinancials = {
                 ...currentFinancials,
@@ -1624,12 +1629,18 @@ router.post('/orders/:orderId/delivery', async (req, res) => {
                 service_fee_eur: serviceFeeEur,
                 insurance_fees_eur: insuranceFeesEur,
                 cargo_insurance_eur: cargoInsuranceEur,
+                subtotal_eur: Number(details.subtotal_eur || 0),
+                addons_total_eur: Number(details.addons_total_eur || 0),
+                addons_total_rub: Number(details.addons_total_rub || 0),
+                addons_lines: Array.isArray(details.addons_lines) ? details.addons_lines : [],
+                subtotal_with_addons_eur: Number(details.subtotal_with_addons_eur || 0),
                 payment_commission_eur: paymentCommissionEur,
                 warehouse_fee_eur: 0,
                 margin_total_eur: serviceFeeEur,
                 exchange_rate: rate,
                 final_price_eur: newTotalEur,
                 total_price_rub: newTotalRub,
+                booking_amount_rub: bookingAmountRub,
                 shipping_method: method
             };
 
@@ -1640,6 +1651,7 @@ router.post('/orders/:orderId/delivery', async (req, res) => {
                 financials: nextFinancials,
                 booking_meta: {
                     ...bookingMeta,
+                    addons: priced.normalizedAddons || bookingMeta.addons || [],
                     financials: nextFinancials,
                     booking_form: {
                         ...bookingForm,
@@ -1655,6 +1667,7 @@ router.post('/orders/:orderId/delivery', async (req, res) => {
                      payment_commission_eur = ?,
                      final_price_eur = ?,
                      total_price_rub = ?,
+                     booking_amount_rub = ?,
                      bike_snapshot = ?
                  WHERE id = ?`,
                 [
@@ -1663,6 +1676,7 @@ router.post('/orders/:orderId/delivery', async (req, res) => {
                     paymentCommissionEur,
                     newTotalEur,
                     newTotalRub,
+                    bookingAmountRub,
                     JSON.stringify(nextSnapshot),
                     order.id
                 ]
@@ -1670,25 +1684,11 @@ router.post('/orders/:orderId/delivery', async (req, res) => {
         }
 
         try {
-            const botToken = process.env.BOT_TOKEN || process.env.MANAGER_BOT_TOKEN || '';
-            const axios = require('axios');
-            const targetChatId = process.env.ADMIN_CHAT_ID || '';
-            if (!botToken || !targetChatId) {
-                console.warn('BOT_TOKEN / ADMIN_CHAT_ID missing. Skipping Telegram notification.');
-                return res.json({ success: true, method, newTotalEur, newTotalRub });
-            }
-
-            const msg = [
-                '<b>????? ????????</b>',
-                `?????: <b>${orderCodeForNotify}</b>`,
-                `????? ?????: <b>${method}</b>`,
-                `????? ????: <b>${newTotalEur.toFixed(0)}?</b> (${newTotalRub.toLocaleString('ru-RU')}?)`
-            ].join('\n');
-
-            await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-                chat_id: targetChatId,
-                text: msg,
-                parse_mode: 'HTML'
+            await telegramHub.notifyDeliveryUpdate({
+                orderCode: orderCodeForNotify,
+                method,
+                totalEur: newTotalEur,
+                totalRub: newTotalRub
             });
         } catch (e) {
             console.error('Notify Error:', e);

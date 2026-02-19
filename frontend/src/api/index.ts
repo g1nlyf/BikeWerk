@@ -1,5 +1,6 @@
 import { createMetricsEventId, getMetricsSessionId } from '@/lib/session'
 import { getAttributionHeaders, getAttributionMetadata } from '@/lib/traffic'
+import { canUseAnalyticsCookies } from '@/lib/legal'
 
 // Базовая точка для HTTP-запросов фронта
 export const API_BASE = import.meta.env.PROD
@@ -140,6 +141,7 @@ function shouldCaptureLatency(path: string, status: number, networkError: boolea
 }
 
 function reportApiLatency(path: string, method: string, status: number, startedAt: number, networkError: boolean) {
+  if (!canUseAnalyticsCookies()) return
   if (typeof window === 'undefined') return
   const now = typeof performance !== 'undefined' ? performance.now() : Date.now()
   const durationMs = Math.max(0, Math.round(now - startedAt))
@@ -586,6 +588,9 @@ export const adminGrowthApi = {
 
 export const metricsApi = {
   async sendEvents(events: Array<{ type: string; bikeId?: number; ms?: number; session_id?: string; referrer?: string; source_path?: string; metadata?: Record<string, unknown>; event_id?: string }>) {
+    if (!canUseAnalyticsCookies()) {
+      return { success: false, skipped: 'analytics_consent_required' as const }
+    }
     const sessionId = getMetricsSessionId()
     const trafficMeta = getAttributionMetadata()
     const enhanced = events.map((ev, idx) => ({
@@ -603,6 +608,9 @@ export const metricsApi = {
   }
   ,
   async trackSearch(payload: { query: string; category?: string; brand?: string; minPrice?: number; maxPrice?: number }) {
+    if (!canUseAnalyticsCookies()) {
+      return { success: false, skipped: 'analytics_consent_required' as const }
+    }
     const sessionId = getMetricsSessionId()
     return apiPost('/metrics/search', payload, { headers: { 'x-session-id': sessionId } })
   }

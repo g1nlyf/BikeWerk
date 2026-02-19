@@ -8,9 +8,11 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Share2, CheckCircle, ArrowRight, ArrowLeft } from "lucide-react";
+import { LegalConsentFields } from "@/components/legal/LegalConsentFields";
 import { apiPost } from "@/api";
 import { useCheckoutUI } from "@/lib/checkout-ui";
 import { metricsApi } from "@/api";
+import { DEFAULT_FORM_LEGAL_CONSENT, buildLegalAuditLine, hasRequiredFormLegalConsent } from "@/lib/legal";
 
 type ContactMethod = "telegram" | "whatsapp" | "email" | "call";
 
@@ -59,6 +61,7 @@ export default function BuybackDialog() {
   const [wiz, setWiz] = React.useState<WizardState>(() => loadState());
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<null | { message: string; raw?: unknown }>(null);
+  const [legalConsent, setLegalConsent] = React.useState(DEFAULT_FORM_LEGAL_CONSENT);
 
   React.useEffect(() => {
     if (state.buybackOpen && bike?.id) {
@@ -78,16 +81,21 @@ export default function BuybackDialog() {
   })();
 
   const submit = async () => {
+    if (!hasRequiredFormLegalConsent(legalConsent)) {
+      setError({ message: "Подтвердите согласие с условиями оферты и обработкой персональных данных." });
+      return;
+    }
     setSubmitting(true);
     setError(null);
     const contact_method = wiz.method === "call" ? "phone" : wiz.method ?? "";
     const contact_value = wiz.method === "email" ? wiz.value.trim() : digits(wiz.value);
+    const legalAudit = buildLegalAuditLine(legalConsent.marketingAccepted);
     try {
       const res = await apiPost("/v1/crm/applications", {
         name: wiz.name.trim(),
         contact_method,
         contact_value,
-        notes: null,
+        notes: legalAudit,
       });
       if (res?.success) {
         const id = String(res.application_id || "");
@@ -174,6 +182,8 @@ export default function BuybackDialog() {
                   <pre className="mt-2 overflow-auto max-h-60 text-xs bg-muted/40 p-2 rounded-md">{JSON.stringify(error.raw, null, 2)}</pre>
                 </div>
               )}
+
+              <LegalConsentFields value={legalConsent} onChange={setLegalConsent} />
 
               <div className="flex items-center justify-between gap-2">
                 <Button variant="outline" className="rounded-full" onClick={() => closeAll()}>

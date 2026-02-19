@@ -44,6 +44,8 @@ export const api = {
 
     async checkout(data: any) {
         // Using the quick order endpoint for guest checkout which handles application + order creation
+        const baseNotes = `Address: ${data.address}, City: ${data.city}. Delivery: ${data.delivery_method}. Payment: ${data.payment_method}`;
+        const extraNotes = data?.notes ? ` ${String(data.notes)}` : '';
         const response = await fetch(`${API_BASE_URL}/v1/crm/orders/quick`, {
             method: 'POST',
             headers: {
@@ -53,7 +55,7 @@ export const api = {
                 name: data.name,
                 contact_method: data.phone ? 'phone' : 'email',
                 contact_value: data.phone || data.email,
-                notes: `Address: ${data.address}, City: ${data.city}. Delivery: ${data.delivery_method}. Payment: ${data.payment_method}`
+                notes: `${baseNotes}${extraNotes}`.trim()
             }),
         });
         if (!response.ok) {

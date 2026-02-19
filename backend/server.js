@@ -38,6 +38,8 @@ const { CrmSyncService } = require('./src/services/CrmSyncService.js');
 const { AiRopAutopilotService } = require('./src/services/AiRopAutopilotService.js');
 const { AiSignalService } = require('./src/services/AiSignalService.js');
 const { ManagerKpiService } = require('./src/services/ManagerKpiService.js');
+const telegramHub = require('./src/services/TelegramHubService');
+const HunterOpsNotifier = require('./src/services/HunterOpsNotifier');
 const {
     ORDER_STATUS,
     ALL_ORDER_STATUSES,
@@ -92,16 +94,104 @@ financialAgent.start();
 // Start Hunter (Integrated - hourly)
 const HourlyHunter = require('./cron/hourly-hunter');
 const hourlyHunter = new HourlyHunter();
+const hunterOpsNotifier = new HunterOpsNotifier();
 const { recomputeAll } = require('./scripts/recompute-ranks.js');
 
-// Schedule: Every hour at :05 - Hot Deals Hunt
+let isHourlyHunterRunning = false;
+let hourlyHunterLastReason = null;
+let hourlyHunterLastStartedAt = null;
+
+const parseSqliteUtc = (value) => {
+    if (!value) return null;
+    const text = String(value).trim();
+    if (!text) return null;
+    const normalized = text.includes('T') ? text : text.replace(' ', 'T');
+    const withZone = /Z$|[+-]\d{2}:\d{2}$/.test(normalized) ? normalized : `${normalized}Z`;
+    const parsed = new Date(withZone);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const minutesSince = (value) => {
+    const parsed = value instanceof Date ? value : parseSqliteUtc(value);
+    if (!parsed) return Number.POSITIVE_INFINITY;
+    return (Date.now() - parsed.getTime()) / 60000;
+};
+
+async function triggerHourlyHunter(reason = 'cron_hourly') {
+    if (isHourlyHunterRunning) {
+        console.warn(`[HUNTER_SCHED] Skip trigger (${reason}): previous cycle still running (started=${hourlyHunterLastStartedAt?.toISOString?.() || 'n/a'}, reason=${hourlyHunterLastReason || 'n/a'})`);
+        return false;
+    }
+
+    isHourlyHunterRunning = true;
+    hourlyHunterLastReason = reason;
+    hourlyHunterLastStartedAt = new Date();
+
+    try {
+        console.log(`\n[HUNTER_SCHED] Triggered by ${reason}`);
+        const result = await hourlyHunter.run({ triggerReason: reason });
+        if (result && result.ok === false) {
+            console.error(`[HUNTER_SCHED] HourlyHunter reported failure (${reason}):`, result.message || 'unknown');
+            return false;
+        }
+        return true;
+    } catch (error) {
+        console.error(`[HUNTER_SCHED] HourlyHunter failed (${reason}):`, error?.message || error);
+        try {
+            await db.query(`
+                INSERT INTO hunter_events (type, details, created_at)
+                VALUES (?, ?, datetime('now'))
+            `, ['HOURLY_RUN_TRIGGER_ERROR', JSON.stringify({ reason, message: error?.message || String(error) })]);
+        } catch (logError) {
+            console.error('[HUNTER_SCHED] Failed to write trigger error event:', logError?.message || logError);
+        }
+        return false;
+    } finally {
+        isHourlyHunterRunning = false;
+    }
+}
+
+// Schedule: Every hour at :05 - Hot Deals Hunt + Refill
 cron.schedule('5 * * * *', async () => {
-    console.log('\nðŸ”” Hunter Auto-Run Triggered! (every hour)');
-    await hourlyHunter.run();
+    await triggerHourlyHunter('cron_hourly');
 }, {
     scheduled: true,
     timezone: "Europe/Berlin"
 });
+
+const hunterWatchdogEnabled = String(process.env.ENABLE_HUNTER_WATCHDOG || '1') === '1';
+const hunterWatchdogStaleMinutes = Math.max(30, Number(process.env.HUNTER_WATCHDOG_STALE_MINUTES || 130) || 130);
+if (hunterWatchdogEnabled) {
+    // Safety net: if no HOURLY_RUN_* event appears for too long, force one recovery cycle.
+    cron.schedule('*/15 * * * *', async () => {
+        if (isHourlyHunterRunning) return;
+        try {
+            const rows = await db.query(`
+                SELECT created_at
+                FROM hunter_events
+                WHERE type IN ('HOURLY_RUN_COMPLETE', 'HOURLY_RUN_ERROR')
+                ORDER BY created_at DESC
+                LIMIT 1
+            `);
+            const lastRunAt = rows?.[0]?.created_at || null;
+            const ageMinutes = minutesSince(lastRunAt);
+            if (!lastRunAt || ageMinutes >= hunterWatchdogStaleMinutes) {
+                const ageLabel = Number.isFinite(ageMinutes) ? `${Math.round(ageMinutes)}m` : 'none';
+                console.warn(`[HUNTER_WATCHDOG] stale run detected (last=${ageLabel}). Triggering recovery.`);
+                await hunterOpsNotifier.notifyWatchdogRecovery({
+                    ageMinutes,
+                    lastRunAt
+                });
+                await triggerHourlyHunter('watchdog_recovery');
+            }
+        } catch (error) {
+            console.error('[HUNTER_WATCHDOG] failed:', error?.message || error);
+        }
+    }, {
+        scheduled: true,
+        timezone: 'Europe/Berlin'
+    });
+}
 
 // Schedule: Every hour at :35 - Recompute Ranks with FMV
 cron.schedule('35 * * * *', async () => {
@@ -119,6 +209,9 @@ cron.schedule('35 * * * *', async () => {
 });
 console.log('âœ… Hunter scheduled (every hour at :05)');
 console.log('âœ… Rank Recompute scheduled (every hour at :35)');
+if (hunterWatchdogEnabled) {
+    console.log(`âœ… Hunter watchdog scheduled (every 15m, stale >= ${hunterWatchdogStaleMinutes}m)`);
+}
 
 if (String(process.env.ENABLE_METRICS_AUTO_OPTIMIZER || '0') === '1') {
     cron.schedule('17 */6 * * *', async () => {
@@ -234,6 +327,22 @@ if (LOCAL_DB_ONLY) {
 const crmSyncService = new CrmSyncService({ supabase, db });
 const aiSignalService = new AiSignalService({ db });
 const aiRopAutopilot = new AiRopAutopilotService({ supabase, db, crmSyncService, aiSignalService });
+telegramHub.bindServices({ db, aiRopAutopilot, managerKpiService });
+const TELEGRAM_ROLE_ORDER = ['admin', 'manager', 'client', 'support'];
+const telegramHubAutoRolesRaw = String(process.env.TELEGRAM_HUB_POLLING_ROLES || 'admin,manager,client,support');
+const telegramHubAutoRoles = telegramHubAutoRolesRaw
+    .split(',')
+    .map((item) => String(item || '').trim().toLowerCase())
+    .filter((item, index, arr) => TELEGRAM_ROLE_ORDER.includes(item) && arr.indexOf(item) === index);
+telegramHub.start({ pollingRoles: telegramHubAutoRoles }).then((result) => {
+    const failed = Array.isArray(result?.failed_roles) ? result.failed_roles : [];
+    console.log(`[TelegramHub] polling roles: ${telegramHubAutoRoles.join(', ') || 'none'}`);
+    if (failed.length) {
+        console.warn(`[TelegramHub] roles with startup errors: ${failed.map((item) => item.role).join(', ')}`);
+    }
+}).catch((error) => {
+    console.warn('[TelegramHub] init failed:', error?.message || error);
+});
 
 if (String(process.env.ENABLE_AI_ROP_AUTOPILOT || '1') === '1') {
     if (aiRopAutopilot.start()) {
@@ -1293,7 +1402,7 @@ app.get('/api/admin/hunter/logs', adminAuth, async (req, res) => {
 app.post('/api/admin/labs/hunt-trigger', adminAuth, async (req, res) => {
     try {
         console.log('Emergency Hunt Triggered via API');
-        hourlyHunter.run().catch((error) => {
+        triggerHourlyHunter('api_manual_trigger').catch((error) => {
             console.error('HourlyHunter trigger failed:', error.message);
         });
         res.json({ success: true, message: "Hunt triggered successfully" });
@@ -1313,7 +1422,7 @@ app.post('/api/admin/labs/hunt-trigger', adminAuth, async (req, res) => {
 const AutonomousOrchestrator = require('../telegram-bot/AutonomousOrchestrator');
 const orchestrator = new AutonomousOrchestrator(); // No bot instance here, so logs go to console/file only.
 
-app.post('/api/admin/labs/hunt-trigger', adminAuth, async (req, res) => {
+app.post('/api/admin/labs/hunt-trigger-orchestrator', adminAuth, async (req, res) => {
     const { count } = req.body;
     const targetCount = count || 5;
     console.log(`API Trigger: Hunting ${targetCount} bikes...`);
@@ -1813,10 +1922,12 @@ const AuditSupplyGapAnalyzer = require('./src/services/SupplyGapAnalyzer');
 
 app.post('/api/tg/preferences', async (req, res) => {
     try {
-        // Mock saving preference for audit
-        // In real app, this would insert into user_preferences table
-        console.log('[Audit] Storing preference:', req.body);
-        res.json({ success: true });
+        const { chat_id, preferences } = req.body || {};
+        const result = await telegramHub.setPreferences({
+            chatId: String(chat_id || ''),
+            preferences: preferences || {}
+        });
+        res.json(result);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -2367,15 +2478,12 @@ app.post('/api/auth/logout', authenticateToken, async (req, res) => {
 app.post('/api/tg/consume-link', async (req, res) => {
     try {
         const { payload } = req.body;
-        // Payload format: "order_123_user_456" or just "order_123"
-        // For now, simple parsing or mock
-        if (!payload) return res.status(400).json({ success: false });
-
-        // Example payload: "start_order_1001"
-        const parts = payload.split('_');
-        const orderId = parts.find(p => /^\d+$/.test(p)) || parts[parts.length - 1];
-
-        res.json({ success: true, order_id: orderId, user_id: null });
+        if (!payload) return res.status(400).json({ success: false, error: 'payload_required' });
+        const consumed = telegramHub.consumeStartPayload(payload);
+        if (!consumed?.order_id) {
+            return res.status(400).json({ success: false, error: 'invalid_payload' });
+        }
+        res.json({ success: true, order_id: consumed.order_id, user_id: consumed.user_id || null });
     } catch (e) {
         res.status(500).json({ error: e.message });
     }
@@ -2385,12 +2493,8 @@ app.post('/api/tg/subscribe', async (req, res) => {
     try {
         const { chat_id, order_id, user_id } = req.body;
         if (!chat_id || !order_id) return res.status(400).json({ error: 'Missing fields' });
-
-        await db.query(
-            'INSERT OR IGNORE INTO telegram_subscriptions (chat_id, order_id, user_id) VALUES (?, ?, ?)',
-            [chat_id, order_id, user_id || null]
-        );
-        res.json({ success: true });
+        const result = await telegramHub.subscribeOrder({ chatId: String(chat_id), orderId: String(order_id), userId: user_id || null });
+        res.json(result);
     } catch (e) {
         console.error('Subscribe error:', e);
         res.status(500).json({ error: e.message });
@@ -2400,7 +2504,7 @@ app.post('/api/tg/subscribe', async (req, res) => {
 app.get('/api/tg/subscriptions/:chatId', async (req, res) => {
     try {
         const { chatId } = req.params;
-        const rows = await db.query('SELECT * FROM telegram_subscriptions WHERE chat_id = ?', [chatId]);
+        const rows = await telegramHub.getSubscriptions(String(chatId));
         res.json({ subscriptions: rows });
     } catch (e) {
         console.error('Get subs error:', e);
@@ -2411,8 +2515,8 @@ app.get('/api/tg/subscriptions/:chatId', async (req, res) => {
 app.delete('/api/tg/subscriptions', async (req, res) => {
     try {
         const { chat_id, order_id } = req.body;
-        await db.query('DELETE FROM telegram_subscriptions WHERE chat_id = ? AND order_id = ?', [chat_id, order_id]);
-        res.json({ success: true });
+        const result = await telegramHub.unsubscribeOrder({ chatId: String(chat_id || ''), orderId: String(order_id || '') });
+        res.json(result);
     } catch (e) {
         console.error('Unsub error:', e);
         res.status(500).json({ error: e.message });
@@ -2422,15 +2526,8 @@ app.delete('/api/tg/subscriptions', async (req, res) => {
 app.post('/api/tg/preferences', async (req, res) => {
     try {
         const { chat_id, preferences } = req.body;
-        const prefStr = JSON.stringify(preferences);
-
-        const exists = await db.query('SELECT chat_id FROM telegram_preferences WHERE chat_id = ?', [chat_id]);
-        if (exists.length > 0) {
-            await db.query('UPDATE telegram_preferences SET preferences = ?, updated_at = CURRENT_TIMESTAMP WHERE chat_id = ?', [prefStr, chat_id]);
-        } else {
-            await db.query('INSERT INTO telegram_preferences (chat_id, preferences) VALUES (?, ?)', [chat_id, prefStr]);
-        }
-        res.json({ success: true });
+        const result = await telegramHub.setPreferences({ chatId: String(chat_id || ''), preferences: preferences || {} });
+        res.json(result);
     } catch (e) {
         console.error('Pref error:', e);
         res.status(500).json({ error: e.message });
@@ -5881,6 +5978,16 @@ app.patch('/api/v1/crm/orders/:orderId/status', authenticateToken, requireManage
                 });
 
                 const updated = updatedRows?.[0] || { ...current, status: normalizedStatus };
+                try {
+                    await telegramHub.notifyOrderStatusSubscribers({
+                        orderId: updated.order_code || updated.id,
+                        oldStatus: current.status || null,
+                        newStatus: normalizedStatus,
+                        note: note ? String(note) : null
+                    });
+                } catch (notifyError) {
+                    console.warn('CRM status telegram notify warning (supabase):', notifyError?.message || notifyError);
+                }
                 return res.json({
                     success: true,
                     order: {
@@ -5950,6 +6057,17 @@ app.patch('/api/v1/crm/orders/:orderId/status', authenticateToken, requireManage
             },
             actionResult: 'updated'
         });
+
+        try {
+            await telegramHub.notifyOrderStatusSubscribers({
+                orderId: current.order_code || current.id,
+                oldStatus: current.status || null,
+                newStatus: normalizedStatus,
+                note: note ? String(note) : null
+            });
+        } catch (notifyError) {
+            console.warn('CRM status telegram notify warning (sqlite):', notifyError?.message || notifyError);
+        }
 
         return res.json({
             success: true,
@@ -8382,8 +8500,27 @@ app.patch('/api/v1/crm/shipments/:shipmentId', authenticateToken, requireManager
 });
 
 app.post('/api/v1/crm/orders/:orderId/notify-tracking', authenticateToken, requireManagerRole, async (req, res) => {
-    // Mock notification for now
-    return res.json({ success: true, message: 'Notification queued' });
+    try {
+        const { orderId } = req.params;
+        const method = String(req.body?.method || 'telegram').trim().toLowerCase();
+        if (method !== 'telegram') {
+            return res.json({ success: true, message: `Notification queued via ${method}` });
+        }
+
+        const result = await telegramHub.sendTrackingNotification({
+            orderId,
+            includeStatus: true
+        });
+
+        return res.json({
+            success: Boolean(result?.success),
+            message: result?.success ? 'Telegram notification sent' : `Telegram notification skipped: ${result?.reason || 'unknown'}`,
+            telegram: result
+        });
+    } catch (error) {
+        console.error('CRM notify-tracking error:', error);
+        return res.status(500).json({ success: false, error: 'Failed to notify tracking' });
+    }
 });
 
 app.post('/api/metrics/search', optionalAuth, async (req, res) => {
@@ -9656,7 +9793,7 @@ app.get('/api/admin/workspace', adminAuth, async (req, res) => {
             fetchOrderRows(prevSinceIso, prevUntilIso, 600)
         ]);
 
-        const [leadRows, leadCountRows, prevLeadCountRows, taskRows, currentActiveTaskRows, prevActiveTaskRows, customerCountRows, recentLogsRows, errorLogs24Rows, hunterEventRows, botQueueRows, anomalyRows] = await Promise.all([
+        const [leadRows, leadCountRows, prevLeadCountRows, taskRows, currentActiveTaskRows, prevActiveTaskRows, customerCountRows, recentLogsRows, errorLogs24Rows, hunterEventRows, botQueueRows, anomalyRows, hunterTimelineRows, hunterRecentRunRows, catalogCoverageRows, activeCatalogRows] = await Promise.all([
             safeQuery(
                 `SELECT id, source, status, customer_id, bike_url, contact_method, contact_value, created_at
                  FROM leads
@@ -9720,6 +9857,30 @@ app.get('/api/admin/workspace', adminAuth, async (req, res) => {
                  WHERE created_at >= datetime('now', '-48 hours')
                  ORDER BY created_at DESC
                  LIMIT 40`
+            ),
+            safeQuery(
+                `SELECT type, details, created_at
+                 FROM hunter_events
+                 ORDER BY created_at DESC
+                 LIMIT 240`
+            ),
+            safeQuery(
+                `SELECT type, details, created_at
+                 FROM hunter_events
+                 WHERE type IN ('HOURLY_RUN_COMPLETE', 'HOURLY_RUN_ERROR', 'HOURLY_RUN_START', 'HOURLY_RUN_TRIGGER_ERROR')
+                 ORDER BY created_at DESC
+                 LIMIT 60`
+            ),
+            safeQuery(
+                `SELECT category, COUNT(*) as c
+                 FROM bikes
+                 WHERE is_active = 1
+                 GROUP BY category`
+            ),
+            safeQuery(
+                `SELECT COUNT(*) as c
+                 FROM bikes
+                 WHERE is_active = 1`
             )
         ]);
 
@@ -10132,6 +10293,156 @@ app.get('/api/admin/workspace', adminAuth, async (req, res) => {
             anomalies_48h: Number(anomalyRows?.length || 0)
         };
 
+        const parseHunterDetails = (raw) => {
+            if (!raw) return {};
+            if (typeof raw === 'object') return raw;
+            try {
+                const parsed = JSON.parse(String(raw));
+                return parsed && typeof parsed === 'object' ? parsed : {};
+            } catch {
+                return {};
+            }
+        };
+
+        const normalizeHunterCategory = (value) => {
+            const raw = String(value || '').trim().toLowerCase();
+            if (!raw) return 'other';
+            if (['mtb', 'mountain', 'mountainbike', 'mountainbikes', 'горный', 'горные велосипеды'].includes(raw)) return 'mtb';
+            if (['road', 'шоссе', 'шоссейный'].includes(raw)) return 'road';
+            if (['gravel', 'гревел', 'грэвел', 'гравийный'].includes(raw)) return 'gravel';
+            if (['emtb', 'e-mountainbike', 'ebike', 'электро', 'электровелосипеды', 'электро-горный велосипед'].includes(raw)) return 'emtb';
+            if (['kids', 'детские', 'детский'].includes(raw)) return 'kids';
+            return 'other';
+        };
+
+        const catalogCoverage = { mtb: 0, road: 0, gravel: 0, emtb: 0, kids: 0, other: 0 };
+        for (const row of (catalogCoverageRows || [])) {
+            const key = normalizeHunterCategory(row?.category);
+            catalogCoverage[key] = Number(catalogCoverage[key] || 0) + Number(row?.c || 0);
+        }
+        const activeCatalog = Number(activeCatalogRows?.[0]?.c || 0);
+        const coreTargets = { road: 40, gravel: 30, emtb: 30, kids: 25 };
+        const deficitByCategory = Object.entries(coreTargets)
+            .map(([category, target]) => {
+                const present = Number(catalogCoverage?.[category] || 0);
+                return {
+                    category,
+                    target,
+                    present,
+                    count: Math.max(0, Number(target || 0) - present)
+                };
+            })
+            .filter((row) => Number(row.count || 0) > 0)
+            .sort((a, b) => Number(b.count || 0) - Number(a.count || 0));
+
+        const hunterRuns = (hunterRecentRunRows || []).map((row) => ({
+            type: String(row?.type || ''),
+            created_at: row?.created_at || null,
+            details: parseHunterDetails(row?.details)
+        }));
+
+        const latestRunComplete = hunterRuns.find((row) => row.type === 'HOURLY_RUN_COMPLETE') || null;
+        const latestRunStart = hunterRuns.find((row) => row.type === 'HOURLY_RUN_START') || null;
+        const latestRunError = hunterRuns.find((row) => row.type === 'HOURLY_RUN_ERROR' || row.type === 'HOURLY_RUN_TRIGGER_ERROR') || null;
+
+        const lastCompleteAt = latestRunComplete?.created_at || latestRunComplete?.details?.completedAt || null;
+        const lastErrorAt = latestRunError?.created_at || latestRunError?.details?.failedAt || null;
+        const lastStartAt = latestRunStart?.created_at || latestRunStart?.details?.startedAt || null;
+
+        const nextHunterRunAt = (() => {
+            const next = new Date();
+            next.setSeconds(0, 0);
+            next.setMinutes(5);
+            if (new Date().getMinutes() >= 5) next.setHours(next.getHours() + 1);
+            return next.toISOString();
+        })();
+
+        const nowMs = Date.now();
+        const nextHunterRunEtaMin = Math.max(0, Math.round((new Date(nextHunterRunAt).getTime() - nowMs) / 60000));
+
+        const latestCompleteDetails = latestRunComplete?.details || {};
+        const targetCatalogSize = Number(latestCompleteDetails?.targetCatalogSize || 500);
+        const catalogDeficit = Math.max(0, targetCatalogSize - activeCatalog);
+        const lastCompleteParsed = parseSqliteUtc(lastCompleteAt);
+        const lastErrorParsed = parseSqliteUtc(lastErrorAt);
+
+        let hunterStatus = 'healthy';
+        if (isHourlyHunterRunning) {
+            hunterStatus = 'running';
+        } else if (lastErrorParsed && (!lastCompleteParsed || lastErrorParsed.getTime() > lastCompleteParsed.getTime())) {
+            hunterStatus = 'error';
+        } else if (!lastCompleteParsed || minutesSince(lastCompleteParsed) > Math.max(130, hunterWatchdogStaleMinutes)) {
+            hunterStatus = 'stale';
+        } else if (catalogDeficit > 0 || deficitByCategory.length > 0) {
+            hunterStatus = 'needs_refill';
+        }
+
+        const timelineRows = (hunterTimelineRows || []).map((row) => ({
+            type: String(row?.type || ''),
+            created_at: row?.created_at || null,
+            details: parseHunterDetails(row?.details)
+        }));
+
+        const timeline24 = timelineRows.filter((row) => minutesSince(row.created_at) <= 24 * 60);
+        const runs24 = timeline24.filter((row) => row.type === 'HOURLY_RUN_COMPLETE');
+        const errors24 = timeline24.filter((row) => row.type === 'HOURLY_RUN_ERROR' || row.type === 'HOURLY_RUN_TRIGGER_ERROR');
+        const added24 = runs24.reduce((sum, row) => sum + Number(row?.details?.bikesAdded || 0), 0);
+        const hotDealsAdded24 = runs24.reduce((sum, row) => sum + Number(row?.details?.hotDealStats?.added || 0), 0);
+
+        const ctoHunter = {
+            status: hunterStatus,
+            running_now: isHourlyHunterRunning,
+            last_start_at: lastStartAt,
+            last_complete_at: lastCompleteAt,
+            last_error_at: lastErrorAt,
+            next_run_at: nextHunterRunAt,
+            next_run_eta_min: nextHunterRunEtaMin,
+            trigger_reason_last: latestRunComplete?.details?.reason || latestRunStart?.details?.reason || null,
+            catalog_health: {
+                active: activeCatalog,
+                target: targetCatalogSize,
+                min: Number(latestCompleteDetails?.minCatalogSize || 100),
+                deficit_total: catalogDeficit,
+                coverage: catalogCoverage
+            },
+            deficit_by_category: deficitByCategory,
+            last_24h: {
+                runs: runs24.length,
+                errors: errors24.length,
+                bikes_added: added24,
+                hot_deals_added: hotDealsAdded24,
+                rejections: Number(hunterCountByType.get('rejection') || 0)
+            },
+            last_run: latestRunComplete ? {
+                status: latestCompleteDetails?.status || 'completed',
+                started_at: latestCompleteDetails?.startedAt || lastStartAt,
+                completed_at: latestCompleteDetails?.completedAt || latestRunComplete.created_at,
+                duration_min: Number(latestCompleteDetails?.duration || 0),
+                bikes_requested: Number(latestCompleteDetails?.bikesToAdd || 0),
+                bikes_added: Number(latestCompleteDetails?.bikesAdded || 0),
+                mode: latestCompleteDetails?.hunterMode || null,
+                max_targets: Number(latestCompleteDetails?.maxTargets || 0),
+                hot_deals_added: Number(latestCompleteDetails?.hotDealStats?.added || 0),
+                cleanup_orphan_images: Number(latestCompleteDetails?.cleanupStats?.orphanImagesRemoved || 0),
+                cleanup_stale_deactivated: Number(latestCompleteDetails?.cleanupStats?.staleDeactivated || 0),
+                catalog_after: Number(latestCompleteDetails?.healthAfter?.active || activeCatalog),
+                catalog_deficit_after: Number(latestCompleteDetails?.catalogDeficitAfter || catalogDeficit)
+            } : null,
+            recent_runs: hunterRuns.slice(0, 12).map((row) => ({
+                type: row.type,
+                timestamp: row.created_at,
+                status: row?.details?.status || (row.type.includes('ERROR') ? 'error' : 'info'),
+                reason: row?.details?.reason || null,
+                bikes_requested: Number(row?.details?.bikesToAdd || 0),
+                bikes_added: Number(row?.details?.bikesAdded || 0),
+                duration_min: Number(row?.details?.duration || 0),
+                message: row?.details?.message || null
+            }))
+        };
+
+        ctoHealth.hunter_success_24h = Number(runs24.length || 0);
+        ctoHealth.hunter_errors_24h = Number(errors24.length || 0);
+
         const ctoIncidents = (recentLogsRows || [])
             .filter((row) => ['error', 'critical', 'warn', 'warning'].includes(String(row?.level || '').toLowerCase()))
             .slice(0, 30)
@@ -10232,6 +10543,7 @@ app.get('/api/admin/workspace', adminAuth, async (req, res) => {
             },
             cto: {
                 health: ctoHealth,
+                hunter: ctoHunter,
                 modules: coreOverview?.health?.modules || {},
                 guardrails: coreOverview?.guardrails || null,
                 anomalies: (anomalyRows || []).map((row) => ({
@@ -11674,12 +11986,8 @@ if (frontendDist) {
 app.get('/api/tg/subscriptions/:chatId', async (req, res) => {
     try {
         const { chatId } = req.params;
-        // Ð’ ÐºÐ°Ð½Ð¾Ð½Ð¸Ñ‡ÐµÑÐºÐ¾Ð¹ ÑÑ…ÐµÐ¼Ðµ Ð½ÐµÑ‚ Ð¾Ñ‚Ð´ÐµÐ»ÑŒÐ½Ð¾Ð¹ Ñ‚Ð°Ð±Ð»Ð¸Ñ†Ñ‹ Ð¿Ð¾Ð´Ð¿Ð¸ÑÐ¾Ðº,
-        // Ð¿Ð¾ÑÑ‚Ð¾Ð¼Ñƒ Ð¼Ñ‹ Ð¼Ð¾Ð¶ÐµÐ¼ Ð»Ð¸Ð±Ð¾ Ð¸ÑÐ¿Ð¾Ð»ÑŒÐ·Ð¾Ð²Ð°Ñ‚ÑŒ Ñ‚Ð°Ð±Ð»Ð¸Ñ†Ñƒ Ð·Ð°ÐºÐ°Ð·Ð¾Ð², 
-        // ÐµÑÐ»Ð¸ Ð² Ð½ÐµÐ¹ ÐµÑÑ‚ÑŒ Ð¿Ð¾Ð»Ðµ chat_id, Ð»Ð¸Ð±Ð¾ ÑÐ¾Ð·Ð´Ð°Ñ‚ÑŒ Ð·Ð°Ð³Ð»ÑƒÑˆÐºÑƒ.
-        // ÐÐ° Ñ‚ÐµÐºÑƒÑ‰Ð¸Ð¹ Ð¼Ð¾Ð¼ÐµÐ½Ñ‚ Ð¼Ñ‹ Ð¿Ñ€Ð¾ÑÑ‚Ð¾ Ð²Ð¾Ð·Ð²Ñ€Ð°Ñ‰Ð°ÐµÐ¼ Ð¿ÑƒÑÑ‚Ð¾Ð¹ ÑÐ¿Ð¸ÑÐ¾Ðº, 
-        // Ñ‡Ñ‚Ð¾Ð±Ñ‹ Ð±Ð¾Ñ‚ Ð½Ðµ Ð¿Ð°Ð´Ð°Ð» Ñ 404.
-        res.json({ success: true, subscriptions: [] });
+        const rows = await telegramHub.getSubscriptions(String(chatId));
+        res.json({ success: true, subscriptions: rows || [] });
     } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
     }
@@ -11687,9 +11995,13 @@ app.get('/api/tg/subscriptions/:chatId', async (req, res) => {
 
 app.post('/api/tg/subscribe', async (req, res) => {
     try {
-        const { chat_id, order_id } = req.body;
-        // Ð›Ð¾Ð³Ð¸ÐºÐ° Ð¿Ð¾Ð´Ð¿Ð¸ÑÐºÐ¸ (Ð·Ð°Ð³Ð»ÑƒÑˆÐºÐ°)
-        res.json({ success: true });
+        const { chat_id, order_id, user_id } = req.body;
+        const result = await telegramHub.subscribeOrder({
+            chatId: String(chat_id || ''),
+            orderId: String(order_id || ''),
+            userId: user_id || null
+        });
+        res.json(result);
     } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
     }
@@ -11698,8 +12010,11 @@ app.post('/api/tg/subscribe', async (req, res) => {
 app.delete('/api/tg/subscriptions', async (req, res) => {
     try {
         const { chat_id, order_id } = req.body;
-        // Ð›Ð¾Ð³Ð¸ÐºÐ° Ð¾Ñ‚Ð¿Ð¸ÑÐºÐ¸ (Ð·Ð°Ð³Ð»ÑƒÑˆÐºÐ°)
-        res.json({ success: true });
+        const result = await telegramHub.unsubscribeOrder({
+            chatId: String(chat_id || ''),
+            orderId: String(order_id || '')
+        });
+        res.json(result);
     } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
     }

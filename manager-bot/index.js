@@ -1,27 +1,28 @@
 const path = require('path');
-// Load ENV first
-require('dotenv').config({ path: path.resolve(__dirname, '../backend/.env') });
+const dotenv = require('dotenv');
 
-// Enable Polling for this process
-process.env.BOT_POLLING = 'true';
+dotenv.config({ path: path.resolve(__dirname, '../backend/.env') });
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
-console.log('🤖 Starting Manager Bot V2.0 (Telegraf Runner)...');
+const telegramHub = require('../backend/src/services/TelegramHubService');
 
-try {
-    // Import the shared service from backend
-    // This will instantiate the class and start polling (because BOT_POLLING is true)
-    const managerBot = require('../backend/src/services/ManagerBotService');
-    
-    console.log('✅ Manager Bot Service loaded successfully.');
-    
-    // Keep process alive
-    process.on('SIGINT', () => {
-        console.log('🛑 Shutting down...');
-        process.exit(0);
-    });
-    
-} catch (error) {
-    console.error('❌ Failed to start Manager Bot:', error);
-    console.error(error.stack);
-    process.exit(1);
+async function main() {
+    process.env.TELEGRAM_HUB_POLLING_ROLES = 'manager';
+    await telegramHub.start({ pollingRoles: ['manager'] });
+    console.log('[manager-bot] TelegramHub manager polling is running');
 }
+
+main().catch((error) => {
+    console.error('[manager-bot] Failed to start:', error?.message || error);
+    process.exit(1);
+});
+
+process.on('SIGINT', async () => {
+    await telegramHub.stop();
+    process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+    await telegramHub.stop();
+    process.exit(0);
+});

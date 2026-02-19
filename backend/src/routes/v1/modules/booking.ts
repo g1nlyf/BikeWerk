@@ -1,7 +1,32 @@
 import { Router } from 'express';
+const jwt = require('jsonwebtoken');
 const bookingService = require('../../../services/BookingService');
 
 const router = Router();
+
+function resolveAuthenticatedUserId(req: any): number | null {
+    const directUserId = Number(req?.user?.id);
+    if (Number.isFinite(directUserId) && directUserId > 0) return directUserId;
+
+    const authHeader = String(req?.headers?.authorization || req?.headers?.Authorization || '');
+    if (!authHeader.toLowerCase().startsWith('bearer ')) return null;
+
+    const token = authHeader.slice(7).trim();
+    if (!token) return null;
+
+    const secret = process.env.JWT_SECRET || null;
+    if (!secret) return null;
+
+    try {
+        const decoded: any = jwt.verify(token, secret);
+        const decodedUserId = Number(decoded?.id);
+        if (Number.isFinite(decodedUserId) && decodedUserId > 0) return decodedUserId;
+    } catch {
+        return null;
+    }
+
+    return null;
+}
 
 async function logBookingMetric(req: any, eventType: string, bikeId: number | null, metadata: Record<string, unknown> = {}) {
     try {
@@ -51,6 +76,8 @@ router.post('/', async (req, res) => {
             return res.status(400).json({ success: false, error: 'Missing required fields' });
         }
 
+        const authenticatedUserId = resolveAuthenticatedUserId(req);
+        if (authenticatedUserId && !req.user) req.user = { id: authenticatedUserId };
         await logBookingMetric(req, 'booking_start', parsedBikeId, { source: 'v1_booking_route' });
 
         const result = await bookingService.createBooking({
@@ -63,7 +90,8 @@ router.post('/', async (req, res) => {
             final_price_eur,
             delivery_method: delivery_method || shipping_option, // Pass it through
             addons,
-            booking_form
+            booking_form,
+            authenticated_user_id: authenticatedUserId
         });
 
         await logBookingMetric(req, 'booking_success', parsedBikeId, {

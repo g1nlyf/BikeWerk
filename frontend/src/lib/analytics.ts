@@ -1,6 +1,7 @@
 import { apiPost, API_BASE } from '@/api';
 import { createMetricsEventId, getMetricsSessionId } from '@/lib/session';
 import { getAttributionMetadata } from '@/lib/traffic';
+import { canUseAnalyticsCookies, subscribeCookieConsent } from '@/lib/legal';
 
 export type EventType = 
   | 'impression'      // Bike visible in viewport
@@ -46,6 +47,11 @@ class UserActivityTracker {
   constructor() {
     this.profile = this.loadProfile();
     this.startFlushTimer();
+    subscribeCookieConsent((consent) => {
+      if (!consent.analytics) {
+        this.queue = [];
+      }
+    });
     
     // Flush on page unload
     if (typeof window !== 'undefined') {
@@ -80,6 +86,7 @@ class UserActivityTracker {
   }
 
   public track(event: AnalyticsEvent, bikeData?: { price?: number; discipline?: string; brand?: string }) {
+    if (!canUseAnalyticsCookies()) return;
     this.queue.push(event);
     this.updateProfile(event, bikeData);
     
@@ -133,6 +140,10 @@ class UserActivityTracker {
   }
 
   private async flush() {
+    if (!canUseAnalyticsCookies()) {
+      this.queue = [];
+      return;
+    }
     if (this.queue.length === 0) return;
 
     const batch = [...this.queue];

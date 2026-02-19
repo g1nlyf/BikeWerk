@@ -13,6 +13,7 @@ import { LeadCaptureModal } from '@/components/checkout/LeadCaptureModal'
 import { AnalyticsProvider } from '@/components/AnalyticsProvider'
 import ChatWidget from '@/components/ChatWidget'
 import { NavigationDrawer } from '@/components/layout/NavigationDrawer'
+import { CookieConsentBanner } from '@/components/legal/CookieConsentBanner'
 import { Toaster } from 'sonner'
 
 // ❌ KILLSWITCH REMOVED - was causing infinite page reloads
@@ -21,13 +22,18 @@ import { Toaster } from 'sonner'
 function AppShell() {
   const location = useLocation()
   const isCrm = location.pathname.startsWith('/crm')
+  const isCheckoutFlow =
+    location.pathname.startsWith('/booking-checkout') ||
+    location.pathname.startsWith('/guest-order') ||
+    location.pathname.startsWith('/checkout')
 
   return (
     <>
       {!isCrm && <NavigationDrawer />}
       <AppRouter />
       {!isCrm && <LeadCaptureModal />}
-      {!isCrm && <ChatWidget />}
+      {!isCrm && !isCheckoutFlow && <ChatWidget />}
+      {!isCrm && <CookieConsentBanner />}
       <Toaster />
     </>
   )

@@ -310,9 +310,22 @@ function useDebouncedValue<T>(value: T, delayMs: number) {
 
 export default function CatalogPage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const [ratesReady, setRatesReady] = React.useState(false);
 
   React.useEffect(() => {
-    refreshRates().catch(() => {});
+    let cancelled = false;
+    (async () => {
+      try {
+        await refreshRates();
+      } catch {
+        // ignore
+      } finally {
+        if (!cancelled) setRatesReady(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Normalize legacy query params to keep old links working.
@@ -714,6 +727,10 @@ export default function CatalogPage() {
   ]);
 
   React.useEffect(() => {
+    if (!ratesReady) {
+      setLoading(true);
+      return;
+    }
     let cancelled = false;
     (async () => {
       setLoading(true);
@@ -744,7 +761,7 @@ export default function CatalogPage() {
     return () => {
       cancelled = true;
     };
-  }, [bikesQueryKey]);
+  }, [bikesQueryKey, ratesReady]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 

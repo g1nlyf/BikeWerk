@@ -5,6 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/lib/auth'
+import { LegalConsentFields } from '@/components/legal/LegalConsentFields'
+import { DEFAULT_FORM_LEGAL_CONSENT, hasRequiredFormLegalConsent } from '@/lib/legal'
 
 export default function LoginPage() {
   const { login, register, user, token } = useAuth() as any
@@ -12,6 +14,7 @@ export default function LoginPage() {
   const [name, setName] = React.useState('')
   const [email, setEmail] = React.useState('')
   const [password, setPassword] = React.useState('')
+  const [legalConsent, setLegalConsent] = React.useState(DEFAULT_FORM_LEGAL_CONSENT)
   const [error, setError] = React.useState<string | null>(null)
   const [debug, setDebug] = React.useState<string | null>(null)
   const [returnTo] = React.useState<string>(() => {
@@ -26,6 +29,10 @@ export default function LoginPage() {
     e.preventDefault()
     setError(null)
     setDebug(null)
+    if (mode === 'register' && !hasRequiredFormLegalConsent(legalConsent)) {
+      setError('Подтвердите согласие с условиями оферты и обработкой персональных данных')
+      return
+    }
     const result = mode === 'login' ? await login(email, password) : await register(name, email, password)
     if (!result.success) {
       setError(result.error || 'Не удалось выполнить операцию')
@@ -73,6 +80,9 @@ export default function LoginPage() {
               )}
               <Input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
               <Input type="password" minLength={8} placeholder="Пароль (минимум 8 символов)" value={password} onChange={(e) => setPassword(e.target.value)} />
+              {mode === 'register' && (
+                <LegalConsentFields value={legalConsent} onChange={setLegalConsent} compact />
+              )}
               {error && <div className="text-sm text-destructive">{error}</div>}
               {debug && (
                 <details className="rounded-md border p-2 text-xs">
@@ -80,7 +90,13 @@ export default function LoginPage() {
                   <pre className="mt-2 whitespace-pre-wrap break-words">{debug}</pre>
                 </details>
               )}
-              <Button type="submit" className="w-full">{mode === 'login' ? 'Войти' : 'Зарегистрироваться'}</Button>
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={mode === 'register' && !hasRequiredFormLegalConsent(legalConsent)}
+              >
+                {mode === 'login' ? 'Войти' : 'Зарегистрироваться'}
+              </Button>
             </form>
             <div className="mt-4 text-sm">
               {mode === 'login' ? (

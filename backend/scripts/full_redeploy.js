@@ -17,6 +17,13 @@ const config = {
   remoteDir: '/root/eubike'
 };
 
+const TOTAL_STEPS = 9;
+
+function stepLog(step, message) {
+  const percent = Math.round((step / TOTAL_STEPS) * 100);
+  console.log(`[${String(percent).padStart(3, ' ')}%] ${message}`);
+}
+
 function getPassword() {
   const fromEnv = process.env.EUBIKE_DEPLOY_PASSWORD?.trim();
   if (fromEnv) return fromEnv;
@@ -34,12 +41,12 @@ function getPassword() {
 }
 
 function buildFrontend() {
-  console.log('🏗️ Building frontend...');
+  console.log('Building frontend...');
   execSync('npm run build', { cwd: FRONTEND_DIR, stdio: 'inherit' });
 }
 
 function createFullArchive() {
-  console.log('📦 Creating full project archive...');
+  console.log('Creating full project archive...');
 
   const includeRootEntries = [
     'backend',
@@ -94,7 +101,7 @@ function createFullArchive() {
 
     output.on('close', () => {
       const sizeMb = (archive.pointer() / 1024 / 1024).toFixed(2);
-      console.log(`✅ Archive created: ${sizeMb} MB`);
+      console.log(`Archive created: ${sizeMb} MB`);
       resolve();
     });
 
@@ -165,34 +172,54 @@ function uploadFile(conn, localPath, remotePath) {
   return new Promise((resolve, reject) => {
     conn.sftp((err, sftp) => {
       if (err) return reject(err);
-      sftp.fastPut(localPath, remotePath, {}, (putErr) => {
-        if (putErr) return reject(putErr);
-        resolve();
-      });
+
+      let lastShown = -1;
+      sftp.fastPut(
+        localPath,
+        remotePath,
+        {
+          step: (transferred, _chunk, total) => {
+            if (!total) return;
+            const percent = Math.floor((transferred / total) * 100);
+            if (percent !== lastShown && percent % 5 === 0) {
+              lastShown = percent;
+              process.stdout.write(`\r      upload: ${String(percent).padStart(3, ' ')}%`);
+            }
+          }
+        },
+        (putErr) => {
+          process.stdout.write('\r      upload: 100%\n');
+          if (putErr) return reject(putErr);
+          resolve();
+        }
+      );
     });
   });
 }
 
 async function deployFull() {
   const password = getPassword();
+
+  stepLog(1, 'Build frontend');
   buildFrontend();
+
+  stepLog(2, 'Create full archive');
   await createFullArchive();
 
-  console.log('🔐 Connecting to server...');
+  stepLog(3, 'Connect to server');
   const conn = await connectSsh(password);
 
   try {
-    console.log('⬆️ Uploading archive...');
+    stepLog(4, 'Upload archive');
     await uploadFile(conn, ARCHIVE_PATH, config.remoteZip);
 
-    console.log('🧹 Wiping remote project...');
-    await execRemote(conn, 'pm2 delete all || true');
+    stepLog(5, 'Wipe remote eubike only');
     await execRemote(conn, `rm -rf ${config.remoteDir} && mkdir -p ${config.remoteDir}`);
 
-    console.log('📂 Extracting full archive...');
+    stepLog(6, 'Extract archive');
     await execRemote(conn, `unzip -oq ${config.remoteZip} -d ${config.remoteDir} && rm -f ${config.remoteZip}`);
 
-    console.log('📦 Installing Node dependencies...');
+    stepLog(7, 'Install runtime dependencies');
     const runtimeProjects = [
       `${config.remoteDir}/backend`,
       `${config.remoteDir}/telegram-bot`,
@@ -200,7 +227,11 @@ async function deployFull() {
       `${config.remoteDir}/manager-bot`,
       `${config.remoteDir}/hot-deals-bot`
     ];
-    for (const projectDir of runtimeProjects) {
+
+    for (let i = 0; i < runtimeProjects.length; i += 1) {
+      const projectDir = runtimeProjects[i];
+      const depPercent = Math.round(((i + 1) / runtimeProjects.length) * 100);
+      console.log(`      deps: ${depPercent}% (${path.basename(projectDir)})`);
       await execRemote(
         conn,
         `if [ -f ${projectDir}/package.json ]; then cd ${projectDir} && (npm ci --omit=dev --no-audit --no-fund || npm install --omit=dev --no-audit --no-fund); fi`,
@@ -208,25 +239,22 @@ async function deployFull() {
       );
     }
 
-    console.log('🗂️ Publishing frontend dist...');
+    stepLog(8, 'Publish frontend, migrate, restart PM2, healthcheck');
     await execRemote(conn, 'rm -rf /var/www/html/*');
     await execRemote(conn, `cp -r ${config.remoteDir}/frontend/dist/* /var/www/html/`);
     await execRemote(conn, 'chown -R www-data:www-data /var/www/html');
-
-    console.log('🛠️ Running migrations...');
     await execRemote(conn, `cd ${config.remoteDir}/backend && node scripts/migrate_catalog_columns.js || true`);
-
-    console.log('🔄 Restarting PM2...');
-    await execRemote(conn, `cd ${config.remoteDir} && pm2 startOrReload ecosystem.config.js --update-env`);
-
-    console.log('🩺 Verifying backend health...');
+    await execRemote(conn, `cd ${config.remoteDir} && pm2 startOrReload ecosystem.config.js --update-env && pm2 save`);
     await execRemote(
       conn,
       "for i in 1 2 3 4 5 6 7 8 9 10; do code=$(curl -s -o /tmp/api-health.out -w '%{http_code}' http://127.0.0.1:8082/api/health || true); if [ \"$code\" = \"200\" ]; then cat /tmp/api-health.out; exit 0; fi; sleep 2; done; echo 'Health check failed'; exit 1"
     );
 
+    await execRemote(conn, 'rm -f /root/deploy_full.zip /root/deploy_delta.zip /root/deploy.zip /root/delete_files.txt || true');
+
+    stepLog(9, 'Collect PM2 status');
     const pm2Status = await execRemote(conn, 'pm2 status');
-    console.log('✅ Full redeploy completed.\n');
+    console.log('Full redeploy completed.');
     console.log(pm2Status.stdout);
   } finally {
     conn.end();
@@ -237,6 +265,6 @@ async function deployFull() {
 }
 
 deployFull().catch((err) => {
-  console.error(`❌ Full redeploy failed: ${err.message}`);
+  console.error(`Full redeploy failed: ${err.message}`);
   process.exit(1);
 });

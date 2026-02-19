@@ -4,7 +4,9 @@ import { Bell, Check, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { LegalConsentFields } from '@/components/legal/LegalConsentFields';
 import { apiPost } from '@/api';
+import { DEFAULT_FORM_LEGAL_CONSENT, hasRequiredFormLegalConsent } from '@/lib/legal';
 
 interface WaitlistFormProps {
   initialBrand?: string;
@@ -19,10 +21,18 @@ export const WaitlistForm: React.FC<WaitlistFormProps> = ({ initialBrand = '', i
   const [contactMethod, setContactMethod] = useState<'telegram' | 'email'>('email');
   const [contactValue, setContactValue] = useState('');
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [errorMessage, setErrorMessage] = useState('Произошла ошибка. Попробуйте еще раз.');
+  const [legalConsent, setLegalConsent] = useState(DEFAULT_FORM_LEGAL_CONSENT);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!hasRequiredFormLegalConsent(legalConsent)) {
+      setErrorMessage('Подтвердите согласие с условиями оферты и обработкой персональных данных.');
+      setStatus('error');
+      return;
+    }
     setStatus('loading');
+    setErrorMessage('Произошла ошибка. Попробуйте еще раз.');
     
     try {
       const payload: any = {
@@ -42,6 +52,7 @@ export const WaitlistForm: React.FC<WaitlistFormProps> = ({ initialBrand = '', i
       setTimeout(() => onClose && onClose(), 2000);
     } catch (error) {
       console.error(error);
+      setErrorMessage('Произошла ошибка. Попробуйте еще раз.');
       setStatus('error');
     }
   };
@@ -155,9 +166,11 @@ export const WaitlistForm: React.FC<WaitlistFormProps> = ({ initialBrand = '', i
             >
               {status === 'loading' ? 'Отправка...' : 'Подписаться на поиск'}
             </Button>
+
+            <LegalConsentFields value={legalConsent} onChange={setLegalConsent} />
             
             {status === 'error' && (
-              <p className="text-red-500 text-sm text-center">Произошла ошибка. Попробуйте еще раз.</p>
+              <p className="text-red-500 text-sm text-center">{errorMessage}</p>
             )}
           </motion.form>
         )}

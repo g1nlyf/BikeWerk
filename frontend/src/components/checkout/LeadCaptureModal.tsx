@@ -4,6 +4,8 @@ import { X, ArrowRight, Check, MapPin, Truck, CreditCard, Phone, User, Bike, Hea
 import { useLeadSystem } from '../../context/LeadSystemContext';
 import { api } from '../../lib/api-client';
 import { ConciergeCheckout } from './ConciergeCheckout';
+import { LegalConsentFields } from '@/components/legal/LegalConsentFields';
+import { DEFAULT_FORM_LEGAL_CONSENT, buildLegalAuditLine, hasRequiredFormLegalConsent } from '@/lib/legal';
 
 export const LeadCaptureModal: React.FC = () => {
     const { isModalOpen, activeProduct, closeLeadModal, mode } = useLeadSystem();
@@ -25,6 +27,7 @@ export const LeadCaptureModal: React.FC = () => {
     const [applicationId, setApplicationId] = useState<string | null>(null);
     const [applicationNumber, setApplicationNumber] = useState<string | null>(null);
     const [orderNumber, setOrderNumber] = useState<string | null>(null);
+    const [legalConsent, setLegalConsent] = useState(DEFAULT_FORM_LEGAL_CONSENT);
 
     // Reset state on open
     useEffect(() => {
@@ -35,6 +38,7 @@ export const LeadCaptureModal: React.FC = () => {
             setApplicationId(null);
             setApplicationNumber(null);
             setOrderNumber(null);
+            setLegalConsent(DEFAULT_FORM_LEGAL_CONSENT);
         }
     }, [isModalOpen]);
 
@@ -52,6 +56,10 @@ export const LeadCaptureModal: React.FC = () => {
 
     const handleContactSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!hasRequiredFormLegalConsent(legalConsent)) {
+            setError('Подтвердите согласие с условиями оферты и обработкой персональных данных.');
+            return;
+        }
         if (!formData.name || !formData.contact) {
             setError('Пожалуйста, заполните все поля');
             return;
@@ -67,7 +75,7 @@ export const LeadCaptureModal: React.FC = () => {
                 contact_method: formData.contact.includes('@') ? 'email' : 'phone',
                 contact_value: formData.contact,
                 bike_interest: activeProduct?.name,
-                notes: `Интересуется ${activeProduct?.name} (${activeProduct?.price} EUR)`
+                notes: `Интересуется ${activeProduct?.name} (${activeProduct?.price} EUR). ${buildLegalAuditLine(legalConsent.marketingAccepted)}`
             });
 
             if (res.success) {
@@ -110,7 +118,8 @@ export const LeadCaptureModal: React.FC = () => {
                 city: formData.city || 'Не указан',
                 payment_method: formData.paymentMethod,
                 delivery_method: formData.deliveryMethod,
-                needs_manager: formData.serviceLevel === 'manager'
+                needs_manager: formData.serviceLevel === 'manager',
+                notes: buildLegalAuditLine(legalConsent.marketingAccepted)
             });
 
             if (res.success) {
@@ -331,6 +340,8 @@ export const LeadCaptureModal: React.FC = () => {
                                         {error && (
                                             <p className="text-red-500 text-sm text-center">{error}</p>
                                         )}
+
+                                        <LegalConsentFields value={legalConsent} onChange={setLegalConsent} />
 
                                         <button
                                             type="submit"

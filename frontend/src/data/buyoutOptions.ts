@@ -90,14 +90,14 @@ export const ADDON_OPTIONS: AddonOption[] = [
     title: 'Дополнительная упаковка',
     description: 'Усиленная защита коробки и уязвимых мест.',
     type: 'fixed',
-    value: 10,
+    value: 15,
   },
   {
     id: 'video_call',
     title: 'Видеозвонок с демонстрацией',
     description: 'Покажем байк перед отправкой вживую.',
     type: 'fixed',
-    value: 10,
+    value: 15,
   },
   {
     id: 'extra_photos',

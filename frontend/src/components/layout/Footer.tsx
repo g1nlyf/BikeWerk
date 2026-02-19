@@ -1,96 +1,63 @@
-import * as React from "react";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+﻿import * as React from 'react';
+import { Link } from 'react-router-dom';
+
+import { LEGAL_ROUTES, openCookieSettings } from '@/lib/legal';
 
 export const Footer: React.FC = () => {
   return (
-    <footer className="border-t border-border/30 bg-[#F3F4F6]">
-      <div className="container mx-auto grid gap-10 px-6 py-8 md:grid-cols-4 md:px-16 md:py-12">
-        {/* Company Info */}
-        <div className="flex flex-col gap-4">
-          <div className="font-extrabold text-xl tracking-tight text-gray-900">BikeWerk</div>
-          <p className="text-sm text-muted-foreground leading-relaxed">
+    <footer className="border-t border-zinc-200 bg-zinc-100">
+      <div className="container mx-auto grid gap-10 px-6 py-8 md:grid-cols-4 md:px-12 md:py-12">
+        <div className="flex flex-col gap-3">
+          <div className="text-xl font-extrabold tracking-tight text-zinc-900">BikeWerk</div>
+          <p className="text-sm leading-relaxed text-zinc-600">
             Подбор, выкуп и доставка велосипедов из Европы под ключ.
           </p>
-          <p className="text-sm text-muted-foreground font-medium">
-            Работаем из Марбурга, Германия.
-          </p>
+          <p className="text-sm font-medium text-zinc-600">Marburg, Germany</p>
         </div>
 
-        {/* Quick Links */}
         <div>
-          <div className="font-bold text-gray-900 mb-4">Быстрые ссылки</div>
-          <ul className="space-y-3 text-sm text-gray-600">
-            <li><a href="/catalog" className="hover:text-black transition-colors">Каталог</a></li>
-            <li><a href="/calculator" className="hover:text-black transition-colors">Калькулятор</a></li>
-            <li><a href="/sniper" className="hover:text-black transition-colors">Снайпер</a></li>
-            <li><a href="/about" className="hover:text-black transition-colors">О компании</a></li>
-            <li><a href="/about#contacts" className="hover:text-black transition-colors">Контакты</a></li>
-            <li><a href="/#journal" className="hover:text-black transition-colors">Журнал</a></li>
+          <div className="mb-4 font-bold text-zinc-900">Навигация</div>
+          <ul className="space-y-2 text-sm text-zinc-600">
+            <li><Link to="/catalog" className="hover:text-zinc-900">Каталог</Link></li>
+            <li><Link to="/calculator" className="hover:text-zinc-900">Калькулятор</Link></li>
+            <li><Link to="/sniper" className="hover:text-zinc-900">Снайпер</Link></li>
+            <li><Link to="/about" className="hover:text-zinc-900">О компании</Link></li>
+            <li><Link to="/faq" className="hover:text-zinc-900">FAQ</Link></li>
           </ul>
         </div>
 
-        {/* Documents */}
         <div>
-          <div className="font-bold text-gray-900 mb-4">Документы</div>
-          <ul className="space-y-3 text-sm text-gray-600">
+          <div className="mb-4 font-bold text-zinc-900">Юридическая информация</div>
+          <ul className="space-y-2 text-sm text-zinc-600">
+            <li><Link to={LEGAL_ROUTES.documents} className="hover:text-zinc-900">Юридический центр</Link></li>
+            <li><Link to={LEGAL_ROUTES.terms} className="hover:text-zinc-900">Публичная оферта</Link></li>
+            <li><Link to={LEGAL_ROUTES.privacy} className="hover:text-zinc-900">Политика конфиденциальности</Link></li>
+            <li><Link to={LEGAL_ROUTES.consent} className="hover:text-zinc-900">Согласие на ПДн</Link></li>
+            <li><Link to={LEGAL_ROUTES.cookies} className="hover:text-zinc-900">Cookie Policy</Link></li>
+            <li><Link to={LEGAL_ROUTES.imprint} className="hover:text-zinc-900">Реквизиты (Imprint)</Link></li>
+            <li><Link to={LEGAL_ROUTES.refunds} className="hover:text-zinc-900">Отмены и возвраты</Link></li>
+            <li><Link to={LEGAL_ROUTES.sanctions} className="hover:text-zinc-900">Санкционный комплаенс</Link></li>
             <li>
-              <TooltipProvider>
-                <Tooltip delayDuration={0}>
-                  <TooltipTrigger asChild>
-                    <a
-                      href="/documents/Offer_Agreement.pdf"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="hover:text-black transition-colors"
-                    >
-                      Договор оферты
-                    </a>
-                  </TooltipTrigger>
-                  <TooltipContent className="bg-black text-white text-xs px-2 py-1">
-                    <p>Скачать PDF</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </li>
-            <li>
-              <TooltipProvider>
-                <Tooltip delayDuration={0}>
-                  <TooltipTrigger asChild>
-                    <a
-                      href="/documents/Privacy_Policy.pdf"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="hover:text-black transition-colors"
-                    >
-                      Политика конфиденциальности
-                    </a>
-                  </TooltipTrigger>
-                  <TooltipContent className="bg-black text-white text-xs px-2 py-1">
-                    <p>Скачать PDF</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+              <button type="button" onClick={openCookieSettings} className="text-left hover:text-zinc-900">
+                Настройки cookie
+              </button>
             </li>
           </ul>
         </div>
 
-        {/* Partnership */}
         <div>
-          <div className="font-bold text-gray-900 mb-4">Партнёрство</div>
-          <ul className="space-y-3 text-sm text-gray-600">
-            <li><a href="/about#contacts" className="hover:text-black transition-colors">Для партнёров</a></li>
+          <div className="mb-4 font-bold text-zinc-900">Контакты</div>
+          <ul className="space-y-2 text-sm text-zinc-600">
+            <li><a href="mailto:hello@bikewerk.eu" className="hover:text-zinc-900">hello@bikewerk.eu</a></li>
+            <li><a href="tel:+491747032119" className="hover:text-zinc-900">+49 174 703 2119</a></li>
+            <li><a href="https://t.me/BikeWerk" target="_blank" rel="noreferrer" className="hover:text-zinc-900">Telegram @BikeWerk</a></li>
           </ul>
         </div>
       </div>
 
-      <div className="border-t border-gray-200">
-        <div className="container mx-auto flex flex-col md:flex-row items-center justify-center px-6 py-8 text-sm text-gray-500">
-          <span className="text-center">© 2026 BikeWerk. Все права защищены.</span>
+      <div className="border-t border-zinc-200">
+        <div className="container mx-auto px-6 py-6 text-center text-sm text-zinc-500">
+          © 2026 BikeWerk. Все права защищены.
         </div>
       </div>
     </footer>

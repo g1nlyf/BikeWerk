@@ -6,7 +6,7 @@ import BikeflipHeaderPX from "@/components/layout/BikeflipHeaderPX"
 import { SEOHead } from "@/components/SEO/SEOHead"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { crmFrontApi, userTrackingsApi, apiPost, auth } from "@/api"
+import { crmFrontApi, userTrackingsApi, apiPost, auth, resolveImageUrl } from "@/api"
 import { getAddonTitle } from "@/data/buyoutOptions"
 import { motion, AnimatePresence } from "framer-motion"
 import { Search, CheckCircle, Truck, Clock, Bell, Package, Copy, Check, Info, ChevronLeft, X, MapPin, MessageCircle, FileText, ChevronRight, CreditCard, User, Calendar, Loader2, ShieldAlert, Globe, Send } from "lucide-react"
@@ -82,11 +82,12 @@ function GlobeComponent() {
     }, [])
 
     return (
-        <canvas
-            ref={canvasRef}
-            style={{ width: '100%', height: '100%', maxWidth: '600px', maxHeight: '600px', aspectRatio: 1 }}
-            className="mx-auto opacity-80 mix-blend-screen"
-        />
+        <div className="w-full max-w-[560px] aspect-square mx-auto">
+            <canvas
+                ref={canvasRef}
+                className="h-full w-full opacity-80 mix-blend-screen"
+            />
+        </div>
     )
 }
 
@@ -156,14 +157,125 @@ type SavedItem = {
   tracking_id: string
   tracking_type: string
   title?: string | null
+  image_url?: string | null
   status?: string
   status_label?: string
   created_at?: string
   last_viewed?: string
 }
 
+type TrackingHistoryCard = {
+  trackingId: string
+  title: string
+  statusLabel: string
+  progress: number
+  statusColor: string
+  routeLabel: string
+  etaLabel: string
+  updateLabel: string
+  importantUpdate: boolean
+  imageUrl?: string | null
+}
+
 function normalizeId(input: string): string {
   return input.trim()
+}
+
+const HISTORY_STORAGE_KEY = "recent_searches_v2"
+const HISTORY_LIMIT = 6
+const IMPORTANT_STATUS_CODES = new Set<string>([
+  ORDER_STATUS.RESERVE_PAYMENT_PENDING,
+  ORDER_STATUS.AWAITING_CLIENT_DECISION,
+  ORDER_STATUS.AWAITING_CLIENT_DECISION_POST_INSPECTION,
+  ORDER_STATUS.CHECK_READY,
+  ORDER_STATUS.FULL_PAYMENT_PENDING,
+])
+
+function formatDateLabel(value?: string | null): string {
+  if (!value) return 'недавно'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 'недавно'
+  return date.toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' })
+}
+
+function formatEtaLabel(value?: string | null): string {
+  if (!value) return 'Срок уточняется'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return String(value)
+  return `до ${date.toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' })}`
+}
+
+function getLatestHistoryTimestamp(history: Array<{ created_at?: string }> | null | undefined): string | null {
+  if (!Array.isArray(history) || history.length === 0) return null
+  let maxTs = 0
+  let latest: string | null = null
+  for (const item of history) {
+    const raw = item?.created_at
+    if (!raw) continue
+    const ts = Date.parse(raw)
+    if (!Number.isNaN(ts) && ts > maxTs) {
+      maxTs = ts
+      latest = raw
+    }
+  }
+  return latest
+}
+
+function parseJsonSafe(value: unknown): any | null {
+  if (!value) return null
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value)
+    } catch {
+      return null
+    }
+  }
+  return typeof value === 'object' ? value : null
+}
+
+function firstImageCandidate(value: unknown): string | null {
+  if (!value) return null
+  if (typeof value === 'string') {
+    const normalized = value.trim()
+    return normalized.length > 0 ? normalized : null
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const candidate = firstImageCandidate(item)
+      if (candidate) return candidate
+    }
+    return null
+  }
+  if (typeof value === 'object') {
+    const src = value as Record<string, unknown>
+    return (
+      firstImageCandidate(src.image_url) ||
+      firstImageCandidate(src.main_image) ||
+      firstImageCandidate(src.image) ||
+      firstImageCandidate(src.url) ||
+      firstImageCandidate(src.src)
+    )
+  }
+  return null
+}
+
+function extractOrderImage(order: OrderItem | null | undefined): string | null {
+  if (!order) return null
+  const source: any = order
+  const snapshot = parseJsonSafe(source.bike_snapshot)
+  const candidate =
+    firstImageCandidate(source.image_url) ||
+    firstImageCandidate(source.main_image) ||
+    firstImageCandidate(source.image) ||
+    firstImageCandidate(snapshot?.cached_images) ||
+    firstImageCandidate(snapshot?.photos) ||
+    firstImageCandidate(snapshot?.images) ||
+    firstImageCandidate(snapshot?.main_photo_url) ||
+    firstImageCandidate(snapshot?.main_image) ||
+    firstImageCandidate(snapshot?.image_url) ||
+    firstImageCandidate(snapshot?.image)
+
+  return resolveImageUrl(candidate) || null
 }
 
 // Status Logic
@@ -265,6 +377,8 @@ export default function OrderTrackingPage() {
   const [error, setError] = React.useState<string | null>(null)
   const [details, setDetails] = React.useState<OrderDetails | null>(null)
   const [saved, setSaved] = React.useState<SavedItem[]>([])
+  const [historyCards, setHistoryCards] = React.useState<TrackingHistoryCard[]>([])
+  const [historyLoading, setHistoryLoading] = React.useState(false)
   const [copied, setCopied] = React.useState(false)
   const [reserving, setReserving] = React.useState(false)
   const [isSearchFocused, setIsSearchFocused] = React.useState(false)
@@ -317,6 +431,86 @@ export default function OrderTrackingPage() {
     }
   }, []);
 
+  React.useEffect(() => {
+    try {
+      const raw = localStorage.getItem(HISTORY_STORAGE_KEY)
+      if (!raw) return
+      const parsed = JSON.parse(raw)
+      if (!Array.isArray(parsed)) return
+      const normalized = parsed
+        .filter((item) => item && item.tracking_id && (!item.tracking_type || item.tracking_type === 'order'))
+        .slice(0, HISTORY_LIMIT) as SavedItem[]
+      setSaved(normalized)
+    } catch {
+      // no-op
+    }
+  }, [])
+
+  React.useEffect(() => {
+    let cancelled = false
+
+    if (saved.length === 0) {
+      setHistoryCards([])
+      return
+    }
+
+    setHistoryLoading(true)
+    ;(async () => {
+      const cards = await Promise.all(
+        saved.slice(0, HISTORY_LIMIT).map(async (item) => {
+          try {
+            const res: any = await crmFrontApi.getOrderDetails(item.tracking_id)
+            const payload = res?.data || res
+            const order: OrderItem | null = payload?.order || null
+            const statusInfo = getStatusInfo(order?.status || item.status || null)
+            const routeFrom = order?.route_from || 'Марбург'
+            const routeTo = order?.route_to || order?.customer?.city || 'Город доставки'
+            const latestHistoryTs = getLatestHistoryTimestamp(payload?.history)
+            const updatedAt = latestHistoryTs || order?.created_at || item.last_viewed || item.created_at || null
+            const importantUpdate = Boolean(order?.attention_required) || IMPORTANT_STATUS_CODES.has(String(statusInfo.code || ''))
+            const imageUrl = extractOrderImage(order) || resolveImageUrl(item.image_url) || null
+
+            return {
+              trackingId: String(order?.order_number || order?.order_id || item.tracking_id),
+              title: order?.bike_name || item.title || 'Заказ',
+              statusLabel: statusInfo.label,
+              progress: statusInfo.progress,
+              statusColor: statusInfo.color,
+              routeLabel: `${routeFrom} -> ${routeTo}`,
+              etaLabel: formatEtaLabel(order?.estimated_delivery || null),
+              updateLabel: importantUpdate ? 'Есть важные обновления' : `Обновлено ${formatDateLabel(updatedAt)}`,
+              importantUpdate,
+              imageUrl,
+            } satisfies TrackingHistoryCard
+          } catch {
+            const statusInfo = getStatusInfo(item.status || null)
+            return {
+              trackingId: String(item.tracking_id),
+              title: item.title || 'Заказ',
+              statusLabel: item.status_label || statusInfo.label,
+              progress: statusInfo.progress,
+              statusColor: statusInfo.color,
+              routeLabel: 'Маршрут уточняется',
+              etaLabel: 'Срок уточняется',
+              updateLabel: `Открывали ${formatDateLabel(item.last_viewed || item.created_at)}`,
+              importantUpdate: false,
+              imageUrl: resolveImageUrl(item.image_url) || null,
+            } satisfies TrackingHistoryCard
+          }
+        }),
+      )
+
+      if (!cancelled) setHistoryCards(cards)
+    })()
+      .finally(() => {
+        if (!cancelled) setHistoryLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [saved])
+
   const fetchOrder = async (q: string, isToken: boolean = false) => {
     if (!q) return
     setLoading(true)
@@ -346,7 +540,7 @@ export default function OrderTrackingPage() {
       
       if (d?.order) {
           setDetails(d as OrderDetails)
-          addToHistory(d.order, isToken ? 'magic_link' : 'manual')
+          addToHistory(d.order)
       } else {
           setError("Заказ не найден. Проверьте номер или ссылку.")
           setDetails(null)
@@ -359,14 +553,15 @@ export default function OrderTrackingPage() {
     }
   }
 
-  const addToHistory = (order: OrderItem, source: 'manual' | 'magic_link' = 'manual') => {
+  const addToHistory = (order: OrderItem) => {
       const id = order.order_number || order.order_id
       if (!id) return
       
       const newItem: SavedItem = {
           tracking_id: String(id),
           tracking_type: 'order',
-          title: order.customer_name || 'Заказ',
+          title: order.bike_name || order.customer_name || 'Заказ',
+          image_url: extractOrderImage(order),
           status: order.status,
           status_label: getStatusInfo(order.status).label,
           created_at: new Date().toISOString(),
@@ -374,15 +569,41 @@ export default function OrderTrackingPage() {
       }
 
       try {
-          const key = "recent_searches_v2"
-          const current = JSON.parse(localStorage.getItem(key) || "[]") as SavedItem[]
+          const current = JSON.parse(localStorage.getItem(HISTORY_STORAGE_KEY) || "[]") as SavedItem[]
           const filtered = current.filter(x => x.tracking_id !== String(id))
-          const next = [newItem, ...filtered].slice(0, 6)
-          localStorage.setItem(key, JSON.stringify(next))
+          const next = [newItem, ...filtered].slice(0, HISTORY_LIMIT)
+          localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(next))
           setSaved(next)
           userTrackingsApi.add(String(id), 'order', order.customer_name).catch(() => {})
       } catch (e) {
           console.error("Failed to save history", e)
+      }
+  }
+
+  const openSavedTracking = (trackingId: string) => {
+      const normalized = normalizeId(trackingId)
+      if (!normalized) return
+      setQuery(normalized)
+      fetchOrder(normalized)
+  }
+
+  const removeSavedTracking = (trackingId: string) => {
+      const next = saved.filter((item) => item.tracking_id !== trackingId)
+      setSaved(next)
+      try {
+          localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(next))
+      } catch {
+          // no-op
+      }
+  }
+
+  const clearSavedTracking = () => {
+      setSaved([])
+      setHistoryCards([])
+      try {
+          localStorage.removeItem(HISTORY_STORAGE_KEY)
+      } catch {
+          // no-op
       }
   }
 
@@ -616,9 +837,9 @@ export default function OrderTrackingPage() {
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -20 }}
-                    className="w-full max-w-xl mx-auto"
+                    className="w-full max-w-5xl mx-auto space-y-6"
                 >
-                    <div className="bg-white rounded-[2rem] shadow-xl shadow-zinc-200/50 p-6 md:p-12 text-center ring-1 ring-zinc-100 relative overflow-hidden">
+                    <div className="max-w-xl mx-auto bg-white rounded-[2rem] shadow-xl shadow-zinc-200/50 p-6 md:p-12 text-center ring-1 ring-zinc-100 relative overflow-hidden">
                         <div className="absolute inset-0 bg-gradient-to-b from-zinc-50/50 to-transparent pointer-events-none" />
                         <div className="relative z-10">
                             <div className="w-16 h-16 md:w-20 md:h-20 bg-zinc-100 rounded-full flex items-center justify-center mx-auto mb-6 md:mb-8 ring-8 ring-zinc-50">
@@ -633,7 +854,7 @@ export default function OrderTrackingPage() {
                             </p>
 
                             <form onSubmit={handleSearchSubmit} className="relative max-w-md mx-auto space-y-3 md:space-y-4">
-                                <div className="relative group">
+                                <div className={cn("relative group", isSearchFocused ? "z-20" : "")}>
                                     <div className="absolute -inset-1 bg-gradient-to-r from-blue-100 to-zinc-100 rounded-xl blur opacity-20 group-hover:opacity-40 transition duration-200"></div>
                                     <div className="relative">
                                         <Input 
@@ -671,8 +892,127 @@ export default function OrderTrackingPage() {
                                     )}
                                 </Button>
                             </form>
+                            {error && (
+                                <div className="mt-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+                                    {error}
+                                </div>
+                            )}
                         </div>
                     </div>
+
+                    {(historyLoading || historyCards.length > 0) && (
+                        <div className="w-full">
+                            <div className="mb-3 flex items-center justify-between">
+                                <div>
+                                    <h2 className="text-xl font-bold text-zinc-900">История отслеживаний</h2>
+                                    <p className="text-sm text-zinc-500">Ранее просмотренные заявки с краткой сводкой.</p>
+                                </div>
+                                {historyCards.length > 0 && (
+                                    <button
+                                        type="button"
+                                        onClick={clearSavedTracking}
+                                        className="text-xs font-semibold text-zinc-500 hover:text-zinc-900 transition-colors"
+                                    >
+                                        Очистить
+                                    </button>
+                                )}
+                            </div>
+
+                            {historyLoading ? (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {[0, 1].map((idx) => (
+                                        <div key={`history-skeleton-${idx}`} className="h-[220px] rounded-[1.75rem] border border-zinc-200 bg-white p-6 animate-pulse">
+                                            <div className="h-4 w-32 rounded bg-zinc-200" />
+                                            <div className="mt-4 h-7 w-48 rounded bg-zinc-200" />
+                                            <div className="mt-6 h-4 w-full rounded bg-zinc-100" />
+                                            <div className="mt-2 h-4 w-2/3 rounded bg-zinc-100" />
+                                            <div className="mt-6 h-10 w-40 rounded-xl bg-zinc-200" />
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {historyCards.map((card) => (
+                                        <div
+                                            key={`history-${card.trackingId}`}
+                                            className="rounded-[1.75rem] border border-zinc-200 bg-white p-6 shadow-lg shadow-zinc-200/40 min-h-[220px] flex flex-col"
+                                        >
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div className="flex items-start gap-3 min-w-0">
+                                                    <div className="h-20 w-24 rounded-xl overflow-hidden border border-zinc-200 bg-zinc-100 shrink-0">
+                                                        {card.imageUrl ? (
+                                                            <img
+                                                                src={card.imageUrl}
+                                                                alt={card.title}
+                                                                className="h-full w-full object-cover"
+                                                                loading="lazy"
+                                                            />
+                                                        ) : (
+                                                            <div className="h-full w-full flex items-center justify-center text-zinc-400 text-[11px] font-semibold">
+                                                                Без фото
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <div className="min-w-0">
+                                                        <div className="text-xs uppercase tracking-wider text-zinc-500 font-semibold">Заказ</div>
+                                                        <div className="mt-1 text-sm font-mono text-zinc-900 font-bold">{card.trackingId}</div>
+                                                        <div className="mt-1 text-sm text-zinc-600 line-clamp-2">{card.title}</div>
+                                                    </div>
+                                                </div>
+                                                {card.importantUpdate ? (
+                                                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-bold text-amber-700">
+                                                        <Bell size={12} />
+                                                        Важно
+                                                    </span>
+                                                ) : (
+                                                    <span className="inline-flex items-center rounded-full bg-zinc-100 px-2.5 py-1 text-[11px] font-semibold text-zinc-600">
+                                                        Актуально
+                                                    </span>
+                                                )}
+                                            </div>
+
+                                            <div className="mt-4 space-y-3">
+                                                <div className="flex items-center gap-2">
+                                                    <span className={cn("h-2.5 w-2.5 rounded-full", card.statusColor)} />
+                                                    <span className="text-base font-bold text-zinc-900">{card.statusLabel}</span>
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-2 text-xs text-zinc-600">
+                                                    <div className="rounded-xl bg-zinc-50 px-3 py-2">
+                                                        <div className="uppercase tracking-wide text-[10px] text-zinc-400 font-semibold">ETA</div>
+                                                        <div className="mt-1 font-semibold text-zinc-800">{card.etaLabel}</div>
+                                                    </div>
+                                                    <div className="rounded-xl bg-zinc-50 px-3 py-2">
+                                                        <div className="uppercase tracking-wide text-[10px] text-zinc-400 font-semibold">Прогресс</div>
+                                                        <div className="mt-1 font-semibold text-zinc-800">{Math.max(0, Math.min(100, Math.round((card.progress / 5) * 100)))}%</div>
+                                                    </div>
+                                                </div>
+                                                <div className="text-xs text-zinc-500">{card.routeLabel}</div>
+                                                <div className="text-xs font-medium text-zinc-700">{card.updateLabel}</div>
+                                            </div>
+
+                                            <div className="mt-auto pt-4 flex items-center gap-2">
+                                                <Button
+                                                    type="button"
+                                                    className="h-10 rounded-xl bg-zinc-900 text-white hover:bg-zinc-800 flex-1"
+                                                    onClick={() => openSavedTracking(card.trackingId)}
+                                                >
+                                                    Открыть отслеживание
+                                                </Button>
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    className="h-10 rounded-xl px-3"
+                                                    onClick={() => removeSavedTracking(card.trackingId)}
+                                                >
+                                                    <X size={16} />
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </motion.div>
             ) : (
                 // RESULT STATE - EUPHORIA DASHBOARD

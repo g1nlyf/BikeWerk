@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useRef } from 'react';
 import { tracker, type AnalyticsEvent, type EventType } from '@/lib/analytics';
+import { canUseAnalyticsCookies } from '@/lib/legal';
 
 interface AnalyticsContextType {
   trackEvent: (type: EventType, bikeId: number, bikeData?: { price?: number; discipline?: string; brand?: string }, metadata?: any) => void;
@@ -14,6 +15,7 @@ export const AnalyticsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     bikeData?: { price?: number; discipline?: string; brand?: string }, 
     metadata?: any
   ) => {
+    if (!canUseAnalyticsCookies()) return;
     tracker.track({
       type,
       bikeId,

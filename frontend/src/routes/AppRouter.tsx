@@ -4,6 +4,7 @@ import { metricsApi } from "@/api";
 import { getMetricsSessionId } from "@/lib/session";
 import { startWebVitalsTracking } from "@/lib/webVitals";
 import { startJourneyGuardian } from "@/lib/journeyGuardian";
+import { canUseAnalyticsCookies, subscribeCookieConsent } from "@/lib/legal";
 import CatalogPage from "@/pages/CatalogPage";
 import CatalogAdminPage from "@/pages/CatalogAdminPage";
 import MiniCatalogPage from "@/pages/MiniCatalogPage";
@@ -35,8 +36,15 @@ import HowItWorksPage from "@/pages/HowItWorksPage";
 import GuaranteesPage from "@/pages/GuaranteesPage";
 import DeliveryPage from "@/pages/DeliveryPage";
 import PaymentPage from "@/pages/PaymentPage";
-import DocumentsPage from "@/pages/DocumentsPage";
 import FAQPage from "@/pages/FAQPage";
+import LegalDocumentsPage from "@/pages/LegalDocumentsPage";
+import LegalTermsPage from "@/pages/LegalTermsPage";
+import LegalPrivacyPage from "@/pages/LegalPrivacyPage";
+import LegalConsentPage from "@/pages/LegalConsentPage";
+import LegalCookiesPage from "@/pages/LegalCookiesPage";
+import LegalImprintPage from "@/pages/LegalImprintPage";
+import LegalRefundsPage from "@/pages/LegalRefundsPage";
+import LegalSanctionsPage from "@/pages/LegalSanctionsPage";
 
 function detectPageType(pathname: string): string {
   if (pathname.startsWith('/catalog')) return 'catalog';
@@ -52,6 +60,15 @@ function MetricsRouteProbe() {
   const location = useLocation();
   const currentPathRef = React.useRef(location.pathname);
   const lastUiClickTsRef = React.useRef(0);
+  const [analyticsEnabled, setAnalyticsEnabled] = React.useState<boolean>(() => canUseAnalyticsCookies());
+
+  React.useEffect(() => {
+    const unsubscribe = subscribeCookieConsent((next) => {
+      setAnalyticsEnabled(Boolean(next.analytics));
+    });
+    setAnalyticsEnabled(canUseAnalyticsCookies());
+    return unsubscribe;
+  }, []);
 
   const shouldEmitInWindow = React.useCallback((key: string, windowMs = 1500) => {
     try {
@@ -102,15 +119,17 @@ function MetricsRouteProbe() {
   }, []);
 
   React.useEffect(() => {
+    if (!analyticsEnabled) return;
     startWebVitalsTracking();
     startJourneyGuardian();
-  }, []);
+  }, [analyticsEnabled]);
 
   React.useEffect(() => {
     currentPathRef.current = location.pathname;
   }, [location.pathname]);
 
   React.useEffect(() => {
+    if (!analyticsEnabled) return;
     const sessionId = getMetricsSessionId();
     const sessionMarker = `metrics_session_started_v2:${sessionId}`;
     try {
@@ -121,9 +140,10 @@ function MetricsRouteProbe() {
     } catch {
       void 0;
     }
-  }, [location.pathname]);
+  }, [location.pathname, analyticsEnabled]);
 
   React.useEffect(() => {
+    if (!analyticsEnabled) return;
     const pageType = detectPageType(location.pathname);
     const sessionId = getMetricsSessionId();
     if (!shouldEmitInWindow(`${sessionId}:page:${location.pathname}`, 1500)) return;
@@ -134,9 +154,10 @@ function MetricsRouteProbe() {
     if (pageType === 'product') events.push({ type: 'product_view', source_path: location.pathname });
     if (pageType === 'checkout') events.push({ type: 'checkout_start', source_path: location.pathname });
     metricsApi.sendEvents(events).catch(() => void 0);
-  }, [location.pathname, shouldEmitInWindow]);
+  }, [location.pathname, shouldEmitInWindow, analyticsEnabled]);
 
   React.useEffect(() => {
+    if (!analyticsEnabled) return;
     const onFirstClick = (evt: MouseEvent) => {
       const sessionId = getMetricsSessionId();
       const clickMarker = `metrics_first_click_done_v2:${sessionId}`;
@@ -158,9 +179,10 @@ function MetricsRouteProbe() {
     };
     window.addEventListener('click', onFirstClick, true);
     return () => window.removeEventListener('click', onFirstClick, true);
-  }, [buildClickMetadata]);
+  }, [buildClickMetadata, analyticsEnabled]);
 
   React.useEffect(() => {
+    if (!analyticsEnabled) return;
     const onUiClick = (evt: MouseEvent) => {
       const clickMeta = buildClickMetadata(evt.target);
       if (!clickMeta) return;
@@ -181,7 +203,7 @@ function MetricsRouteProbe() {
 
     window.addEventListener('click', onUiClick, true);
     return () => window.removeEventListener('click', onUiClick, true);
-  }, [buildClickMetadata]);
+  }, [buildClickMetadata, analyticsEnabled]);
 
   return null;
 }
@@ -238,7 +260,14 @@ export default function AppRouter() {
         <Route path="/guarantees" element={<GuaranteesPage />} />
         <Route path="/delivery" element={<DeliveryPage />} />
         <Route path="/payment" element={<PaymentPage />} />
-        <Route path="/documents" element={<DocumentsPage />} />
+        <Route path="/documents" element={<LegalDocumentsPage />} />
+        <Route path="/legal/terms" element={<LegalTermsPage />} />
+        <Route path="/legal/privacy" element={<LegalPrivacyPage />} />
+        <Route path="/legal/consent" element={<LegalConsentPage />} />
+        <Route path="/legal/cookies" element={<LegalCookiesPage />} />
+        <Route path="/legal/imprint" element={<LegalImprintPage />} />
+        <Route path="/legal/refunds" element={<LegalRefundsPage />} />
+        <Route path="/legal/sanctions" element={<LegalSanctionsPage />} />
         <Route path="/faq" element={<FAQPage />} />
         <Route path="*" element={<TestBikeflipLanding2 />} />
       </Routes>

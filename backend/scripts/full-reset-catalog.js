@@ -17,10 +17,18 @@ const db = new Database(dbPath);
 
 // ImageKit SDK
 const ImageKit = require('imagekit');
+const imageKitPublicKey = process.env.IMAGEKIT_PUBLIC_KEY;
+const imageKitPrivateKey = process.env.IMAGEKIT_PRIVATE_KEY;
+const imageKitUrlEndpoint = process.env.IMAGEKIT_URL_ENDPOINT;
+
+if (!imageKitPublicKey || !imageKitPrivateKey || !imageKitUrlEndpoint) {
+    throw new Error('Missing ImageKit credentials. Set IMAGEKIT_PUBLIC_KEY, IMAGEKIT_PRIVATE_KEY, IMAGEKIT_URL_ENDPOINT.');
+}
+
 const imagekit = new ImageKit({
-    publicKey: process.env.IMAGEKIT_PUBLIC_KEY || 'public_fQW/Es2t9AhCsTu9SEdbyfJZJV0=',
-    privateKey: process.env.IMAGEKIT_PRIVATE_KEY || 'private_2lwjc219f22aIbNYf3pNUQBH9vo=',
-    urlEndpoint: process.env.IMAGEKIT_URL_ENDPOINT || 'https://ik.imagekit.io/bikewerk'
+    publicKey: imageKitPublicKey,
+    privateKey: imageKitPrivateKey,
+    urlEndpoint: imageKitUrlEndpoint
 });
 
 console.log('═'.repeat(60));

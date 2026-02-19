@@ -153,6 +153,7 @@ type WorkspacePayload = {
   };
   cto?: {
     health?: JsonRecord;
+    hunter?: JsonRecord;
     modules?: JsonRecord;
     guardrails?: JsonRecord | null;
     anomalies?: Array<JsonRecord>;
@@ -235,12 +236,30 @@ function formatDate(value: unknown): string {
   });
 }
 
+function formatEtaMinutes(value: unknown): string {
+  const minutes = num(value, -1);
+  if (minutes < 0) return '-';
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return `${hours}h ${rest}m`;
+}
+
 function severityTone(severity: string): string {
   const s = severity.toLowerCase();
   if (s === 'critical') return 'bg-rose-100 text-rose-800 border-rose-200';
   if (s === 'high') return 'bg-amber-100 text-amber-800 border-amber-200';
   if (s === 'medium') return 'bg-blue-100 text-blue-800 border-blue-200';
   if (s === 'low') return 'bg-slate-100 text-slate-700 border-slate-200';
+  return 'bg-slate-100 text-slate-700 border-slate-200';
+}
+
+function hunterStatusTone(status: string): string {
+  const s = status.toLowerCase();
+  if (s === 'error') return 'bg-rose-100 text-rose-800 border-rose-200';
+  if (s === 'stale' || s === 'needs_refill') return 'bg-amber-100 text-amber-800 border-amber-200';
+  if (s === 'running') return 'bg-blue-100 text-blue-800 border-blue-200';
+  if (s === 'healthy') return 'bg-emerald-100 text-emerald-800 border-emerald-200';
   return 'bg-slate-100 text-slate-700 border-slate-200';
 }
 
@@ -742,6 +761,24 @@ export function AdminMobileDashboard() {
     }
   }, [loadWorkspace]);
 
+  const handleManualHunterTrigger = React.useCallback(async () => {
+    setRunningTest('manual_hunt');
+    setNotice('');
+    try {
+      const payload = await apiPost('/admin/labs/hunt-trigger', {});
+      const rec = asRecord(payload);
+      if (!rec || rec.success === false) {
+        throw new Error(str(rec?.error, 'Не удалось запустить HourlyHunter'));
+      }
+      setNotice('HourlyHunter запущен вручную');
+      await loadWorkspace();
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : 'Ошибка запуска HourlyHunter');
+    } finally {
+      setRunningTest('');
+    }
+  }, [loadWorkspace]);
+
   const ceo = workspace?.ceo;
   const cto = workspace?.cto;
   const kpi = asRecord(ceo?.kpi);
@@ -776,6 +813,12 @@ export function AdminMobileDashboard() {
   const forecast = ceo?.finance?.cashflow_forecast;
 
   const ctoHealth = asRecord(cto?.health);
+  const ctoHunter = asRecord(cto?.hunter);
+  const ctoHunterCatalog = asRecord(ctoHunter?.catalog_health);
+  const ctoHunterLastRun = asRecord(ctoHunter?.last_run);
+  const ctoHunter24h = asRecord(ctoHunter?.last_24h);
+  const ctoHunterDeficits = asArray<JsonRecord>(ctoHunter?.deficit_by_category);
+  const ctoHunterRuns = asArray<JsonRecord>(ctoHunter?.recent_runs);
   const ctoIncidents = asArray<JsonRecord>(cto?.incidents);
   const ctoAnomalies = asArray<JsonRecord>(cto?.anomalies);
   const ctoLogs = asArray<JsonRecord>(cto?.recent_logs);
@@ -943,7 +986,10 @@ export function AdminMobileDashboard() {
                 <a href="#risk-radar" className="rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-600">Risk Radar</a>
               </>
             ) : (
-              <a href="#cto" className="rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-600">CTO Stack</a>
+              <>
+                <a href="#cto-hunter" className="rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-600">Hunter Tower</a>
+                <a href="#cto" className="rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-600">CTO Stack</a>
+              </>
             )}
           </div>
         </header>
@@ -1068,7 +1114,18 @@ export function AdminMobileDashboard() {
                 <MetricCard title="Memory RSS" value={`${num(ctoHealth?.memory_mb, 0).toFixed(1)} MB`} icon={<Activity className="h-4 w-4" />} />
                 <MetricCard title="Errors 24h" value={String(num(ctoHealth?.error_logs_24h, 0))} icon={<ShieldAlert className="h-4 w-4" />} />
                 <MetricCard title="API p95" value={`${num(ctoHealth?.api_p95_ms, 0).toFixed(0)} ms`} hint={`ErrRate ${formatPct(ctoHealth?.api_error_rate_pct)}`} icon={<Gauge className="h-4 w-4" />} />
-                <MetricCard title="Hunter (S/E/R)" value={`${num(ctoHealth?.hunter_success_24h, 0)}/${num(ctoHealth?.hunter_errors_24h, 0)}/${num(ctoHealth?.hunter_rejections_24h, 0)}`} icon={<Network className="h-4 w-4" />} />
+                <MetricCard
+                  title="Hunter Status"
+                  value={str(ctoHunter?.status, 'unknown')}
+                  hint={`Next ${formatDate(ctoHunter?.next_run_at)} (${formatEtaMinutes(ctoHunter?.next_run_eta_min)})`}
+                  icon={<Network className="h-4 w-4" />}
+                />
+                <MetricCard
+                  title="Catalog Deficit"
+                  value={String(num(ctoHunterCatalog?.deficit_total, 0))}
+                  hint={`${num(ctoHunterCatalog?.active, 0)}/${num(ctoHunterCatalog?.target, 0)} active/target`}
+                  icon={<Target className="h-4 w-4" />}
+                />
                 <MetricCard title="Queue / Anomalies" value={`${num(ctoHealth?.queue_pending, 0)} / ${num(ctoHealth?.anomalies_48h, 0)}`} icon={<Wrench className="h-4 w-4" />} />
               </div>
             )}
@@ -1762,6 +1819,122 @@ export function AdminMobileDashboard() {
             </>
           ) : (
             <>
+              <SectionCard
+                id="cto-hunter"
+                title="Hunter Control Tower"
+                subtitle="Автохантинг, дефициты каталога, результаты последних запусков и ручной триггер"
+              >
+                <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+                    <div className="mb-2 flex items-center justify-between">
+                      <h3 className="text-sm font-semibold text-slate-800">Run Status</h3>
+                      <span className={cn('rounded-full border px-2 py-0.5 text-[11px] uppercase', hunterStatusTone(str(ctoHunter?.status, 'unknown')))}>
+                        {str(ctoHunter?.status, 'unknown')}
+                      </span>
+                    </div>
+                    <div className="space-y-1 text-xs text-slate-600">
+                      <div>Last start: <strong>{formatDate(ctoHunter?.last_start_at)}</strong></div>
+                      <div>Last complete: <strong>{formatDate(ctoHunter?.last_complete_at)}</strong></div>
+                      <div>Last error: <strong>{formatDate(ctoHunter?.last_error_at)}</strong></div>
+                      <div>Next run: <strong>{formatDate(ctoHunter?.next_run_at)}</strong> ({formatEtaMinutes(ctoHunter?.next_run_eta_min)})</div>
+                    </div>
+                    <button
+                      onClick={() => void handleManualHunterTrigger()}
+                      disabled={runningTest === 'manual_hunt'}
+                      className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                    >
+                      {runningTest === 'manual_hunt' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Rocket className="h-3.5 w-3.5" />}
+                      Trigger Hourly Hunter
+                    </button>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 bg-white p-3">
+                    <h3 className="mb-2 text-sm font-semibold text-slate-800">24h Performance</h3>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
+                        <div className="text-slate-500">Runs</div>
+                        <div className="text-lg font-semibold text-slate-900">{num(ctoHunter24h?.runs, 0)}</div>
+                      </div>
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
+                        <div className="text-slate-500">Errors</div>
+                        <div className="text-lg font-semibold text-rose-700">{num(ctoHunter24h?.errors, 0)}</div>
+                      </div>
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
+                        <div className="text-slate-500">Bikes added</div>
+                        <div className="text-lg font-semibold text-slate-900">{num(ctoHunter24h?.bikes_added, 0)}</div>
+                      </div>
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
+                        <div className="text-slate-500">Hot deals</div>
+                        <div className="text-lg font-semibold text-emerald-700">{num(ctoHunter24h?.hot_deals_added, 0)}</div>
+                      </div>
+                    </div>
+                    <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-2 text-xs text-slate-600">
+                      Last run: {str(ctoHunterLastRun?.status, '-')} · {num(ctoHunterLastRun?.bikes_added, 0)}/{num(ctoHunterLastRun?.bikes_requested, 0)} added · {num(ctoHunterLastRun?.duration_min, 0).toFixed(1)} min
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 bg-white p-3">
+                    <h3 className="mb-2 text-sm font-semibold text-slate-800">Catalog Health</h3>
+                    <div className="space-y-1 text-xs text-slate-600">
+                      <div>Active: <strong>{num(ctoHunterCatalog?.active, 0)}</strong></div>
+                      <div>Target: <strong>{num(ctoHunterCatalog?.target, 0)}</strong></div>
+                      <div>Min: <strong>{num(ctoHunterCatalog?.min, 0)}</strong></div>
+                      <div>Deficit total: <strong>{num(ctoHunterCatalog?.deficit_total, 0)}</strong></div>
+                    </div>
+                    <div className="mt-3 max-h-28 space-y-1 overflow-auto pr-1">
+                      {ctoHunterDeficits.length ? ctoHunterDeficits.map((row, idx) => {
+                        const rec = asRecord(row);
+                        return (
+                          <div key={`hunter-def-${idx}`} className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs text-slate-700">
+                            {str(rec?.category, 'category')}: deficit <strong>{num(rec?.count, 0)}</strong> (have {num(rec?.present, 0)} / target {num(rec?.target, 0)})
+                          </div>
+                        );
+                      }) : (
+                        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-xs text-emerald-700">
+                          Core category coverage is healthy
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200">
+                  <table className="min-w-full text-xs">
+                    <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
+                      <tr>
+                        <th className="px-3 py-2 text-left">Time</th>
+                        <th className="px-3 py-2 text-left">Type</th>
+                        <th className="px-3 py-2 text-left">Status</th>
+                        <th className="px-3 py-2 text-left">Reason</th>
+                        <th className="px-3 py-2 text-left">Added / Req</th>
+                        <th className="px-3 py-2 text-left">Duration</th>
+                        <th className="px-3 py-2 text-left">Message</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ctoHunterRuns.length ? ctoHunterRuns.map((row, idx) => {
+                        const rec = asRecord(row);
+                        return (
+                          <tr key={`hrun-${idx}`} className="border-t border-slate-200">
+                            <td className="px-3 py-2">{formatDate(rec?.timestamp)}</td>
+                            <td className="px-3 py-2 font-mono">{str(rec?.type, '-')}</td>
+                            <td className="px-3 py-2">{str(rec?.status, '-')}</td>
+                            <td className="px-3 py-2">{str(rec?.reason, '-')}</td>
+                            <td className="px-3 py-2">{num(rec?.bikes_added, 0)} / {num(rec?.bikes_requested, 0)}</td>
+                            <td className="px-3 py-2">{num(rec?.duration_min, 0).toFixed(1)}m</td>
+                            <td className="px-3 py-2 text-slate-500">{str(rec?.message, '-')}</td>
+                          </tr>
+                        );
+                      }) : (
+                        <tr>
+                          <td className="px-3 py-4 text-slate-500" colSpan={7}>Hunter run history is empty</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </SectionCard>
+
               <SectionCard id="cto" title="CTO Stack" subtitle="ÐÐ°Ð´ÐµÐ¶Ð½Ð¾ÑÑ‚ÑŒ Ð¿Ð»Ð°Ñ‚Ñ„Ð¾Ñ€Ð¼Ñ‹, Ð¸Ð½Ñ†Ð¸Ð´ÐµÐ½Ñ‚Ñ‹, Ñ‚ÐµÑ…ÐºÐ¾Ð½Ñ‚ÑƒÑ€ Ð¸ Ð¾Ð¿ÐµÑ€Ð°Ñ†Ð¸Ð¾Ð½Ð½Ñ‹Ðµ Ñ‚ÐµÑÑ‚Ñ‹">
                 <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
                   <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3">

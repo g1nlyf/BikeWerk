@@ -12,6 +12,8 @@ import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/comp
 import { HelpCircle, ChevronLeft, Check, ShieldCheck, Truck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { LegalConsentFields } from "@/components/legal/LegalConsentFields";
+import { DEFAULT_FORM_LEGAL_CONSENT, buildLegalAuditLine, hasRequiredFormLegalConsent } from "@/lib/legal";
 
 type CartItem = { 
   id: string; 
@@ -56,12 +58,24 @@ export const CheckoutWizard: React.FC<CheckoutWizardProps> = ({ open, onOpenChan
   const [deliveryMethod, setDeliveryMethod] = React.useState("courier");
   const [paymentMethod, setPaymentMethod] = React.useState("card");
   const [notes, setNotes] = React.useState("");
+  const [legalConsent, setLegalConsent] = React.useState(DEFAULT_FORM_LEGAL_CONSENT);
 
   const totalEUR = Math.round(items.reduce((sum, i) => sum + (i.price * i.quantity), 0));
+  const isFinalStep = (guestMode && step === 2) || (!guestMode && step === 4);
+
+  React.useEffect(() => {
+    if (!open) return;
+    setLegalConsent(DEFAULT_FORM_LEGAL_CONSENT);
+    setError(null);
+  }, [open]);
 
   // Auto-fill if user data is available (could be passed as props or context, but keeping it simple for now)
 
   const submit = async () => {
+    if (!hasRequiredFormLegalConsent(legalConsent)) {
+      setError('Подтвердите согласие с условиями оферты и обработкой персональных данных.');
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
@@ -88,7 +102,7 @@ export const CheckoutWizard: React.FC<CheckoutWizardProps> = ({ open, onOpenChan
           name: String(name).trim(), 
           contact_method, 
           contact_value, 
-          notes: notes || null,
+          notes: `${notes || ''} ${buildLegalAuditLine(legalConsent.marketingAccepted)}`.trim() || null,
           items: itemsPayload // Send detailed items
         };
         const result = fast
@@ -109,7 +123,7 @@ export const CheckoutWizard: React.FC<CheckoutWizardProps> = ({ open, onOpenChan
         delivery_method: deliveryMethod,
         payment_method: paymentMethod,
         contact_method: email ? "email" : (phone ? "phone" : "email"),
-        notes,
+        notes: `${notes || ''} ${buildLegalAuditLine(legalConsent.marketingAccepted)}`.trim(),
         needs_manager: !!needsManager,
         items: itemsPayload // Send detailed items
       };
@@ -325,6 +339,12 @@ export const CheckoutWizard: React.FC<CheckoutWizardProps> = ({ open, onOpenChan
             </div>
           )}
 
+          {isFinalStep ? (
+            <div className="mt-4">
+              <LegalConsentFields value={legalConsent} onChange={setLegalConsent} />
+            </div>
+          ) : null}
+
           <div className="flex gap-3 mt-8 pt-4 border-t">
             <Button 
               variant="outline" 
@@ -337,11 +357,11 @@ export const CheckoutWizard: React.FC<CheckoutWizardProps> = ({ open, onOpenChan
             <Button 
               className="flex-1 h-12 rounded-xl font-medium text-base shadow-lg shadow-primary/20 hover:shadow-primary/30 transition-all"
               onClick={
-                (guestMode && step === 2) || (!guestMode && step === 4) 
+                isFinalStep 
                   ? submit 
                   : () => setStep(s => s + 1)
               }
-              disabled={submitting}
+              disabled={submitting || (isFinalStep && !hasRequiredFormLegalConsent(legalConsent))}
             >
               {submitting ? (
                 <span className="flex items-center gap-2">
@@ -349,7 +369,7 @@ export const CheckoutWizard: React.FC<CheckoutWizardProps> = ({ open, onOpenChan
                   Обработка...
                 </span>
               ) : (
-                (guestMode && step === 2) || (!guestMode && step === 4) ? 'Оформить заказ' : 'Далее'
+                isFinalStep ? 'Оформить заказ' : 'Далее'
               )}
             </Button>
           </div>

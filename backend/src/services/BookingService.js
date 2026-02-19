@@ -1,5 +1,6 @@
 ﻿const supabase = require('./supabase');
 const managerBot = require('./ManagerBotService');
+const telegramHub = require('./TelegramHubService');
 const orderDispatcher = require('./OrderDispatcher');
 const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcryptjs');
@@ -7,7 +8,7 @@ const jwt = require('jsonwebtoken');
 const { DatabaseManager } = require('../js/mysql-config');
 const axios = require('axios');
 
-const priceCalculator = require('./PriceCalculatorService');
+const addonPricing = require('./AddonPricingService');
 const imageKitService = require('./ImageKitService');
 const {
     ORDER_STATUS,
@@ -40,6 +41,69 @@ class BookingService {
         if (value === 'telegram' || value.startsWith('telegram:')) return 'telegram';
         if (value === 'phone' || value === 'call' || value === 'whatsapp' || value === 'sms') return 'whatsapp';
         return fallback;
+    }
+
+    _normalizeReservationStrategy(raw) {
+        const value = String(raw || '').trim().toLowerCase();
+        if (!value) return 'free_queue';
+        if (['priority_reserve', 'priority', 'reserve', 'paid_reserve', 'deposit'].includes(value)) {
+            return 'priority_reserve';
+        }
+        return 'free_queue';
+    }
+
+    _normalizeSellerQuestions(raw) {
+        const collected = [];
+        const pushQuestion = (value) => {
+            if (value == null) return;
+            if (Array.isArray(value)) {
+                value.forEach(pushQuestion);
+                return;
+            }
+            const normalized = String(value).replace(/\s+/g, ' ').trim();
+            if (!normalized) return;
+            collected.push(normalized.slice(0, 220));
+        };
+
+        if (typeof raw === 'string') {
+            raw
+                .split(/\r?\n+/)
+                .map((line) => line.trim())
+                .forEach(pushQuestion);
+        } else {
+            pushQuestion(raw);
+        }
+
+        return Array.from(new Set(collected)).slice(0, 5);
+    }
+
+    _buildQueueHint(reservationStrategy, hasSellerQuestions = false) {
+        const details = hasSellerQuestions
+            ? ' Вопросы продавцу уже переданы менеджеру.'
+            : '';
+        if (reservationStrategy === 'priority_reserve') {
+            return `Вы выбрали приоритетный резерв: после оплаты 2% велосипед закрепляется за вами вне очереди.${details}`;
+        }
+        return `Бесплатная бронь активна: приоритет выкупа идет по времени заявки.${details}`;
+    }
+
+    _getReservationPolicyMeta() {
+        return {
+            reserve_share: 0.02,
+            reserve_counts_towards_final_payment: true,
+            refund_if_not_client_fault: true,
+            non_refundable_on_client_cancellation: true,
+            refundable_reasons: [
+                'quality_mismatch',
+                'seller_unresponsive',
+                'seller_fraud_suspected',
+                'safety_concern',
+                'service_cancelled_not_client_fault'
+            ],
+            non_refundable_reasons: [
+                'client_changed_mind'
+            ]
+        };
     }
 
     _extractBikePriceEur(snapshot = null) {
@@ -75,6 +139,7 @@ class BookingService {
         if (!normalized) return false;
         return [
             ORDER_STATUS.BOOKED,
+            ORDER_STATUS.RESERVE_PAYMENT_PENDING,
             ORDER_STATUS.SELLER_CHECK_IN_PROGRESS,
             ORDER_STATUS.CHECK_READY,
             ORDER_STATUS.AWAITING_CLIENT_DECISION,
@@ -610,7 +675,7 @@ class BookingService {
     /**
      * Handle a new booking request (free booking, optional reservation later)
      */
-    async createBooking({ bike_id, customer, bike_details, total_price_rub, booking_amount_rub, exchange_rate, final_price_eur, delivery_method, addons = [], booking_form = {} }) {
+    async createBooking({ bike_id, customer, bike_details, total_price_rub, booking_amount_rub, exchange_rate, final_price_eur, delivery_method, addons = [], booking_form = {}, authenticated_user_id = null }) {
         const normalizedBikeSnapshot = this._normalizeBikeSnapshot(bike_details, bike_id, bike_details?.bike_url || bike_details?.url || null);
         this._assertBikePriceWithinCompliance(normalizedBikeSnapshot);
 
@@ -636,6 +701,29 @@ class BookingService {
         const contactMethod = customer.contact_method || booking_form.contact_method || (customer.email ? 'email' : (customer.phone ? 'whatsapp' : (customer.telegram_id ? 'telegram' : 'whatsapp')));
         const contactValue = customer.contact_value || booking_form.contact_value || customer.email || customer.phone || customer.telegram_id || null;
         const city = booking_form.city || customer.city || null;
+
+        const reservationStrategy = this._normalizeReservationStrategy(
+            booking_form?.reservation_strategy || booking_form?.reservation_mode || null
+        );
+        const sellerQuestions = this._normalizeSellerQuestions(
+            booking_form?.seller_questions || booking_form?.questions_for_seller || null
+        );
+        const queueHint = booking_form?.queue_hint || this._buildQueueHint(reservationStrategy, sellerQuestions.length > 0);
+        const reservationPolicy = this._getReservationPolicyMeta();
+        const initialOrderStatus = reservationStrategy === 'priority_reserve'
+            ? ORDER_STATUS.RESERVE_PAYMENT_PENDING
+            : ORDER_STATUS.BOOKED;
+        const normalizedBookingForm = {
+            ...booking_form,
+            contact_method: contactMethod,
+            contact_value: contactValue,
+            city,
+            delivery_option: shippingMethod,
+            reservation_strategy: reservationStrategy,
+            seller_questions: sellerQuestions,
+            queue_hint: queueHint,
+            reservation_policy: reservationPolicy
+        };
 
         // 1. Local-first CRM write path with remote fallback/mirror
         const customerPayload = { ...customer, name: customer.full_name || customer.name, contact_method: contactMethod, contact_value: contactValue, city };
@@ -680,7 +768,7 @@ class BookingService {
                 order_code: orderCode,
                 magic_link_token: magicToken,
                 bike_snapshot: bikeSnapshotWithUrl,
-                status: ORDER_STATUS.BOOKED,
+                status: initialOrderStatus,
                 total_price_rub,
                 booking_amount_rub,
                 exchange_rate,
@@ -688,7 +776,7 @@ class BookingService {
                 delivery_method: shippingMethod,
                 bike_url: bikeUrl,
                 addons,
-                booking_form: { ...booking_form, contact_method: contactMethod, contact_value: contactValue, city, delivery_option: shippingMethod }
+                booking_form: normalizedBookingForm
             });
 
             if (this._useSupabase()) {
@@ -718,7 +806,7 @@ class BookingService {
                 order_code: orderCode,
                 magic_link_token: magicToken,
                 bike_snapshot: bikeSnapshotWithUrl,
-                status: ORDER_STATUS.BOOKED,
+                status: initialOrderStatus,
                 total_price_rub,
                 booking_amount_rub,
                 exchange_rate,
@@ -726,7 +814,7 @@ class BookingService {
                 delivery_method: shippingMethod,
                 bike_url: bikeUrl,
                 addons,
-                booking_form: { ...booking_form, contact_method: contactMethod, contact_value: contactValue, city, delivery_option: shippingMethod }
+                booking_form: normalizedBookingForm
             });
         }
 
@@ -742,7 +830,23 @@ class BookingService {
         }
 
         try {
-            await managerBot.notifyNewOrder(order, bikeSnapshotWithUrl, customerData, { manager: assignedManager, tasks: aiTasks });
+            await this._createSellerQuestionTasks({
+                orderId: order?.id,
+                orderCode,
+                sellerQuestions,
+                customerName: customerData?.full_name || customerData?.name || customer?.name || customer?.full_name || null,
+                assignedManagerId: assignedManager?.id || null
+            });
+        } catch (questionError) {
+            console.error('Failed to create seller-question tasks:', questionError?.message || questionError);
+        }
+
+        try {
+            const hubNotifyResult = await telegramHub.notifyNewOrder(order, bikeSnapshotWithUrl, customerData, { manager: assignedManager, tasks: aiTasks });
+            const allowLegacyFallback = String(process.env.ENABLE_LEGACY_MANAGER_BOT_FALLBACK || '0') === '1';
+            if (!hubNotifyResult?.success && allowLegacyFallback) {
+                await managerBot.notifyNewOrder(order, bikeSnapshotWithUrl, customerData, { manager: assignedManager, tasks: aiTasks });
+            }
 
             // Background inspection + Supabase save only when Supabase is configured
             if (this._useSupabase()) {
@@ -802,14 +906,19 @@ class BookingService {
             console.error('Failed to notify manager bot:', e.message);
         }
 
-        // 5. Auto account
+        // 5. Account link: reuse authenticated user, otherwise create lightweight guest account.
         let userAuth = null;
         try {
-            userAuth = await this._ensureLocalUser({
-                name: customer.name || customer.full_name || 'ÐšÐ»Ð¸ÐµÐ½Ñ‚',
-                email: customer.email,
-                phone: customer.phone || ((contactMethod === 'phone' || contactMethod === 'whatsapp') ? contactValue : null)
-            });
+            const authenticatedUserId = Number(authenticated_user_id);
+            if (Number.isFinite(authenticatedUserId) && authenticatedUserId > 0) {
+                userAuth = await this._getLocalUserById(authenticatedUserId);
+            } else {
+                userAuth = await this._ensureLocalUser({
+                    name: customer.name || customer.full_name || 'Клиент',
+                    email: customer.email,
+                    phone: customer.phone || ((contactMethod === 'phone' || contactMethod === 'whatsapp') ? contactValue : null)
+                });
+            }
         } catch (e) {
             console.error('Auto-user creation failed:', e.message || e);
         }
@@ -819,6 +928,8 @@ class BookingService {
             magic_link_url: orderCode ? `/order-tracking/${orderCode}` : null,
             order_code: orderCode,
             status: 'accepted',
+            order_status: initialOrderStatus,
+            reservation_strategy: reservationStrategy,
             storage_mode: usedRemoteFallback ? 'supabase_fallback' : 'local_primary',
             auth: userAuth ? {
                 token: userAuth.token,
@@ -996,30 +1107,56 @@ class BookingService {
         }
 
         const shippingMethod = delivery_method || 'Cargo';
-        const calc = priceCalculator.calculate(price, shippingMethod, true);
-        const totalRub = Number(total_price_rub) || calc.total_price_rub;
-        const bookingRub = Number(booking_amount_rub) || Math.ceil(totalRub * 0.02);
-        const fx = Number(exchange_rate) || calc.details.exchange_rate;
-        const finalEur = Number(final_price_eur) || calc.details.final_price_eur;
+        const priced = addonPricing.calculateFinancialsWithAddons({
+            bikePriceEur: price,
+            shippingMethod,
+            exchangeRate: exchange_rate,
+            addons,
+            cargoInsurance: true
+        });
+        const pricedDetails = priced.details || {};
+        const totalRub = Number(pricedDetails.total_price_rub || 0) || 0;
+        const bookingRub = Number(pricedDetails.booking_amount_rub || 0) || Math.ceil(totalRub * 0.02);
+        const fx = Number(pricedDetails.exchange_rate || exchange_rate || 96) || 96;
+        const finalEur = Number(pricedDetails.final_price_eur || 0) || 0;
 
         const financials = {
             total_price_rub: totalRub,
             booking_amount_rub: bookingRub,
             bike_price_eur: price,
-            shipping_cost_eur: calc.details.shipping_cost_eur,
-            payment_commission_eur: calc.details.payment_commission_eur,
-            warehouse_fee_eur: calc.details.warehouse_fee_eur,
-            service_fee_eur: calc.details.service_fee_eur,
-            margin_total_eur: calc.details.margin_total_eur,
+            shipping_cost_eur: Number(pricedDetails.shipping_cost_eur || 0),
+            service_fee_eur: Number(pricedDetails.service_fee_eur || 0),
+            insurance_fees_eur: Number(pricedDetails.insurance_fees_eur || 0),
+            cargo_insurance_eur: Number(pricedDetails.cargo_insurance_eur || 0),
+            subtotal_eur: Number(pricedDetails.subtotal_eur || 0),
+            addons_total_eur: Number(pricedDetails.addons_total_eur || 0),
+            addons_total_rub: Number(pricedDetails.addons_total_rub || 0),
+            addons_lines: Array.isArray(pricedDetails.addons_lines) ? pricedDetails.addons_lines : [],
+            subtotal_with_addons_eur: Number(pricedDetails.subtotal_with_addons_eur || 0),
+            payment_commission_eur: Number(pricedDetails.payment_commission_eur || 0),
+            warehouse_fee_eur: Number(pricedDetails.warehouse_fee_eur || 0),
+            margin_total_eur: Number(pricedDetails.margin_total_eur || pricedDetails.service_fee_eur || 0),
             exchange_rate: fx,
             shipping_method: shippingMethod,
             final_price_eur: finalEur
         };
 
+        const reservationStrategy = this._normalizeReservationStrategy(
+            booking_form?.reservation_strategy || booking_form?.reservation_mode || null
+        );
+        const sellerQuestions = this._normalizeSellerQuestions(
+            booking_form?.seller_questions || booking_form?.questions_for_seller || null
+        );
+        const queueHint = booking_form?.queue_hint || this._buildQueueHint(reservationStrategy, sellerQuestions.length > 0);
         const bookingMeta = {
             booking_form: booking_form || null,
-            addons: addons || [],
-            financials
+            addons: priced.normalizedAddons || [],
+            financials,
+            queue_hint: queueHint,
+            reservation_strategy: reservationStrategy,
+            seller_questions: sellerQuestions,
+            reserve_enabled: true,
+            reservation_policy: booking_form?.reservation_policy || this._getReservationPolicyMeta()
         };
 
         const { data, error } = await supabase.supabase
@@ -1031,7 +1168,7 @@ class BookingService {
                 order_code,
                 magic_link_token,
                 status: normalizeOrderStatus(status) || ORDER_STATUS.BOOKED,
-                bike_snapshot: { ...durableSnapshot, financials, booking_meta: bookingMeta },
+                bike_snapshot: { ...durableSnapshot, financials, booking_meta: bookingMeta, queue_hint: queueHint },
                 bike_name: bikeName,
                 bike_url: durableSnapshot.bike_url || bike_url || null,
                 listing_price_eur: price,
@@ -1054,7 +1191,7 @@ class BookingService {
             lead_id,
             bike_id: durableSnapshot.bike_id || null,
             bike_url: durableSnapshot.bike_url || bike_url || null,
-            bike_snapshot: { ...durableSnapshot, financials, booking_meta: bookingMeta },
+            bike_snapshot: { ...durableSnapshot, financials, booking_meta: bookingMeta, queue_hint: queueHint },
             final_price_eur: finalEur,
             commission_eur: 0,
             status: normalizeOrderStatus(status) || ORDER_STATUS.BOOKED,
@@ -1124,6 +1261,78 @@ class BookingService {
         return { id, customer_id: customerId, bike_url: bikeUrl };
     }
 
+    _buildSellerQuestionTaskDescription({ orderCode, customerName, question }) {
+        const customer = customerName ? `Клиент: ${customerName}.` : '';
+        return [
+            `Заказ ${orderCode || 'без номера'}.`,
+            customer,
+            `Вопрос для продавца: "${question}"`,
+            'Нужно уточнить у продавца до завершения проверки.'
+        ].filter(Boolean).join(' ');
+    }
+
+    async _createSellerQuestionTasks({ orderId, orderCode, sellerQuestions = [], customerName = null, assignedManagerId = null }) {
+        const orderKey = String(orderId || '').trim();
+        if (!orderKey) return;
+
+        const questions = this._normalizeSellerQuestions(sellerQuestions);
+        if (!questions.length) return;
+
+        const taskRows = questions.map((question, idx) => ({
+            id: uuidv4(),
+            order_id: orderKey,
+            title: `Вопрос клиента продавцу #${idx + 1}`,
+            description: this._buildSellerQuestionTaskDescription({ orderCode, customerName, question }),
+            status: 'pending',
+            priority: 'high',
+            assigned_to: assignedManagerId || null
+        }));
+
+        for (const task of taskRows) {
+            try {
+                await this.db.query(
+                    `INSERT INTO tasks (id, order_id, title, description, due_at, completed, status, priority, assigned_to, created_by, created_at, updated_at)
+                     VALUES (?, ?, ?, ?, NULL, 0, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+                    [
+                        task.id,
+                        task.order_id,
+                        task.title,
+                        task.description,
+                        task.status,
+                        task.priority,
+                        task.assigned_to,
+                        'system'
+                    ]
+                );
+            } catch (localError) {
+                console.warn('[BookingService] Local task insert failed:', localError?.message || localError);
+            }
+        }
+
+        if (!this._useSupabase()) return;
+        try {
+            const payload = taskRows.map((task) => ({
+                id: task.id,
+                order_id: task.order_id,
+                title: task.title,
+                description: task.description,
+                status: task.status,
+                priority: task.priority,
+                assigned_to: task.assigned_to || null
+            }));
+            const { error } = await supabase.supabase.from('tasks').insert(payload);
+            if (error) throw error;
+        } catch (remoteError) {
+            await this._enqueueSyncOutbox(
+                'tasks',
+                orderKey,
+                'insert_many',
+                taskRows,
+                remoteError?.message || remoteError
+            );
+        }
+    }
+
     async _createOrderLocal({ customer_id, lead_id, bike_id, order_code, magic_link_token, bike_snapshot, status, total_price_rub, booking_amount_rub, exchange_rate, final_price_eur, delivery_method, bike_url, addons, booking_form }) {
         const normalizedSnapshot = this._normalizeBikeSnapshot(bike_snapshot, bike_id, bike_url);
         const cachedImages = await this._cacheSnapshotImages(normalizedSnapshot, order_code);
@@ -1153,34 +1362,59 @@ class BookingService {
         }
 
         const shippingMethod = delivery_method || 'Cargo';
-        const calc = priceCalculator.calculate(price, shippingMethod, true);
-        const totalRub = Number(total_price_rub) || calc.total_price_rub;
-        const bookingRub = Number(booking_amount_rub) || Math.ceil(totalRub * 0.02);
-        const fx = Number(exchange_rate) || calc.details.exchange_rate;
-        const finalEur = Number(final_price_eur) || calc.details.final_price_eur;
+        const priced = addonPricing.calculateFinancialsWithAddons({
+            bikePriceEur: price,
+            shippingMethod,
+            exchangeRate: exchange_rate,
+            addons,
+            cargoInsurance: true
+        });
+        const pricedDetails = priced.details || {};
+        const totalRub = Number(pricedDetails.total_price_rub || 0) || 0;
+        const bookingRub = Number(pricedDetails.booking_amount_rub || 0) || Math.ceil(totalRub * 0.02);
+        const fx = Number(pricedDetails.exchange_rate || exchange_rate || 96) || 96;
+        const finalEur = Number(pricedDetails.final_price_eur || 0) || 0;
 
         const financials = {
             total_price_rub: totalRub,
             booking_amount_rub: bookingRub,
             bike_price_eur: price,
-            shipping_cost_eur: calc.details.shipping_cost_eur,
-            payment_commission_eur: calc.details.payment_commission_eur,
-            warehouse_fee_eur: calc.details.warehouse_fee_eur,
-            service_fee_eur: calc.details.service_fee_eur,
-            margin_total_eur: calc.details.margin_total_eur,
+            shipping_cost_eur: Number(pricedDetails.shipping_cost_eur || 0),
+            service_fee_eur: Number(pricedDetails.service_fee_eur || 0),
+            insurance_fees_eur: Number(pricedDetails.insurance_fees_eur || 0),
+            cargo_insurance_eur: Number(pricedDetails.cargo_insurance_eur || 0),
+            subtotal_eur: Number(pricedDetails.subtotal_eur || 0),
+            addons_total_eur: Number(pricedDetails.addons_total_eur || 0),
+            addons_total_rub: Number(pricedDetails.addons_total_rub || 0),
+            addons_lines: Array.isArray(pricedDetails.addons_lines) ? pricedDetails.addons_lines : [],
+            subtotal_with_addons_eur: Number(pricedDetails.subtotal_with_addons_eur || 0),
+            payment_commission_eur: Number(pricedDetails.payment_commission_eur || 0),
+            warehouse_fee_eur: Number(pricedDetails.warehouse_fee_eur || 0),
+            margin_total_eur: Number(pricedDetails.margin_total_eur || pricedDetails.service_fee_eur || 0),
             exchange_rate: fx,
             shipping_method: shippingMethod,
             final_price_eur: finalEur
         };
 
+        const reservationStrategy = this._normalizeReservationStrategy(
+            booking_form?.reservation_strategy || booking_form?.reservation_mode || null
+        );
+        const sellerQuestions = this._normalizeSellerQuestions(
+            booking_form?.seller_questions || booking_form?.questions_for_seller || null
+        );
+        const queueHint = booking_form?.queue_hint || this._buildQueueHint(reservationStrategy, sellerQuestions.length > 0);
         const bookingMeta = {
             booking_form: booking_form || null,
-            addons: addons || [],
+            addons: priced.normalizedAddons || [],
             financials,
-            queue_hint: booking_form?.queue_hint || 'Ð’Ñ‹ #2 Ð² Ð¾Ñ‡ÐµÑ€ÐµÐ´Ð¸ (Ð·Ð°Ð³Ð»ÑƒÑˆÐºÐ°)'
+            queue_hint: queueHint,
+            reservation_strategy: reservationStrategy,
+            seller_questions: sellerQuestions,
+            reserve_enabled: true,
+            reservation_policy: booking_form?.reservation_policy || this._getReservationPolicyMeta()
         };
 
-        const snapshot = { ...durableSnapshot, financials, booking_meta: bookingMeta, magic_link_token };
+        const snapshot = { ...durableSnapshot, financials, booking_meta: bookingMeta, queue_hint: queueHint, magic_link_token };
         const id = uuidv4();
 
         await this.db.query(
@@ -1236,6 +1470,22 @@ class BookingService {
         return 'ORD-' + Math.floor(100000 + Math.random() * 900000);
     }
 
+    async _getLocalUserById(userId) {
+        if (!this.db) return null;
+        const normalizedId = Number(userId);
+        if (!Number.isFinite(normalizedId) || normalizedId <= 0) return null;
+
+        const rows = await this.db.query('SELECT * FROM users WHERE id = ? LIMIT 1', [normalizedId]);
+        const user = rows?.[0] || null;
+        if (!user) return null;
+
+        if (this.jwtSecret) {
+            user.token = jwt.sign({ id: user.id, email: user.email, role: user.role || 'user' }, this.jwtSecret, { expiresIn: '30d' });
+        }
+        user.temp_password = null;
+        return user;
+    }
+
     async _ensureLocalUser({ name, email, phone }) {
         if (!this.db) return null;
         const emailNorm = email ? String(email).trim().toLowerCase() : null;
@@ -1251,18 +1501,21 @@ class BookingService {
             user = res[0];
         }
 
-        const tempPassword = '12345678';
-        const hashed = await bcrypt.hash(tempPassword, 10);
-
+        let tempPassword = null;
         if (!user) {
+            tempPassword = '12345678';
+            const hashed = await bcrypt.hash(tempPassword, 10);
             const placeholderEmail = emailNorm || `${phoneNorm || 'user'}@placeholder.local`;
             const mustSetEmail = emailNorm ? 0 : 1;
-            const result = await this.db.query('INSERT INTO users (name, email, phone, password, must_change_password, must_set_email, temp_password) VALUES (?, ?, ?, ?, 0, ?, ?)', [name || 'ÐšÐ»Ð¸ÐµÐ½Ñ‚', placeholderEmail, phoneNorm, hashed, mustSetEmail, tempPassword]);
+            const result = await this.db.query('INSERT INTO users (name, email, phone, password, must_change_password, must_set_email, temp_password) VALUES (?, ?, ?, ?, 0, ?, ?)', [name || 'Клиент', placeholderEmail, phoneNorm, hashed, mustSetEmail, tempPassword]);
             user = { id: result.insertId, name, email: placeholderEmail, phone: phoneNorm, role: 'user', must_change_password: 0, must_set_email: mustSetEmail };
         } else {
-            await this.db.query('UPDATE users SET password = ?, must_change_password = 0, temp_password = ?, phone = COALESCE(phone, ?) WHERE id = ?', [hashed, tempPassword, phoneNorm, user.id]);
-            user.must_change_password = 0;
-            user.must_set_email = user.must_set_email ?? (emailNorm ? 0 : 1);
+            await this.db.query(
+                'UPDATE users SET name = COALESCE(NULLIF(?, \'\'), name), phone = COALESCE(phone, ?), email = COALESCE(email, ?) WHERE id = ?',
+                [name || null, phoneNorm, emailNorm, user.id]
+            );
+            const refreshed = await this.db.query('SELECT * FROM users WHERE id = ? LIMIT 1', [user.id]);
+            user = refreshed?.[0] || user;
         }
 
         if (this.jwtSecret) {

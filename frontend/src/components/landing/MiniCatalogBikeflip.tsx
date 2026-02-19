@@ -315,7 +315,7 @@ type Props = {
   hot?: boolean;
 };
 
-export default function MiniCatalogBikeflip({ title = "Подобрали специально для тебя", subtitle, limit = 15, offset = 0, shuffle = false, accentPriceColor, personalized = false, hot = false }: Props) {
+export default function MiniCatalogBikeflip({ title = "Лучшие предложения", subtitle, limit = 15, offset = 0, shuffle = false, accentPriceColor, personalized = false, hot = false }: Props) {
   const [items, setItems] = React.useState<BikeData[]>([]);
   const [bestPrice, setBestPrice] = React.useState<Record<string, boolean>>({});
   const [loading, setLoading] = React.useState(true);

@@ -1,16 +1,28 @@
 const path = require('path');
-// Load environment variables from backend/.env
-require('dotenv').config({ path: path.resolve(__dirname, '../backend/.env') });
+const dotenv = require('dotenv');
 
-const managerBot = require('../backend/src/services/ManagerBotService');
+dotenv.config({ path: path.resolve(__dirname, '../backend/.env') });
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
-console.log('🚀 Starting Manager Bot Standalone Service...');
+const telegramHub = require('../backend/src/services/TelegramHubService');
 
-// Start Polling
-managerBot.startPolling();
+async function main() {
+    process.env.TELEGRAM_HUB_POLLING_ROLES = 'manager';
+    await telegramHub.start({ pollingRoles: ['manager'] });
+    console.log('[telegram-bot/manager-bot] TelegramHub manager polling is running');
+}
 
-// Keep alive
-process.on('SIGINT', () => {
-    console.log('Stopping Manager Bot...');
+main().catch((error) => {
+    console.error('[telegram-bot/manager-bot] Failed to start:', error?.message || error);
+    process.exit(1);
+});
+
+process.on('SIGINT', async () => {
+    await telegramHub.stop();
+    process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+    await telegramHub.stop();
     process.exit(0);
 });

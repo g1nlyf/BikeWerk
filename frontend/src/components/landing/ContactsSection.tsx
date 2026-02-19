@@ -3,12 +3,21 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Mail, Phone, Send, MapPin, CheckCircle2, MessageSquare } from "lucide-react";
+import { LegalConsentFields } from "@/components/legal/LegalConsentFields";
+import { DEFAULT_FORM_LEGAL_CONSENT, hasRequiredFormLegalConsent } from "@/lib/legal";
 
 export const ContactsSection: React.FC = () => {
   const [submitted, setSubmitted] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [legalConsent, setLegalConsent] = React.useState(DEFAULT_FORM_LEGAL_CONSENT);
 
   const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!hasRequiredFormLegalConsent(legalConsent)) {
+      setError("Подтвердите согласие с условиями оферты и обработкой персональных данных.");
+      return;
+    }
+    setError(null);
     setSubmitted(true);
     setTimeout(() => setSubmitted(false), 5000);
   };
@@ -125,9 +134,9 @@ export const ContactsSection: React.FC = () => {
                   Отправить сообщение
                 </Button>
 
-                <p className="text-xs text-center text-muted-foreground">
-                  Нажимая кнопку, вы соглашаетесь с политикой обработки персональных данных
-                </p>
+                <LegalConsentFields value={legalConsent} onChange={setLegalConsent} />
+
+                {error ? <p className="text-xs text-center text-red-600">{error}</p> : null}
               </form>
             )}
           </div>

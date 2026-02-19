@@ -2,23 +2,37 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 import BikeflipHeaderPX from "@/components/layout/BikeflipHeaderPX";
-import { Footer } from "@/components/layout/Footer";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Check, Info, Shield, Truck } from "lucide-react";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { ArrowRight, Info, MapPin } from "lucide-react";
 
-import { apiGet } from "@/api";
-import { formatRUB, getEurRate, normalizeEurToRubRate } from "@/lib/pricing";
-import { ADDON_OPTIONS, calculateAddonsTotals, DELIVERY_OPTIONS, INCLUDED_SERVICES } from "@/data/buyoutOptions";
+import { apiGet, resolveImageUrl } from "@/api";
+import { formatRUB } from "@/lib/pricing";
+import { calculateCheckoutCashflow, getDeliveryPriceEur } from "@/lib/cashflowPricing";
+import { DELIVERY_OPTIONS } from "@/data/buyoutOptions";
 import type { AddonSelection, DeliveryOptionId } from "@/data/buyoutOptions";
-import { Breadcrumbs } from "@/components/nav/Breadcrumbs";
 
 type DraftV1 = {
   v: 1;
   bikeId: string;
   delivery: DeliveryOptionId;
   addons: AddonSelection;
+};
+
+type InfoStrip = {
+  title: string;
+  text: string;
+  href: string;
+  linkText: string;
+};
+
+type CheckoutAddon = {
+  id: string;
+  title: string;
+  description: string;
+  priceEur: number;
+  badge?: string;
+  badgeTone?: "neutral" | "accent";
 };
 
 function draftKey(bikeId: string) {
@@ -89,46 +103,67 @@ export default function BuyoutConditionsPage() {
     };
   }, [bike, bikeId]);
 
-  const exchangeRate = useMemo(() => {
-    const raw = (bike as any)?.exchange_rate ?? (bike as any)?.price_rate;
-    return normalizeEurToRubRate(raw, getEurRate());
-  }, [bike]);
-
   const bikePriceEur = Number((bike as any)?.price || (bike as any)?.price_eur || 0);
 
   const deliveryOption = DELIVERY_OPTIONS.find((o) => o.id === delivery) || DELIVERY_OPTIONS[0];
-  const primaryDeliveryOptionIds: DeliveryOptionId[] = ["Cargo", "EMS", "PremiumGroup"];
-  const primaryAddons = ["personal_inspection", "extra_packaging", "extra_insurance"];
-  const faqItems = [
+  const availableDeliveryOptionIds: DeliveryOptionId[] = ["Cargo", "EMS", "PremiumGroup", "Premium"];
+  const primaryDeliveryOptionIds: DeliveryOptionId[] = ["Cargo", "EMS"];
+
+  const cashflow = useMemo(
+    () => calculateCheckoutCashflow({ bikePriceEur, deliveryId: delivery, addons }),
+    [bikePriceEur, delivery, addons]
+  );
+  const totalRub = cashflow.totalRub;
+  const totalEur = cashflow.totalEur;
+  const formatEur = (value: number) => `€ ${value.toLocaleString("ru-RU", { maximumFractionDigits: 2 })}`;
+  const inspectionPromoActive = Date.now() <= Date.UTC(2026, 2, 31, 23, 59, 59, 999);
+
+  const checkoutAddons: CheckoutAddon[] = [
     {
-      question: "Когда я плачу?",
-      answer: "Сейчас ничего не списывается. Сначала мы проверяем продавца и байк, и только после подтверждения вы переходите к оплате.",
+      id: "cargo_insurance",
+      title: "Страховка груза",
+      description: "Дополнительная защита на этапе международной перевозки и сортировки.",
+      priceEur: 40,
+      badge: "Рекомендуем для байков от € 1 500",
+      badgeTone: "accent",
     },
     {
-      question: "Что входит в проверку?",
-      answer: "Проверяем продавца, соответствие байка описанию и документы. При необходимости запрашиваем дополнительные фото и видео.",
+      id: "personal_inspection",
+      title: "Экспертная проверка",
+      description: "Проверим состояние байка перед выкупом и добавим фотофиксацию ключевых узлов.",
+      priceEur: inspectionPromoActive ? 0 : 80,
+      badge: inspectionPromoActive ? "Акция до 31.03.2026" : undefined,
+      badgeTone: inspectionPromoActive ? "accent" : "neutral",
     },
     {
-      question: "Можно ли отменить бронь?",
-      answer: "Да, бронь бесплатная и без штрафов до этапа оплаты.",
+      id: "video_call",
+      title: "Видеозвонок с байком",
+      description: "Короткий live-осмотр перед финальным подтверждением выкупа.",
+      priceEur: 15,
     },
     {
-      question: "Почему есть EUR и ₽?",
-      answer: "EUR — базовая валюта расчёта. Сумма в рублях показывается как ориентир по текущему курсу.",
+      id: "extra_packaging",
+      title: "Усиленная упаковка",
+      description: "Дополнительная защита рамы и уязвимых элементов в транспортной упаковке.",
+      priceEur: 15,
     },
   ];
 
-  const baseTotalRub = Math.round((bikePriceEur + deliveryOption.priceEur) * exchangeRate);
-  const addonsTotals = calculateAddonsTotals({ bikePriceEur, baseTotalRub, exchangeRate, selection: addons });
-  const totalRub = baseTotalRub + addonsTotals.totalRub;
-
-  const handleAddonQty = (addonId: string, qty: number) => {
-    setAddons((prev) => ({ ...prev, [addonId]: Math.max(0, qty) }));
+  const isAddonEnabled = (addonId: string) => Math.max(0, Number(addons[addonId] || 0)) > 0;
+  const setAddonEnabled = (addonId: string, enabled: boolean) => {
+    setAddons((prev) => {
+      const next = { ...prev };
+      if (enabled) {
+        next[addonId] = 1;
+      } else {
+        delete next[addonId];
+      }
+      return next;
+    });
   };
 
-  const toggleAddon = (addonId: string) => {
-    setAddons((prev) => ({ ...prev, [addonId]: prev[addonId] ? 0 : 1 }));
-  };
+  const selectedAddonsCount = checkoutAddons.filter((addon) => isAddonEnabled(addon.id)).length;
+  const selectedAddonsTotalEur = cashflow.cargoInsuranceEur + cashflow.optionalServicesEur;
 
   const proceed = () => {
     if (!bikeId) return;
@@ -138,19 +173,20 @@ export default function BuyoutConditionsPage() {
     } catch {
       // ignore
     }
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
     navigate(`/booking-checkout/${bikeId}/booking`);
   };
 
   if (loading && !bike) {
     return (
-      <div className="min-h-screen bg-white text-[#18181b] flex items-center justify-center px-4">
-        <Card className="w-full max-w-lg p-6 rounded-[12px] shadow-sm bg-white">
-          <div className="h-5 w-1/2 bg-[#f4f4f5] rounded mb-3 animate-pulse" />
-          <div className="h-4 w-2/3 bg-[#f4f4f5] rounded mb-6 animate-pulse" />
+      <div className="min-h-screen bg-zinc-100 px-4 text-zinc-900 flex items-center justify-center">
+        <Card className="w-full max-w-lg rounded-[12px] border border-zinc-200 bg-white p-6 shadow-sm">
+          <div className="mb-3 h-5 w-1/2 animate-pulse rounded bg-[#f4f4f5]" />
+          <div className="mb-6 h-4 w-2/3 animate-pulse rounded bg-[#f4f4f5]" />
           <div className="space-y-3">
-            <div className="h-12 bg-[#f4f4f5] rounded-[12px] animate-pulse" />
-            <div className="h-12 bg-[#f4f4f5] rounded-[12px] animate-pulse" />
-            <div className="h-12 bg-[#f4f4f5] rounded-[12px] animate-pulse" />
+            <div className="h-12 animate-pulse rounded-[12px] bg-[#f4f4f5]" />
+            <div className="h-12 animate-pulse rounded-[12px] bg-[#f4f4f5]" />
+            <div className="h-12 animate-pulse rounded-[12px] bg-[#f4f4f5]" />
           </div>
         </Card>
       </div>
@@ -158,23 +194,14 @@ export default function BuyoutConditionsPage() {
   }
 
   if (!bike && !loading) {
-    if (loadError) {
-      return (
-        <div className="min-h-screen bg-white text-[#18181b] flex items-center justify-center px-4">
-          <Card className="w-full max-w-lg p-6 rounded-[12px] shadow-sm bg-white text-center space-y-3">
-            <h2 className="text-lg font-semibold">Ошибка загрузки</h2>
-            <p className="text-sm text-zinc-500">{loadError}</p>
-            <Button className="h-12 rounded-[8px] bg-[#18181b] text-white px-8 hover:bg-black" onClick={() => navigate("/catalog")}>Перейти в каталог</Button>
-          </Card>
-        </div>
-      );
-    }
     return (
-      <div className="min-h-screen bg-white text-[#18181b] flex items-center justify-center px-4">
-        <Card className="w-full max-w-lg p-6 rounded-[12px] shadow-sm bg-white text-center space-y-3">
-          <h2 className="text-lg font-semibold">Байк не найден</h2>
-          <p className="text-sm text-zinc-500">Попробуйте вернуться в каталог и открыть карточку снова.</p>
-          <Button className="h-12 rounded-[8px] bg-[#18181b] text-white px-8 hover:bg-black" onClick={() => navigate("/catalog")}>Перейти в каталог</Button>
+      <div className="min-h-screen bg-zinc-100 px-4 text-zinc-900 flex items-center justify-center">
+        <Card className="w-full max-w-lg rounded-[12px] border border-zinc-200 bg-white p-6 text-center space-y-3 shadow-sm">
+          <h2 className="text-lg font-semibold">Ошибка загрузки</h2>
+          <p className="text-sm text-zinc-700">{loadError || "Байк не найден"}</p>
+          <Button className="h-12 rounded-[8px] bg-[#18181b] px-8 text-white hover:bg-black" onClick={() => navigate("/catalog")}>
+            Перейти в каталог
+          </Button>
         </Card>
       </div>
     );
@@ -186,86 +213,139 @@ export default function BuyoutConditionsPage() {
     `${(bike as any)?.brand || ""} ${(bike as any)?.model || ""}`.trim() ||
     "Байк";
 
+  const mediaGalleryFirst = Array.isArray((bike as any)?.media?.gallery)
+    ? (bike as any).media.gallery[0]
+    : null;
+  const imagesFirst = Array.isArray((bike as any)?.images) ? (bike as any).images[0] : null;
+  const bikeImageCandidate =
+    (bike as any)?.main_image ??
+    (bike as any)?.image ??
+    (bike as any)?.image_url ??
+    (bike as any)?.media?.main_image ??
+    (typeof mediaGalleryFirst === "string" ? mediaGalleryFirst : (mediaGalleryFirst as any)?.image_url) ??
+    (typeof imagesFirst === "string" ? imagesFirst : (imagesFirst as any)?.image_url) ??
+    null;
+  const bikeImage = resolveImageUrl(bikeImageCandidate) || "/placeholder-bike.svg";
+
+  const bikeFrameSize = (bike as any)?.frameSize || (bike as any)?.size || null;
+  const bikeYear = (bike as any)?.year || (bike as any)?.model_year || (bike as any)?.modelYear || null;
+  const bikeBrand = String((bike as any)?.brand || "").trim();
+  const bikeLocation = String((bike as any)?.location || (bike as any)?.city || (bike as any)?.seller_city || "").trim();
+  const bikeMetaChips = [
+    bikeYear ? `Год: ${bikeYear}` : null,
+    bikeFrameSize ? `Размер: ${bikeFrameSize}` : null,
+  ].filter(Boolean) as string[];
+
+  const infoStrips: InfoStrip[] = [
+    {
+      title: "Очередь и приоритетный резерв",
+      text: "Бесплатная бронь ставит вас в очередь по времени заявки. Приоритетный резерв 2% не является доплатой сверху: это часть будущего платежа. После оплаты резерва велосипед закрепляется за вами, а бесплатные брони по этому байку закрываются.",
+      href: "/journal/reservation-priority-and-queue",
+      linkText: "Как работает очередь и резерв",
+    },
+    {
+      title: "Сроки доставки",
+      text: `По текущему выбору ориентир ${deliveryOption.eta}. Финальный срок фиксируем после подтверждения продавца, проверки документов и брони логистического окна.`,
+      href: "/journal/delivery-process",
+      linkText: "Подробнее о доставке в журнале",
+    },
+    {
+      title: "Защита покупателя",
+      text: "Оплата открывается только после верификации продавца и состояния велосипеда. До этого мы удерживаем процесс на нашей стороне и исключаем риск перевода средств вслепую.",
+      href: "/journal/insurance-guarantee",
+      linkText: "Подробнее о защите в журнале",
+    },
+    {
+      title: "Проверка и выкуп",
+      text: "Если байк не проходит проверку по состоянию или документам, бронь отменяется без штрафов. Если всё подтверждено, запускаем выкуп и доставку в РФ по выбранному тарифу.",
+      href: "/journal/protocol-130",
+      linkText: "Подробнее о проверке в журнале",
+    },
+    {
+      title: "Таможня",
+      text: "Таможенное оформление и пакет документов мы ведем централизованно. До выдачи вы видите прозрачный статус по каждому этапу и не остаетесь без информации о грузе.",
+      href: "/journal/delivery-process",
+      linkText: "Подробнее о таможне в журнале",
+    },
+    {
+      title: "FAQ",
+      text: "Когда фиксируются точные даты, когда и за что платить, и что происходит при отклонении сделки по проверке — все ответы собрали в одном разделе.",
+      href: "/journal",
+      linkText: "Читать FAQ в журнале",
+    },
+  ];
+
   return (
-    <div className="min-h-screen bg-white text-[#18181b]">
+    <div className="checkout-desktop-soft min-h-screen bg-[#f4f4f5] text-zinc-900">
       <BikeflipHeaderPX />
-      <div className="max-w-6xl mx-auto px-4 pb-40 pt-8 space-y-6">
-        <header className="flex items-start justify-between gap-6">
-          <div>
-            <Breadcrumbs
-              items={[
-                { label: "Каталог", href: "/catalog" },
-                { label: "Карточка байка", href: `/product/${bikeId}` },
-                { label: "Условия выкупа" },
-              ]}
-            />
-            <h1 className="heading-fielmann text-3xl md:text-4xl mt-3">Условия выкупа и доставки</h1>
-            <p className="text-fielmann mt-3">Сейчас ничего платить не нужно — оформим бесплатную бронь, а оплата будет только после проверки.</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <div className="rounded-full bg-[#f4f4f5] px-3 py-1 text-xs">Бронь бесплатная</div>
-              <div className="rounded-full bg-[#f4f4f5] px-3 py-1 text-xs">Оплата после проверки</div>
-              <div className="rounded-full bg-[#f4f4f5] px-3 py-1 text-xs">Отмена без штрафов</div>
-            </div>
-          </div>
-          <div className="hidden md:block text-right">
-            <div className="text-sm text-zinc-500">Байк</div>
-            <div className="font-medium">{title}</div>
-            <div className="text-sm text-zinc-500">{(bike as any)?.frameSize || (bike as any)?.size || ""}</div>
-          </div>
-        </header>
 
-        <div className="grid lg:grid-cols-3 gap-6 items-start">
-          <div className="lg:col-span-2 space-y-4 order-2 lg:order-1">
-            <Card className="p-6 rounded-[24px] shadow-sm bg-white border border-zinc-200">
-              <div className="flex items-center gap-2 mb-3">
-                <Shield className="w-4 h-4" />
-                <h2 className="font-semibold text-lg">Как проходит процесс</h2>
-              </div>
-              <div className="grid sm:grid-cols-3 gap-2 text-sm">
-                <div className="rounded-xl bg-[#f4f4f5] p-3">
-                  <div className="font-medium">1. Бесплатная бронь</div>
-                  <p className="mt-1 text-xs text-zinc-500">Фиксируем выбранные условия без оплаты.</p>
-                </div>
-                <div className="rounded-xl bg-[#f4f4f5] p-3">
-                  <div className="font-medium">2. Проверка</div>
-                  <p className="mt-1 text-xs text-zinc-500">Проверяем продавца и состояние байка.</p>
-                </div>
-                <div className="rounded-xl bg-[#f4f4f5] p-3">
-                  <div className="font-medium">3. Оплата и доставка</div>
-                  <p className="mt-1 text-xs text-zinc-500">Оплачиваете только после подтверждения.</p>
-                </div>
-              </div>
-            </Card>
+      <div className="mx-auto max-w-[1120px] px-4 pb-40 pt-4 md:pt-6">
+        <div className="mb-5 flex flex-wrap items-center gap-4 text-sm">
+          <button
+            className="rounded-full border border-zinc-300 px-4 py-1.5 text-zinc-700 hover:bg-zinc-100"
+            onClick={() => navigate(`/product/${bikeId}`)}
+          >
+            Назад
+          </button>
 
-            <Card className="p-6 rounded-[24px] shadow-sm bg-white border border-zinc-200">
-              <div className="flex items-center gap-2 mb-3">
-                <Truck className="w-4 h-4" />
-                <h2 className="font-semibold text-lg">Доставка</h2>
+          <div className="flex items-center gap-2 text-zinc-700">
+            <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-black text-xs font-semibold text-white">1</span>
+            <span className="font-medium text-zinc-900">Доставка</span>
+            <span className="mx-1 h-px w-8 bg-zinc-300" />
+            <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-zinc-200 text-xs font-semibold text-zinc-400">2</span>
+            <span className="text-zinc-400">Оплата</span>
+          </div>
+        </div>
+
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_390px]">
+          <div className="space-y-5">
+            <Card className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-[0_2px_8px_rgba(15,23,42,0.05)]">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="heading-fielmann text-2xl leading-none text-zinc-950 lg:text-[28px]">Выбор доставки</h2>
+                  <p className="mt-2 text-sm text-zinc-600 md:text-base">
+                    Стандарт и ускоренная доставка доступны сразу. Остальные тарифы можно открыть кнопкой ниже.
+                  </p>
+                </div>
+                <span className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs font-medium text-zinc-600">
+                  Шаг 1 из 2
+                </span>
               </div>
-              <div className="space-y-3">
+
+              <div className="mt-5 space-y-3">
                 {(showAllDelivery
-                  ? DELIVERY_OPTIONS
+                  ? DELIVERY_OPTIONS.filter((opt) => availableDeliveryOptionIds.includes(opt.id))
                   : DELIVERY_OPTIONS.filter((opt) => primaryDeliveryOptionIds.includes(opt.id))).map((opt) => (
                     <label
                       key={opt.id}
-                      className={`flex items-start gap-3 p-3 rounded-xl border transition-colors ${delivery === opt.id ? "border-[#18181b] bg-[#f4f4f5]" : "border-[#e4e4e7] hover:bg-[#f4f4f5]"}`}
+                      className={`group block cursor-pointer rounded-xl border p-4 transition-colors ${delivery === opt.id ? "border-zinc-900 bg-white" : "border-zinc-200 bg-zinc-50/40 hover:border-zinc-400"}`}
                       onClick={() => setDelivery(opt.id)}
                     >
-                      <span className={`mt-1 h-4 w-4 rounded-full border ${delivery === opt.id ? "bg-[#18181b] border-[#18181b]" : "border-zinc-400"}`} />
-                      <div className="flex-1">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="font-medium">{opt.title}</div>
-                          <div className="font-semibold">€ {opt.priceEur}</div>
+                      <div className="flex items-start gap-3">
+                        <span className={`mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${delivery === opt.id ? "border-zinc-900" : "border-zinc-300"}`}>
+                          {delivery === opt.id ? <span className="h-2.5 w-2.5 rounded-full bg-black" /> : null}
+                        </span>
+
+                        <div className="flex-1">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="text-2xl font-semibold leading-tight text-zinc-950 lg:text-[24px]">{opt.title}</div>
+                            <div className="text-2xl font-semibold leading-tight text-zinc-950 lg:text-[24px]">€ {getDeliveryPriceEur(opt.id)}</div>
+                          </div>
+
+                          <div className="mt-1 text-base text-zinc-700 md:text-lg">{opt.subtitle}</div>
+
+                          <div className="mt-3 inline-flex items-center gap-2 rounded-md bg-[#e5eff8] px-3 py-1 text-sm text-zinc-700">
+                            <MapPin className="h-3.5 w-3.5" />
+                            Ориентировочная доставка: <strong>{opt.eta}</strong>
+                          </div>
                         </div>
-                        <div className="text-sm text-zinc-500">{opt.subtitle}</div>
-                        <div className="text-xs text-zinc-500">Сроки: {opt.eta}</div>
-                        {opt.highlight && <div className="mt-1 text-xs text-[#18181b]">{opt.highlight}</div>}
                       </div>
                     </label>
                   ))}
+
                 <Button
                   variant="outline"
-                  className="btn-pill-secondary h-11"
+                  className="h-11 rounded-full border border-zinc-900 px-6 text-sm font-semibold text-zinc-900 hover:bg-zinc-100"
                   onClick={() => setShowAllDelivery((prev) => !prev)}
                 >
                   {showAllDelivery ? "Скрыть дополнительные варианты" : "Показать все варианты"}
@@ -273,160 +353,171 @@ export default function BuyoutConditionsPage() {
               </div>
             </Card>
 
-            <Card className="p-6 rounded-[24px] shadow-sm bg-white border border-zinc-200">
-              <div className="flex items-center gap-2 mb-3">
-                <Info className="w-4 h-4" />
-                <h2 className="font-semibold text-lg">Доп. услуги</h2>
+            <Card className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-[0_2px_8px_rgba(15,23,42,0.05)]">
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <h3 className="text-2xl font-semibold tracking-tight text-zinc-950 lg:text-[26px]">Дополнительные услуги</h3>
+                  <p className="mt-2 text-sm text-zinc-600 md:text-base">
+                    Выберите только нужные опции. Все изменения сразу отражаются в расчётах справа.
+                  </p>
+                </div>
+                <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-right text-xs text-zinc-600">
+                  <div>Выбрано: {selectedAddonsCount}</div>
+                  <div className="mt-0.5 font-semibold text-zinc-900">+ {formatEur(selectedAddonsTotalEur)}</div>
+                </div>
               </div>
-              <div className="space-y-3 text-sm">
-                {ADDON_OPTIONS.filter((addon) => primaryAddons.includes(addon.id)).map((addon) => (
-                  <div key={addon.id} className="flex items-center justify-between gap-3 p-3 rounded-xl border border-[#e4e4e7]">
-                    <div>
-                      <div className="font-medium">{addon.title}</div>
-                      <div className="text-zinc-500 text-xs">{addon.description}</div>
-                    </div>
-                    <Button size="sm" variant={addons[addon.id] ? "default" : "outline"} className="h-9 rounded-[8px]" onClick={() => toggleAddon(addon.id)}>
-                      {addons[addon.id] ? "Включено" : "Добавить"}
-                    </Button>
-                  </div>
-                ))}
 
-                <Accordion type="single" collapsible>
-                  <AccordionItem value="more-addons" className="border border-zinc-200 rounded-xl px-3">
-                    <AccordionTrigger className="text-sm">Ещё услуги</AccordionTrigger>
-                    <AccordionContent>
-                      <div className="space-y-3 pt-2">
-                        {ADDON_OPTIONS.filter((addon) => !primaryAddons.includes(addon.id)).map((addon) => (
-                          <div key={addon.id} className="rounded-xl border border-[#e4e4e7] p-3">
-                            <div className="flex items-center justify-between gap-3">
-                              <div>
-                                <div className="font-medium">{addon.title}</div>
-                                <div className="text-zinc-500 text-xs">{addon.description}</div>
-                              </div>
-                              {addon.type === "per_unit" ? (
-                                <div className="flex items-center gap-2">
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="h-8 w-8 rounded-full border-zinc-200 bg-white hover:bg-[#f4f4f5]"
-                                    onClick={() => handleAddonQty(addon.id, (addons[addon.id] || 0) - 1)}
-                                  >
-                                    -
-                                  </Button>
-                                  <div className="w-8 text-center tabular-nums">{addons[addon.id] || 0}</div>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="h-8 w-8 rounded-full border-zinc-200 bg-white hover:bg-[#f4f4f5]"
-                                    onClick={() => handleAddonQty(addon.id, (addons[addon.id] || 0) + 1)}
-                                  >
-                                    +
-                                  </Button>
-                                </div>
-                              ) : (
-                                <Button size="sm" variant={addons[addon.id] ? "default" : "outline"} className="h-8 rounded-[8px]" onClick={() => toggleAddon(addon.id)}>
-                                  {addons[addon.id] ? "Включено" : "Добавить"}
-                                </Button>
-                              )}
-                            </div>
+              <div className="mt-4 grid gap-3">
+                {checkoutAddons.map((addon) => {
+                  const enabled = isAddonEnabled(addon.id);
+                  return (
+                    <div
+                      key={addon.id}
+                      className={`rounded-xl border p-4 transition-colors ${enabled ? "border-zinc-900 bg-white" : "border-zinc-200 bg-zinc-50/40 hover:border-zinc-400"}`}
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <div className="text-lg font-semibold text-zinc-950">{addon.title}</div>
+                            {addon.badge ? (
+                              <span
+                                className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${addon.badgeTone === "accent" ? "bg-[#e5eff8] text-zinc-800" : "bg-zinc-100 text-zinc-700"}`}
+                              >
+                                {addon.badge}
+                              </span>
+                            ) : null}
                           </div>
+                          <div className="mt-1 text-sm leading-relaxed text-zinc-700">{addon.description}</div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <span className="rounded-md bg-zinc-100 px-2.5 py-1 text-sm font-semibold text-zinc-900">
+                            {formatEur(addon.priceEur)}
+                          </span>
+                          <Button
+                            type="button"
+                            variant={enabled ? "default" : "outline"}
+                            className={enabled ? "h-9 rounded-full bg-black px-4 text-xs font-semibold text-white hover:bg-zinc-800" : "h-9 rounded-full border-zinc-300 bg-white px-4 text-xs font-semibold text-zinc-800 hover:bg-zinc-100"}
+                            onClick={() => setAddonEnabled(addon.id, !enabled)}
+                          >
+                            {enabled ? "Убрать" : "Добавить"}
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+
+            <Card className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-[0_2px_8px_rgba(15,23,42,0.05)]">
+              <h3 className="text-2xl font-semibold tracking-tight text-zinc-950 lg:text-[26px]">Сроки, защита, выкуп и FAQ</h3>
+              <div className="mt-4 border-y border-zinc-200">
+                {infoStrips.map((item, idx) => (
+                  <details key={item.title} className={`group ${idx > 0 ? "border-t border-zinc-200" : ""}`}>
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-2 py-4 text-base font-medium text-zinc-900 lg:text-[22px] lg:leading-tight">
+                      <span>{item.title}</span>
+                      <span className="text-3xl leading-none text-zinc-500 transition-transform group-open:rotate-45">+</span>
+                    </summary>
+                    <div className="pb-4 px-2 text-sm leading-relaxed text-zinc-700 md:text-base">
+                      {item.text}
+                      <button
+                        type="button"
+                        className="mt-3 inline-flex items-center gap-1 font-medium text-zinc-900 hover:text-black"
+                        onClick={() => navigate(item.href)}
+                      >
+                        {item.linkText}
+                        <ArrowRight className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </details>
+                ))}
+              </div>
+            </Card>
+
+          </div>
+
+          <aside className="lg:h-fit lg:self-start lg:sticky lg:top-5">
+            <Card className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-[0_2px_8px_rgba(15,23,42,0.05)]">
+              <div>
+                <h2 className="heading-fielmann text-[21px] leading-none text-zinc-950">Сводка заказа</h2>
+
+                <div className="mt-3 flex items-start gap-3">
+                  <div className="w-[148px] shrink-0 overflow-hidden rounded-[10px] border border-zinc-200 bg-zinc-100">
+                    <img src={bikeImage} alt={title} className="h-[106px] w-full object-cover" loading="lazy" />
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    {bikeBrand ? <div className="text-[13px] text-zinc-700">{bikeBrand}</div> : null}
+                    <div className="mt-0.5 text-[20px] leading-[1.08] font-semibold tracking-tight text-zinc-950">{title}</div>
+                    {bikeLocation ? <div className="mt-1 text-[13px] text-zinc-600">{bikeLocation}</div> : null}
+
+                    {bikeMetaChips.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {bikeMetaChips.map((chip) => (
+                          <span key={chip} className="rounded-md bg-zinc-100 px-2 py-1 text-[11px] text-zinc-700">
+                            {chip}
+                          </span>
                         ))}
                       </div>
-                    </AccordionContent>
-                  </AccordionItem>
-                </Accordion>
-              </div>
-            </Card>
-
-            <Card className="p-6 rounded-[24px] shadow-sm bg-white border border-zinc-200">
-              <h2 className="font-semibold text-lg mb-3">Ответы на частые вопросы</h2>
-              <Accordion type="single" collapsible>
-                {faqItems.map((item, index) => (
-                  <AccordionItem key={item.question} value={`faq-${index}`}>
-                    <AccordionTrigger className="text-sm text-left">{item.question}</AccordionTrigger>
-                    <AccordionContent className="text-sm text-zinc-600">{item.answer}</AccordionContent>
-                  </AccordionItem>
-                ))}
-              </Accordion>
-            </Card>
-
-            <Card className="p-6 rounded-[24px] shadow-sm bg-white border border-zinc-200">
-              <h2 className="font-semibold text-lg mb-3">Что включено</h2>
-              <div className="grid sm:grid-cols-2 gap-2 text-sm">
-                {INCLUDED_SERVICES.map((item) => (
-                  <div key={item} className="flex items-center gap-2 p-2 rounded-xl bg-[#f4f4f5]">
-                    <Check className="w-4 h-4" />
-                    <span>{item}</span>
+                    )}
                   </div>
-                ))}
-              </div>
-            </Card>
-          </div>
-
-          <div className="space-y-4 order-1 lg:order-2 lg:sticky lg:top-24">
-            <Card className="p-6 rounded-[24px] shadow-sm bg-white border border-zinc-200">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h2 className="font-semibold text-lg">Итог</h2>
-                  <div className="mt-1 text-xs text-zinc-500">Сейчас 0 ₽. Оплата после подтверждения проверки.</div>
                 </div>
-                <div className="rounded-full bg-[#f4f4f5] px-3 py-1 text-xs text-[#18181b]">бесплатно</div>
-              </div>
 
-              <div className="mt-4 space-y-2 text-sm">
-                <div className="flex justify-between"><span>Байк</span><span>€ {bikePriceEur.toLocaleString("ru-RU")}</span></div>
-                <div className="flex justify-between"><span>Доставка</span><span>€ {deliveryOption.priceEur.toLocaleString("ru-RU")}</span></div>
-                <div className="flex justify-between"><span>Услуги</span><span>€ {addonsTotals.totalEur.toLocaleString("ru-RU", { maximumFractionDigits: 0 })}</span></div>
-                <div className="flex justify-between font-semibold"><span>Итого</span><span>€ {(bikePriceEur + deliveryOption.priceEur + addonsTotals.totalEur).toLocaleString("ru-RU", { maximumFractionDigits: 0 })}</span></div>
-                <div className="flex justify-between text-xs text-zinc-500"><span>Ориентир в ₽</span><span>{formatRUB(totalRub)}</span></div>
-              </div>
+                <div className="mt-3 border-t border-zinc-200 pt-3 text-sm text-zinc-800">
+                  <div className="flex justify-between"><span>Цена велосипеда</span><span className="tabular-nums font-medium">{formatEur(cashflow.bikeEur)}</span></div>
+                  <div className="mt-1.5 flex justify-between"><span>Сервис</span><span className="tabular-nums font-medium">{formatEur(cashflow.serviceEur)}</span></div>
+                  <div className="mt-1.5 flex justify-between"><span>Доставка</span><span className="tabular-nums font-medium">{formatEur(cashflow.deliveryEur)}</span></div>
+                  <div className="mt-1.5 flex justify-between"><span>Безопасная оплата</span><span className="tabular-nums font-medium">{formatEur(cashflow.insuranceFeesEur)}</span></div>
+                  {cashflow.cargoInsuranceEur > 0 && (
+                    <div className="mt-1.5 flex justify-between"><span>Страховка груза</span><span className="tabular-nums font-medium">{formatEur(cashflow.cargoInsuranceEur)}</span></div>
+                  )}
+                  {cashflow.optionalServicesEur > 0 && (
+                    <div className="mt-1.5 flex justify-between"><span>Доп. услуги</span><span className="tabular-nums font-medium">{formatEur(cashflow.optionalServicesEur)}</span></div>
+                  )}
+                  <div className="mt-2 flex justify-between border-t border-zinc-200 pt-2 text-[12px] text-zinc-500">
+                    <span>Промежуточная сумма</span>
+                    <span className="tabular-nums">{formatEur(cashflow.subtotalEur)}</span>
+                  </div>
+                  <div className="mt-1.5 flex justify-between"><span>Комиссия за перевод (7%)</span><span className="tabular-nums font-medium">{formatEur(cashflow.paymentCommissionEur)}</span></div>
+                  <div className="mt-3 flex justify-between border-t border-zinc-200 pt-3 text-[21px] font-semibold text-zinc-950">
+                    <span>Итого</span>
+                    <span className="flex items-baseline gap-2 text-right">
+                      <span className="tabular-nums">{formatRUB(totalRub)}</span>
+                      <span className="tabular-nums text-sm font-medium text-zinc-500">{formatEur(totalEur)}</span>
+                    </span>
+                  </div>
+                </div>
 
-              <div className="mt-4 rounded-[12px] border border-zinc-200 bg-[#f4f4f5] p-4 text-sm">
-                <div className="flex items-start gap-2">
-                  <Info className="mt-0.5 h-4 w-4" />
-                  <div>
-                    <div className="font-medium">Оплата только после проверки</div>
-                    <div className="mt-1 text-xs text-zinc-500">Мы проверяем байк и продавца. После подтверждения переходите к оплате и выкупу.</div>
+                <div className="mt-3 rounded-lg bg-zinc-100 p-2.5 text-[11px] leading-relaxed text-zinc-700">
+                  <div className="flex items-start gap-2">
+                    <Info className="mt-0.5 h-4 w-4" />
+                    <span>Оплата после проверки продавца и подтверждения состояния байка.</span>
                   </div>
                 </div>
               </div>
 
-              {loadError && <div className="mt-3 text-sm text-red-600">{loadError}</div>}
-
-              <div className="mt-4 grid gap-2">
-                <Button
-                  className="btn-pill-primary h-14"
-                  onClick={proceed}
-                >
-                  Перейти к бесплатному бронированию
-                </Button>
-                <div className="text-center text-xs text-zinc-500">Ничего не спишем на этом шаге</div>
-                <Button
-                  variant="outline"
-                  className="btn-pill-secondary h-14"
-                  onClick={() => navigate(`/product/${bikeId}`)}
-                >
-                  Вернуться к байку
-                </Button>
-              </div>
+              <Button
+                className="mt-4 h-11 w-full rounded-full bg-black text-sm font-semibold text-white hover:bg-zinc-800"
+                onClick={proceed}
+              >
+                К бесплатной брони
+              </Button>
             </Card>
-          </div>
+          </aside>
         </div>
 
-        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-zinc-200 bg-white p-3 lg:hidden">
-          <div className="mx-auto max-w-6xl flex items-center justify-between gap-3">
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-zinc-200 bg-white/95 p-3 backdrop-blur lg:hidden">
+          <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
             <div className="text-sm">
               <div className="font-semibold">Итого: {formatRUB(totalRub)}</div>
-              <div className="text-xs text-zinc-500">Сейчас 0 ₽ • оплата после проверки</div>
+              <div className="text-xs text-zinc-700">Сейчас 0 ₽ • оплата после проверки</div>
             </div>
-            <Button className="btn-pill-primary h-11 px-6 text-sm" onClick={proceed}>
+            <Button className="h-11 whitespace-nowrap rounded-full bg-black px-6 text-sm font-semibold text-white hover:bg-zinc-800" onClick={proceed}>
               К бесплатной брони
             </Button>
           </div>
         </div>
-      </div>
-      <div className="hidden md:block">
-        <Footer />
       </div>
     </div>
   );

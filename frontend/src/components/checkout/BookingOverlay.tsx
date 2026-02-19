@@ -13,6 +13,8 @@ import { Badge } from "@/components/ui/badge";
 import { motion, AnimatePresence } from "framer-motion";
 import { calculatePriceBreakdown } from "@/lib/pricing";
 import { OrderSuccessOverlay } from "@/components/checkout/OrderSuccessOverlay";
+import { LegalConsentFields } from "@/components/legal/LegalConsentFields";
+import { DEFAULT_FORM_LEGAL_CONSENT, buildLegalAuditLine, hasRequiredFormLegalConsent } from "@/lib/legal";
 
 // Types
 type OrderItem = {
@@ -57,6 +59,7 @@ export function BookingOverlay({
   const [contactMethod, setContactMethod] = React.useState<"telegram" | "whatsapp" | "phone">("telegram");
   const [contactValue, setContactValue] = React.useState(user?.phone || user?.email || "");
   const [communicationMode, setCommunicationMode] = React.useState<"autopilot" | "concierge">("autopilot");
+  const [legalConsent, setLegalConsent] = React.useState(DEFAULT_FORM_LEGAL_CONSENT);
 
   // SPRINT 2: UNIFIED UI
   // Always use the single source of truth for pricing.
@@ -76,6 +79,7 @@ export function BookingOverlay({
   React.useEffect(() => {
     if (open) {
       setError(null);
+      setLegalConsent(DEFAULT_FORM_LEGAL_CONSENT);
       if (user) {
         setName(user.name || "");
         setContactValue(user.phone || user.email || "");
@@ -93,6 +97,10 @@ export function BookingOverlay({
   const [successOrderCode, setSuccessOrderCode] = React.useState<string | null>(null);
 
   const handleSubmit = async () => {
+    if (!hasRequiredFormLegalConsent(legalConsent)) {
+      setError("Подтвердите согласие с условиями оферты и обработкой персональных данных.");
+      return;
+    }
     if (!name.trim() || !contactValue.trim()) {
       const missingFields: string[] = [];
       if (!name.trim()) missingFields.push("name");
@@ -120,6 +128,7 @@ export function BookingOverlay({
     try {
       // SPRINT 3.1: Ensure delivery method is never empty
       const effectiveDeliveryMethod = shippingOption || 'Cargo';
+      const legalAudit = buildLegalAuditLine(legalConsent.marketingAccepted);
 
       const payload = {
         bike_id: items[0].id,
@@ -141,7 +150,8 @@ export function BookingOverlay({
         total_price_rub: safePriceRub,
         booking_amount_rub: depositAmount,
         exchange_rate: eurToRubRate,
-        final_price_eur: items.reduce((s, i) => s + i.price, 0)
+        final_price_eur: items.reduce((s, i) => s + i.price, 0),
+        notes: legalAudit,
       };
 
       const res = await apiPost('/v1/booking', payload);
@@ -514,6 +524,8 @@ export function BookingOverlay({
                                 {error}
                             </div>
                         )}
+
+                        <LegalConsentFields value={legalConsent} onChange={setLegalConsent} compact />
                         
                         {/* Desktop Padding Bottom for safety */}
                         <div className="hidden sm:block h-6" />

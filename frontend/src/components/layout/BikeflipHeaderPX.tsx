@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import * as React from "react";
 import { Button } from "@/components/ui/button";
@@ -7,7 +7,6 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuIte
 import { Search, CheckCircle2, Heart, ChevronDown, Sparkles, Menu, Package } from "lucide-react";
 import { AuthTriggerButton as LoginTriggerButton } from "@/components/auth/AuthOverlay";
 import { useAuth } from "@/lib/auth";
-import { useCart } from "@/context/CartContext";
 import { useDrawer } from "@/context/DrawerContext";
 import { Link } from "react-router-dom";
 
@@ -24,7 +23,6 @@ function TopPromoBarPX() {
 
 function MainHeaderPX() {
   const { user, logout } = useAuth();
-  const { itemsCount } = useCart();
   const { toggleDrawer } = useDrawer();
 
   return (
@@ -32,10 +30,9 @@ function MainHeaderPX() {
       {/* Row 1: Primary + Secondary Navigation - FULL WIDTH */}
       <div className="border-b">
         <div className="max-w-7xl mx-auto px-4">
-          <div className="flex items-center justify-center h-14">
-
-            {/* Center: Navigation */}
-            <nav className="hidden items-center justify-center gap-6 md:flex">
+          <div className="flex items-center h-11 md:h-14">
+            {/* Navigation (desktop structure, adaptive overflow on mobile) */}
+            <nav className="no-scrollbar flex w-full items-center gap-4 overflow-x-auto whitespace-nowrap md:justify-center md:gap-6">
               {/* Primary Navigation - Bold */}
               <Link
                 to="/catalog"
@@ -94,25 +91,25 @@ function MainHeaderPX() {
       </div>
 
       {/* Row 2: Burger + Logo + Search + Actions */}
-      <div className="max-w-7xl mx-auto px-4 py-4">
+      <div className="max-w-7xl lg:max-w-[1220px] mx-auto px-4 py-3 md:py-4">
         <div className="flex items-center justify-center gap-2">
           {/* Left: Burger + Logo */}
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon" aria-label="menu" onClick={toggleDrawer} className="h-10 w-10">
+          <div className="flex shrink-0 items-center gap-1.5 md:gap-2">
+            <Button variant="ghost" size="icon" aria-label="menu" onClick={toggleDrawer} className="h-9 w-9 md:h-10 md:w-10">
               <Menu className="h-5 w-5" />
             </Button>
-            <a href="/" className="flex items-center">
-              <img src="/minilogo11.png" alt="BikeWerk" className="h-14 w-14 select-none" />
-            </a>
+            <Link to="/" className="flex items-center shrink-0">
+              <img src="/minilogo11.png" alt="BikeWerk" className="h-9 w-9 md:h-11 md:w-11 select-none object-contain" />
+            </Link>
           </div>
 
-          {/* Center: Search Bar - FIXED WIDTH */}
-          <div className="w-full max-w-xl">
+          {/* Center: Search Bar in the same row on all breakpoints */}
+          <div className="min-w-0 flex-1 lg:max-w-[920px]">
             <form
               className="w-full"
               onSubmit={(e) => {
                 e.preventDefault();
-                const input = e.currentTarget.elements.namedItem("desktop-search") as HTMLInputElement | null;
+                const input = e.currentTarget.elements.namedItem("header-search") as HTMLInputElement | null;
                 const q = input?.value.trim() || "";
                 if (window.location.pathname === "/catalog") {
                   window.location.hash = q ? `q=${encodeURIComponent(q)}` : "";
@@ -122,13 +119,13 @@ function MainHeaderPX() {
               }}
             >
               <div className="relative">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  name="desktop-search"
+                  name="header-search"
                   type="search"
-                  placeholder="Ищите среди 1000+ объявлений со всей Европы..."
+                  placeholder="Ищите среди 1000+ объявлений"
                   data-testid="header-search-input"
-                  className="pl-11 pr-24 h-11 text-[14px] rounded-full border focus:border-black focus-visible:ring-black"
+                  className="pl-9 pr-20 h-10 md:h-11 text-sm md:text-[14px] rounded-full border focus:border-black focus-visible:ring-black"
                   onChange={(e) => {
                     const q = e.currentTarget.value.trim();
                     if (window.location.pathname === "/catalog") {
@@ -139,7 +136,7 @@ function MainHeaderPX() {
                 <Button
                   type="submit"
                   data-testid="header-search-submit"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 h-8 px-5 rounded-full bg-black text-white hover:bg-black/90 text-[13px] font-medium"
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 h-8 px-4 md:px-5 rounded-full bg-black text-white hover:bg-black/90 text-sm md:text-[13px] font-medium"
                 >
                   Найти
                 </Button>
@@ -148,37 +145,43 @@ function MainHeaderPX() {
           </div>
 
           {/* Right: Favorites + User */}
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon" aria-label="favorites" asChild className="h-10 w-10">
-              <a href="/favorites"><Heart className="h-5 w-5" /></a>
+          <div className="ml-auto flex shrink-0 items-center gap-1 md:gap-2">
+            <Button variant="ghost" size="icon" aria-label="favorites" asChild className="hidden sm:inline-flex h-9 w-9 md:h-10 md:w-10">
+              <Link to="/favorites"><Heart className="h-5 w-5" /></Link>
             </Button>
 
             {user ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="rounded-full h-10 px-4 text-[14px] hover:bg-slate-100 data-[state=open]:bg-slate-100">
-                    {user.name || user.email}
-                    <ChevronDown className="ml-2 h-4 w-4 text-slate-400" />
+                  <Button
+                    variant="ghost"
+                    className="rounded-full h-9 md:h-10 max-w-[8.5rem] md:max-w-[13rem] px-2.5 md:px-4 text-[13px] md:text-[14px] hover:bg-slate-100 data-[state=open]:bg-slate-100"
+                  >
+                    <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-zinc-900 text-white text-[11px] font-semibold mr-1.5">
+                      {(user.name || user.email || "U").slice(0, 1).toUpperCase()}
+                    </span>
+                    <span className="truncate hidden md:inline">{user.name || user.email}</span>
+                    <ChevronDown className="ml-1 h-4 w-4 text-slate-400" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" sideOffset={8} className="w-56 rounded-xl p-2 shadow-xl">
                   <DropdownMenuItem asChild className="rounded-lg cursor-pointer py-2.5 px-3 focus:bg-slate-50">
-                    <a href="/sniper" className="flex items-center gap-3">
+                    <Link to="/sniper" className="flex items-center gap-3">
                       <Sparkles className="h-4 w-4 text-purple-600" />
                       <span className="font-medium text-slate-700">Снайпер</span>
-                    </a>
+                    </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild className="rounded-lg cursor-pointer py-2.5 px-3 focus:bg-slate-50">
-                    <a href="/order-tracking" className="flex items-center gap-3">
+                    <Link to="/order-tracking" className="flex items-center gap-3">
                       <Package className="h-4 w-4 text-emerald-600" />
                       <span className="font-medium text-slate-700">Отследить заказ</span>
-                    </a>
+                    </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild className="rounded-lg cursor-pointer py-2.5 px-3 focus:bg-slate-50">
-                    <a href="/favorites" className="flex items-center gap-3">
+                    <Link to="/favorites" className="flex items-center gap-3">
                       <Heart className="h-4 w-4 text-red-500" />
                       <span className="font-medium text-slate-700">Избранное</span>
-                    </a>
+                    </Link>
                   </DropdownMenuItem>
                   <div className="h-px bg-slate-100 my-1 mx-2" />
                   <DropdownMenuItem onClick={logout} className="rounded-lg cursor-pointer py-2.5 px-3 text-red-600 focus:text-red-700 focus:bg-red-50">
@@ -187,50 +190,9 @@ function MainHeaderPX() {
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : (
-              <LoginTriggerButton label="Войти" />
+              <LoginTriggerButton label="Войти" className="h-9 md:h-10 px-3 md:px-4 rounded-full" />
             )}
           </div>
-        </div>
-      </div>
-
-      {/* Mobile Search Bar */}
-      <div className="md:hidden border-t bg-background">
-        <div className="max-w-7xl mx-auto px-4 py-3">
-          <form
-            className="relative"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const input = e.currentTarget.elements.namedItem("mobile-search") as HTMLInputElement | null;
-              const q = input?.value.trim() || "";
-              if (window.location.pathname === "/catalog") {
-                window.location.hash = q ? `q=${encodeURIComponent(q)}` : "";
-              } else {
-                window.location.href = "/catalog" + (q ? `#q=${encodeURIComponent(q)}` : "");
-              }
-            }}
-          >
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              name="mobile-search"
-              type="search"
-              placeholder="Ищите среди 1000+ объявлений"
-              data-testid="header-search-input-mobile"
-              className="pl-9 pr-20 h-11 rounded-full border focus:border-black focus-visible:ring-black text-sm"
-              onChange={(e) => {
-                const q = e.currentTarget.value.trim();
-                if (window.location.pathname === "/catalog") {
-                  window.location.hash = q ? `q=${encodeURIComponent(q)}` : "";
-                }
-              }}
-            />
-            <Button
-              type="submit"
-              data-testid="header-search-submit-mobile"
-              className="absolute right-2 top-1/2 -translate-y-1/2 h-8 px-4 rounded-full bg-black text-white hover:bg-black/90 text-sm"
-            >
-              Найти
-            </Button>
-          </form>
         </div>
       </div>
     </header>
@@ -251,13 +213,13 @@ function CategoriesBarPX() {
   return (
     <div className="border-t bg-background">
       <div className="max-w-7xl mx-auto px-4">
-        <nav className="w-full">
-          <ul className="flex flex-wrap items-center justify-center gap-4 py-2.5">
+        <nav className="w-full no-scrollbar overflow-x-auto">
+          <ul className="flex w-max min-w-full items-center justify-start md:justify-center gap-4 py-2.5 whitespace-nowrap">
             {items.map((it) => (
               <li key={it.label} className="flex items-center gap-1.5">
                 {it.icon ? <span className="text-primary">{it.icon}</span> : null}
-                <a
-                  href={it.href}
+                <Link
+                  to={it.href}
                   className={
                     it.island
                       ? "text-[13px] font-medium px-4 py-1.5 rounded-full bg-black text-white hover:bg-black/90 transition-colors"
@@ -265,7 +227,7 @@ function CategoriesBarPX() {
                   }
                 >
                   {it.label}
-                </a>
+                </Link>
               </li>
             ))}
           </ul>
@@ -302,9 +264,7 @@ export function BikeflipHeaderPX() {
     >
       <TopPromoBarPX />
       <MainHeaderPX />
-      <div className="hidden md:block">
-        <CategoriesBarPX />
-      </div>
+      <CategoriesBarPX />
     </div>
   );
 }

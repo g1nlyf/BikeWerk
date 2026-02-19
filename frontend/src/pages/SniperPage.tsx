@@ -6,9 +6,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import BikeflipHeaderPX from '@/components/layout/BikeflipHeaderPX';
+import { LegalConsentFields } from '@/components/legal/LegalConsentFields';
 import { apiPost } from '@/api';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { DEFAULT_FORM_LEGAL_CONSENT, hasRequiredFormLegalConsent } from '@/lib/legal';
 
 export default function SniperPage() {
   const [brand, setBrand] = useState('');
@@ -17,10 +19,18 @@ export default function SniperPage() {
   const [contactMethod, setContactMethod] = useState<'telegram' | 'email'>('telegram');
   const [contactValue, setContactValue] = useState('');
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [errorMessage, setErrorMessage] = useState('Произошла ошибка. Проверьте данные и попробуйте снова.');
+  const [legalConsent, setLegalConsent] = useState(DEFAULT_FORM_LEGAL_CONSENT);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!hasRequiredFormLegalConsent(legalConsent)) {
+      setErrorMessage('Подтвердите согласие с условиями оферты и обработкой персональных данных.');
+      setStatus('error');
+      return;
+    }
     setStatus('loading');
+    setErrorMessage('Произошла ошибка. Проверьте данные и попробуйте снова.');
     
     try {
       const payload: any = {
@@ -39,6 +49,7 @@ export default function SniperPage() {
       setStatus('success');
     } catch (error) {
       console.error(error);
+      setErrorMessage('Произошла ошибка. Проверьте данные и попробуйте снова.');
       setStatus('error');
     }
   };
@@ -216,10 +227,12 @@ export default function SniperPage() {
                                             </span>
                                         )}
                                     </Button>
+
+                                    <LegalConsentFields value={legalConsent} onChange={setLegalConsent} />
                                     
                                     {status === 'error' && (
                                         <p className="text-rose-500 text-sm text-center bg-rose-50 dark:bg-rose-900/20 py-2 rounded-lg">
-                                            Произошла ошибка. Проверьте данные и попробуйте снова.
+                                            {errorMessage}
                                         </p>
                                     )}
                                 </motion.form>

@@ -8,6 +8,8 @@ import { Label } from '@/components/ui/label'
 import { X, Mail, Lock, User, ArrowLeft, Loader2, CheckCircle2, KeyRound } from 'lucide-react'
 import { auth } from '@/api'
 import { cn } from '@/lib/utils'
+import { LegalConsentFields } from '@/components/legal/LegalConsentFields'
+import { DEFAULT_FORM_LEGAL_CONSENT, hasRequiredFormLegalConsent } from '@/lib/legal'
 
 type AuthMode =
     | 'login'
@@ -145,6 +147,7 @@ export function AuthOverlay({ open, onOpenChange, initialMode = 'login', onSucce
     const [password, setPassword] = React.useState('')
     const [code, setCode] = React.useState('')
     const [newPassword, setNewPassword] = React.useState('')
+    const [legalConsent, setLegalConsent] = React.useState(DEFAULT_FORM_LEGAL_CONSENT)
 
     // Resend timer
     const [resendIn, setResendIn] = React.useState(0)
@@ -155,6 +158,7 @@ export function AuthOverlay({ open, onOpenChange, initialMode = 'login', onSucce
             setMode(initialMode)
             setError(null)
             setCode('')
+            setLegalConsent(DEFAULT_FORM_LEGAL_CONSENT)
         }
     }, [open, initialMode])
 
@@ -218,6 +222,10 @@ export function AuthOverlay({ open, onOpenChange, initialMode = 'login', onSucce
 
     const handleRegisterPending = async (e: React.FormEvent) => {
         e.preventDefault()
+        if (!hasRequiredFormLegalConsent(legalConsent)) {
+            setError('Подтвердите согласие с условиями оферты и обработкой персональных данных')
+            return
+        }
         setLoading(true)
         setError(null)
 
@@ -537,6 +545,8 @@ export function AuthOverlay({ open, onOpenChange, initialMode = 'login', onSucce
                         </div>
                         <p className="text-xs text-zinc-500">Минимум 8 символов</p>
                     </div>
+
+                    <LegalConsentFields value={legalConsent} onChange={setLegalConsent} compact />
 
                     {error && <p className="text-sm text-red-500 text-center">{error}</p>}
 

@@ -34,8 +34,8 @@ npm install
 Скопируйте `.env.example` в `.env` и заполните:
 
 ```bash
-# Telegram Bot Token (уже указан)
-TELEGRAM_BOT_TOKEN=8184620405:AAFPucdB1nw_ykm7t0f_jXFqv4a-lkWpsjw
+# Telegram Bot Token
+TELEGRAM_BOT_TOKEN=YOUR_HOT_DEALS_BOT_TOKEN
 
 # Supabase Credentials (получите из backend/.env или Supabase Dashboard)
 SUPABASE_URL=https://your-project.supabase.co

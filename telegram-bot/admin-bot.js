@@ -1,10 +1,28 @@
-const AdminBotService = require('./AdminBotService');
-require('dotenv').config();
+const path = require('path');
+const dotenv = require('dotenv');
 
-const adminBot = new AdminBotService();
+dotenv.config({ path: path.resolve(__dirname, '../backend/.env') });
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
-// Keep process alive
-process.on('SIGINT', () => {
-    console.log('Stopping Admin Bot...');
+const telegramHub = require('../backend/src/services/TelegramHubService');
+
+async function main() {
+    process.env.TELEGRAM_HUB_POLLING_ROLES = 'admin';
+    await telegramHub.start({ pollingRoles: ['admin'] });
+    console.log('[admin-bot] TelegramHub admin polling is running');
+}
+
+main().catch((error) => {
+    console.error('[admin-bot] Failed to start:', error?.message || error);
+    process.exit(1);
+});
+
+process.on('SIGINT', async () => {
+    await telegramHub.stop();
+    process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+    await telegramHub.stop();
     process.exit(0);
 });

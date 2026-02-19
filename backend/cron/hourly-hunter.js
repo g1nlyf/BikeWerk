@@ -3,18 +3,31 @@ const DatabaseManager = require('../database/db-manager');
 const HotnessPredictor = require('../ai/hotness-predictor');
 const SmartPriorityManager = require('../services/smart-priority-manager');
 const HotDealHunter = require('../src/services/HotDealHunter');
+const HunterOpsNotifier = require('../src/services/HunterOpsNotifier');
 
 class HourlyHunter {
   constructor() {
     this.dbManager = new DatabaseManager();
     this.hunter = new UnifiedHunter();
+    this.notifier = new HunterOpsNotifier();
 
     this.config = {
       targetCatalogSize: 500,
       minCatalogSize: 100,
       normalBatch: 30,
       urgentBatch: 60,
-      maxBikesPerHour: 60
+      maxBikesPerHour: 60,
+      cleanupOrphanImages: true,
+      staleCleanupEnabled: String(process.env.ENABLE_HUNTER_STALE_CLEANUP || '0') === '1',
+      staleDays: Math.max(7, Number(process.env.HUNTER_STALE_DAYS || 45) || 45),
+      staleBatch: Math.max(1, Number(process.env.HUNTER_STALE_BATCH || 200) || 200)
+    };
+
+    this.coreCategoryTargets = {
+      road: 40,
+      gravel: 30,
+      emtb: 30,
+      kids: 25
     };
 
     this.categorySeedTargets = {
@@ -25,62 +38,159 @@ class HourlyHunter {
     };
   }
 
-  async run() {
-    console.log('\n' + '═'.repeat(60));
-    console.log('⏰ HOURLY HUNTER - Auto Run');
-    console.log('═'.repeat(60));
-    console.log(`Time: ${new Date().toLocaleString('de-DE')}\n`);
+  normalizeCategory(value) {
+    const raw = String(value || '').trim().toLowerCase();
+    if (!raw) return '';
+    if (['mtb', 'mountain', 'mountainbike', 'mountainbikes', 'горный', 'горные велосипеды'].includes(raw)) return 'mtb';
+    if (['road', 'шоссе', 'шоссейный'].includes(raw)) return 'road';
+    if (['gravel', 'гревел', 'грэвел', 'гравийный'].includes(raw)) return 'gravel';
+    if (['emtb', 'e-mountainbike', 'ebike', 'электро', 'электровелосипеды', 'электро-горный велосипед'].includes(raw)) return 'emtb';
+    if (['kids', 'детские', 'детский'].includes(raw)) return 'kids';
+    return raw;
+  }
+
+  calculateCoverageDeficits(coverage = {}) {
+    const deficits = [];
+    for (const [category, target] of Object.entries(this.coreCategoryTargets)) {
+      const present = Number(coverage?.[category] || 0);
+      const count = Math.max(0, Number(target || 0) - present);
+      if (count > 0) deficits.push({ category, count, target, present });
+    }
+    return deficits.sort((a, b) => b.count - a.count);
+  }
+
+  getNextScheduledRunAt(base = new Date()) {
+    const next = new Date(base);
+    next.setSeconds(0, 0);
+    next.setMinutes(5);
+    if (base.getMinutes() >= 5) {
+      next.setHours(next.getHours() + 1);
+    }
+    return next;
+  }
+
+  async run(context = {}) {
+    const triggerReason = context.triggerReason || context.reason || 'cron_hourly';
+    const runStartedAt = new Date();
+
+    let startHealth = { total: 0, active: 0, avgMargin: 0, coverage: { mtb: 0, road: 0, gravel: 0, emtb: 0, kids: 0 } };
+    try {
+      startHealth = await this.checkHealth();
+    } catch (_) {}
+
+    const startCoverageDeficits = this.calculateCoverageDeficits(startHealth.coverage || {});
+    const startCatalogDeficit = Math.max(0, this.config.targetCatalogSize - Number(startHealth.active || 0));
+
+    console.log('\n' + '='.repeat(60));
+    console.log('[HOURLY HUNTER] Auto run started');
+    console.log('='.repeat(60));
+    console.log(`Time: ${new Date().toLocaleString('de-DE')}`);
+    console.log(`Trigger: ${triggerReason}\n`);
+
+    await this.logStart({
+      reason: triggerReason,
+      startedAt: runStartedAt.toISOString(),
+      healthAtStart: startHealth,
+      catalogDeficit: startCatalogDeficit,
+      coverageDeficits: startCoverageDeficits,
+      config: {
+        targetCatalogSize: this.config.targetCatalogSize,
+        minCatalogSize: this.config.minCatalogSize,
+        normalBatch: this.config.normalBatch,
+        urgentBatch: this.config.urgentBatch
+      }
+    });
+
+    await this.notifier.notifyRunStart({
+      reason: triggerReason,
+      startedAt: runStartedAt.toISOString(),
+      active: startHealth.active,
+      targetCatalogSize: this.config.targetCatalogSize,
+      minCatalogSize: this.config.minCatalogSize,
+      catalogDeficit: startCatalogDeficit,
+      coverageDeficits: startCoverageDeficits
+    });
 
     try {
-      // PHASE 0: Hot deals are always refreshed.
-      console.log('🔥 PHASE 0: HOT DEAL HUNT (Sprint 1)');
+      let hotStats = { found: 0, processed: 0, added: 0, duplicates: 0, errors: 0 };
+      console.log('[PHASE 0] Hot deal hunt');
       try {
-        const hotStats = await HotDealHunter.hunt(5);
-        console.log(`✅ Hot Deals: Found ${hotStats.found}, Added ${hotStats.added}\n`);
+        hotStats = await HotDealHunter.hunt(5);
+        console.log(`[PHASE 0] done, found=${hotStats.found}, added=${hotStats.added}`);
       } catch (e) {
-        console.error('❌ Hot Deal Hunt failed:', e.message);
+        console.error(`[PHASE 0] failed: ${e.message}`);
+      }
+
+      let cleanupStats = { orphanImagesRemoved: 0, staleDeactivated: 0 };
+      console.log('[PHASE 0.5] Catalog cleanup');
+      try {
+        cleanupStats = await this.cleanupCatalog();
+        console.log(`[PHASE 0.5] done, orphan=${cleanupStats.orphanImagesRemoved}, stale=${cleanupStats.staleDeactivated}`);
+      } catch (e) {
+        console.error(`[PHASE 0.5] failed: ${e.message}`);
       }
 
       const health = await this.checkHealth();
 
-      console.log('📊 Catalog Health:\n');
-      console.log(`  Active bikes:     ${health.active}`);
-      console.log(`  Target:           ${this.config.targetCatalogSize}`);
-      console.log(`  Needed:           ${Math.max(0, this.config.targetCatalogSize - health.active)}`);
-      console.log(`  Avg margin:       ${health.avgMargin.toFixed(1)}%\n`);
+      console.log('[CATALOG HEALTH]');
+      console.log(`  Active bikes: ${health.active}`);
+      console.log(`  Target: ${this.config.targetCatalogSize}`);
+      console.log(`  Needed: ${Math.max(0, this.config.targetCatalogSize - health.active)}`);
+      console.log(`  Avg margin: ${health.avgMargin.toFixed(1)}%\n`);
 
-      // PHASE 6: AI hotness prediction.
-      console.log('🤖 PHASE 6: AI Hotness Prediction');
       let aiStats = {};
+      console.log('[PHASE 6] AI hotness prediction');
       try {
         aiStats = await HotnessPredictor.predictCatalog();
         const touched = Number(aiStats.hot || 0) + Number(aiStats.warm || 0);
-        console.log(`✅ AI: Updated ${touched} hot bikes\n`);
+        console.log(`[PHASE 6] done, touched=${touched}`);
       } catch (e) {
-        console.error('❌ AI Prediction failed:', e.message);
+        console.error(`[PHASE 6] failed: ${e.message}`);
         aiStats = { error: e.message };
       }
 
-      // PHASE 7: priority refresh.
-      console.log('🎯 PHASE 7: Priority Adjustment');
+      console.log('[PHASE 7] Priority adjustment');
       try {
         await SmartPriorityManager.adjustHunterPriorities();
         await SmartPriorityManager.prioritizeRefillQueue();
-        console.log('✅ Priorities adjusted\n');
+        console.log('[PHASE 7] done');
       } catch (e) {
-        console.error('❌ Priority adjustment failed:', e.message);
+        console.error(`[PHASE 7] failed: ${e.message}`);
       }
 
       let bikesToAdd = 0;
       if (health.active < this.config.minCatalogSize) {
         bikesToAdd = this.config.urgentBatch;
-        console.log('🚨 URGENT: Catalog critically low!\n');
+        console.log('[MODE] urgent refill');
       } else if (health.active < this.config.targetCatalogSize) {
         bikesToAdd = this.config.normalBatch;
-        console.log('✅ NORMAL: Regular refill\n');
+        console.log('[MODE] normal refill');
       } else {
-        console.log('✅ HEALTHY: No action needed\n');
-        return;
+        const noRefillPayload = {
+          status: 'healthy_no_refill',
+          reason: triggerReason,
+          startedAt: runStartedAt.toISOString(),
+          completedAt: new Date().toISOString(),
+          duration: '0.0',
+          bikesToAdd: 0,
+          bikesAdded: 0,
+          healthBefore: startHealth,
+          healthAfter: health,
+          cleanupStats,
+          hotDealStats: hotStats,
+          aiStats,
+          hunterMode: 'none',
+          maxTargets: 0,
+          targetCatalogSize: this.config.targetCatalogSize,
+          minCatalogSize: this.config.minCatalogSize,
+          catalogDeficitAfter: Math.max(0, this.config.targetCatalogSize - Number(health.active || 0)),
+          coverageDeficitsAfter: this.calculateCoverageDeficits(health.coverage || {}),
+          nextRunAt: this.getNextScheduledRunAt(runStartedAt).toISOString()
+        };
+        await this.logRun(noRefillPayload);
+        await this.notifier.notifyRunResult(noRefillPayload);
+        console.log('[MODE] catalog healthy, refill skipped');
+        return { ok: true, ...noRefillPayload };
       }
 
       bikesToAdd = Math.max(0, Math.min(bikesToAdd, this.config.maxBikesPerHour));
@@ -97,8 +207,7 @@ class HourlyHunter {
 
         if (seedTargets.length > 0) {
           const seedLimit = Math.min(seedTargets.length, bikesToAdd);
-          console.log(`🧩 Coverage refill: missing categories = ${missingCoreCategories.join(', ')}`);
-          console.log(`🚀 Seed hunt for ${seedLimit} bikes to restore category coverage...\n`);
+          console.log(`[SEED] missing categories: ${missingCoreCategories.join(', ')}, limit=${seedLimit}`);
 
           try {
             await UnifiedHunter.run({
@@ -110,14 +219,13 @@ class HourlyHunter {
             });
             bikesToAdd = Math.max(0, bikesToAdd - seedLimit);
           } catch (seedError) {
-            console.error('❌ Seed category refill failed:', seedError.message);
+            console.error(`[SEED] failed: ${seedError.message}`);
           }
         }
       }
 
-      console.log(`🚀 Starting hunt for ${bikesToAdd} bikes (${hunterMode}, targets=${maxTargets})...\n`);
-
-      const startTime = Date.now();
+      console.log(`[REFILL] starting for ${bikesToAdd} bikes (mode=${hunterMode}, targets=${maxTargets})`);
+      const refillStartedAt = Date.now();
 
       if (bikesToAdd > 0) {
         await UnifiedHunter.run({
@@ -129,19 +237,22 @@ class HourlyHunter {
         });
       }
 
-      const duration = ((Date.now() - startTime) / 1000 / 60).toFixed(1);
-
+      const duration = ((Date.now() - refillStartedAt) / 1000 / 60).toFixed(1);
       const newHealth = await this.checkHealth();
       const added = newHealth.active - health.active;
 
-      console.log('\n' + '═'.repeat(60));
-      console.log('📊 RESULTS:\n');
-      console.log(`  Duration:         ${duration} minutes`);
-      console.log(`  Bikes added:      ${added}`);
-      console.log(`  Active now:       ${newHealth.active}`);
-      console.log(`  Success rate:     ${(added / Math.max(1, bikesToAdd) * 100).toFixed(0)}%\n`);
+      console.log('\n' + '='.repeat(60));
+      console.log('[RESULTS]');
+      console.log(`  Duration: ${duration} min`);
+      console.log(`  Bikes added: ${added}`);
+      console.log(`  Active now: ${newHealth.active}`);
+      console.log(`  Success rate: ${(added / Math.max(1, bikesToAdd) * 100).toFixed(0)}%`);
 
-      await this.logRun({
+      const completionPayload = {
+        status: 'completed',
+        reason: triggerReason,
+        startedAt: runStartedAt.toISOString(),
+        completedAt: new Date().toISOString(),
         bikesToAdd,
         bikesAdded: added,
         duration,
@@ -149,13 +260,35 @@ class HourlyHunter {
         healthAfter: newHealth,
         hunterMode,
         maxTargets,
-        aiStats
-      });
+        aiStats,
+        cleanupStats,
+        hotDealStats: hotStats,
+        targetCatalogSize: this.config.targetCatalogSize,
+        minCatalogSize: this.config.minCatalogSize,
+        catalogDeficitAfter: Math.max(0, this.config.targetCatalogSize - Number(newHealth.active || 0)),
+        coverageDeficitsAfter: this.calculateCoverageDeficits(newHealth.coverage || {}),
+        nextRunAt: this.getNextScheduledRunAt(runStartedAt).toISOString()
+      };
 
-      console.log('✅ Hourly run complete\n');
+      await this.logRun(completionPayload);
+      await this.notifier.notifyRunResult(completionPayload);
+
+      console.log('[HOURLY HUNTER] run complete\n');
+      return { ok: true, ...completionPayload };
     } catch (error) {
-      console.error('❌ Error in hourly run:', error);
-      await this.logError(error);
+      console.error('[HOURLY HUNTER] run error:', error);
+      const payload = {
+        status: 'error',
+        reason: triggerReason,
+        message: error.message,
+        stack: error.stack,
+        failedAt: new Date().toISOString(),
+        active: Number(startHealth.active || 0),
+        targetCatalogSize: this.config.targetCatalogSize
+      };
+      await this.logError(payload);
+      await this.notifier.notifyRunError(payload);
+      return { ok: false, ...payload };
     }
   }
 
@@ -164,17 +297,6 @@ class HourlyHunter {
 
     const tableInfo = db.prepare('PRAGMA table_info(bikes)').all();
     const hasFmv = tableInfo.some((col) => col.name === 'fmv');
-
-    const normalizeCategory = (value) => {
-      const raw = String(value || '').trim().toLowerCase();
-      if (!raw) return '';
-      if (['mtb', 'mountain', 'mountainbike', 'mountainbikes', 'горный', 'горные велосипеды'].includes(raw)) return 'mtb';
-      if (['road', 'шоссе', 'шоссейный'].includes(raw)) return 'road';
-      if (['gravel', 'гревел', 'грэвел', 'гравийный'].includes(raw)) return 'gravel';
-      if (['emtb', 'e-mountainbike', 'ebike', 'электро', 'электровелосипеды', 'электро-горный велосипед'].includes(raw)) return 'emtb';
-      if (['kids', 'детские', 'детский'].includes(raw)) return 'kids';
-      return raw;
-    };
 
     const coverageRows = db.prepare(`
       SELECT category, COUNT(*) as count
@@ -185,7 +307,7 @@ class HourlyHunter {
 
     const coverage = { mtb: 0, road: 0, gravel: 0, emtb: 0, kids: 0 };
     for (const row of coverageRows) {
-      const normalized = normalizeCategory(row.category);
+      const normalized = this.normalizeCategory(row.category);
       if (Object.prototype.hasOwnProperty.call(coverage, normalized)) {
         coverage[normalized] += Number(row.count || 0);
       }
@@ -225,24 +347,89 @@ class HourlyHunter {
     };
   }
 
+  async cleanupCatalog() {
+    const db = this.dbManager.getDatabase();
+    const stats = {
+      orphanImagesRemoved: 0,
+      staleDeactivated: 0
+    };
+
+    if (this.config.cleanupOrphanImages) {
+      try {
+        const orphanResult = db.prepare(`
+          DELETE FROM bike_images
+          WHERE bike_id NOT IN (SELECT id FROM bikes)
+        `).run();
+        stats.orphanImagesRemoved = Number(orphanResult?.changes || 0);
+      } catch (e) {
+        console.warn(`[HourlyHunter] Orphan image cleanup skipped: ${e.message}`);
+      }
+    }
+
+    if (this.config.staleCleanupEnabled) {
+      try {
+        const days = Math.max(7, Number(this.config.staleDays || 45));
+        const batch = Math.max(1, Number(this.config.staleBatch || 200));
+        const cutoff = `-${days} days`;
+        const staleResult = db.prepare(`
+          UPDATE bikes
+          SET
+            is_active = 0,
+            deactivated_at = COALESCE(deactivated_at, datetime('now')),
+            deactivation_reason = COALESCE(NULLIF(deactivation_reason, ''), 'stale_timeout'),
+            updated_at = datetime('now')
+          WHERE id IN (
+            SELECT id
+            FROM bikes
+            WHERE is_active = 1
+              AND datetime(COALESCE(last_checked_at, updated_at, created_at)) < datetime('now', ?)
+            ORDER BY datetime(COALESCE(last_checked_at, updated_at, created_at)) ASC
+            LIMIT ?
+          )
+        `).run(cutoff, batch);
+        stats.staleDeactivated = Number(staleResult?.changes || 0);
+      } catch (e) {
+        console.warn(`[HourlyHunter] Stale cleanup skipped: ${e.message}`);
+      }
+    }
+
+    return stats;
+  }
+
   async logRun(data) {
     const db = this.dbManager.getDatabase();
 
     db.prepare(`
       INSERT INTO hunter_events (type, details, created_at)
       VALUES (?, ?, datetime('now'))
-    `).run('HOURLY_RUN_COMPLETE', JSON.stringify(data));
+    `).run('HOURLY_RUN_COMPLETE', JSON.stringify(data || {}));
   }
 
-  async logError(error) {
+  async logStart(data) {
     const db = this.dbManager.getDatabase();
 
     db.prepare(`
       INSERT INTO hunter_events (type, details, created_at)
       VALUES (?, ?, datetime('now'))
+    `).run('HOURLY_RUN_START', JSON.stringify(data || {}));
+  }
+
+  async logError(error) {
+    const db = this.dbManager.getDatabase();
+    const payload = error && typeof error === 'object'
+      ? error
+      : { message: String(error || 'unknown_error') };
+
+    db.prepare(`
+      INSERT INTO hunter_events (type, details, created_at)
+      VALUES (?, ?, datetime('now'))
     `).run('HOURLY_RUN_ERROR', JSON.stringify({
-      message: error.message,
-      stack: error.stack
+      message: payload.message || 'unknown_error',
+      reason: payload.reason || null,
+      failedAt: payload.failedAt || new Date().toISOString(),
+      active: payload.active || null,
+      targetCatalogSize: payload.targetCatalogSize || null,
+      stack: payload.stack || null
     }));
   }
 }

@@ -1,5 +1,5 @@
 import * as React from "react"
-import { motion, AnimatePresence } from "framer-motion"
+import { motion } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -9,6 +9,8 @@ import { Share2, Check, Send, MessageCircle, Phone, ShieldCheck, Bike, ArrowRigh
 import { apiPost } from "@/api"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
+import { LegalConsentFields } from "@/components/legal/LegalConsentFields"
+import { DEFAULT_FORM_LEGAL_CONSENT, buildLegalAuditLine, hasRequiredFormLegalConsent } from "@/lib/legal"
 
 type ContactMethod = "telegram" | "whatsapp" | "phone"
 
@@ -26,12 +28,9 @@ type OrderItem = {
   link?: string;
 }
 
-import { OrderSuccessOverlay } from "@/components/checkout/OrderSuccessOverlay"
-
 export default function GuestOrderWizardPage() {
   const [submitting, setSubmitting] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
-  const [successData, setSuccessData] = React.useState<{id: string, num: string, track: string} | null>(null)
   
   // Form State
   const [name, setName] = React.useState("")
@@ -39,6 +38,7 @@ export default function GuestOrderWizardPage() {
   const [contactValue, setContactValue] = React.useState("")
   const [communicationMode, setCommunicationMode] = React.useState<"silent" | "active">("silent")
   const [tariff, setTariff] = React.useState<"standard" | "sniper">("standard")
+  const [legalConsent, setLegalConsent] = React.useState(DEFAULT_FORM_LEGAL_CONSENT)
   
   // Items from Calculator or other sources
   const [items, setItems] = React.useState<OrderItem[]>([])
@@ -67,6 +67,10 @@ export default function GuestOrderWizardPage() {
   }, [])
 
   const handleSubmit = async () => {
+    if (!hasRequiredFormLegalConsent(legalConsent)) {
+      setError("Подтвердите согласие с условиями оферты и обработкой персональных данных")
+      return
+    }
     if (!name.trim() || !contactValue.trim()) {
       setError("Пожалуйста, заполните имя и контакт")
       return
@@ -75,6 +79,7 @@ export default function GuestOrderWizardPage() {
     setError(null)
 
     try {
+      const legalAudit = buildLegalAuditLine(legalConsent.marketingAccepted)
       const payload = {
         source: "website_guest_order_page",
         name,
@@ -100,7 +105,8 @@ export default function GuestOrderWizardPage() {
         notes: (communicationMode === "active" 
           ? "Клиент запросил консультацию (Активный режим)" 
           : "Клиент ждет ссылку на оплату (Тихий режим)") + 
-          (tariff === 'sniper' ? " | Тариф: Sniper Lab (+249€)" : "")
+          (tariff === 'sniper' ? " | Тариф: Sniper Lab (+249€)" : "") +
+          ` | ${legalAudit}`
       };
 
       const res = await apiPost('/v1/crm/orders/quick', payload);
@@ -120,8 +126,6 @@ export default function GuestOrderWizardPage() {
       setSubmitting(false)
     }
   };
-
-  const totalSum = items.reduce((sum, i) => sum + Number(i.price), 0) + (tariff === 'sniper' ? 249 : 0);
 
   return (
     <div className="min-h-screen bg-gray-50/50">
@@ -330,6 +334,8 @@ export default function GuestOrderWizardPage() {
                     <span className="text-black font-semibold">Безопасная сделка.</span> Вы платите только после того, как мы подтвердим наличие, состояние и забронируем байк.
                   </div>
                 </div>
+
+                <LegalConsentFields value={legalConsent} onChange={setLegalConsent} />
 
                 {error && (
                   <div className="p-4 rounded-2xl bg-red-50 text-red-600 text-sm font-medium text-center">

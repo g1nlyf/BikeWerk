@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { X, Search, CheckCircle, ShieldCheck, MapPin, Package, UserCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { LegalConsentFields } from '@/components/legal/LegalConsentFields';
+import { DEFAULT_FORM_LEGAL_CONSENT, hasRequiredFormLegalConsent } from '@/lib/legal';
 
 interface Product {
     id: number;
@@ -21,6 +23,8 @@ interface ConciergeCheckoutProps {
 export const ConciergeCheckout: React.FC<ConciergeCheckoutProps> = ({ product, onClose }) => {
     const [step, setStep] = useState<'offer' | 'contact' | 'success'>('offer');
     const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [legalConsent, setLegalConsent] = useState(DEFAULT_FORM_LEGAL_CONSENT);
 
     const handleStart = () => {
         setStep('contact');
@@ -28,6 +32,11 @@ export const ConciergeCheckout: React.FC<ConciergeCheckoutProps> = ({ product, o
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!hasRequiredFormLegalConsent(legalConsent)) {
+            setError('Подтвердите согласие с условиями оферты и обработкой персональных данных.');
+            return;
+        }
+        setError(null);
         setLoading(true);
         // Simulate API call
         setTimeout(() => {
@@ -65,6 +74,8 @@ export const ConciergeCheckout: React.FC<ConciergeCheckoutProps> = ({ product, o
                         <label className="block text-sm font-medium mb-1">Телефон или Telegram</label>
                         <input required className="w-full p-3 rounded-xl border bg-slate-50" placeholder="@username или +7..." />
                     </div>
+                    <LegalConsentFields value={legalConsent} onChange={setLegalConsent} />
+                    {error ? <p className="text-sm text-red-600">{error}</p> : null}
                     <Button type="submit" disabled={loading} className="w-full h-12 text-lg bg-amber-500 hover:bg-amber-600 text-white">
                         {loading ? 'Отправка...' : 'Начать переговоры (0 ₽)'}
                     </Button>

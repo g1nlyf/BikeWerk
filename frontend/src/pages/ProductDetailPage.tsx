@@ -18,11 +18,13 @@ import { useCartUI } from "@/lib/cart-ui";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
-import { calculatePriceBreakdown, formatRUB } from "@/lib/pricing";
-import { RATES, calculateMarketingBreakdown, refreshRates } from "@/lib/pricing";
+import { RATES } from "@/lib/pricing";
+import { calculateCheckoutCashflow } from "@/lib/cashflowPricing";
 import { formatDeposit } from "@/lib/utils";
 import { ValueStack, AIInsightTooltip } from "@/components/product/ValueStack";
 import { WaitlistForm } from "@/components/WaitlistForm";
+import { LegalConsentFields } from "@/components/legal/LegalConsentFields";
+import { DEFAULT_FORM_LEGAL_CONSENT, buildLegalAuditLine, hasRequiredFormLegalConsent } from "@/lib/legal";
 
 import MiniCatalogBikeflip from "@/components/landing/MiniCatalogBikeflip";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
@@ -991,6 +993,7 @@ export default function ProductDetailPage() {
   const [messageOpen, setMessageOpen] = React.useState(false);
   const [contactMessage, setContactMessage] = React.useState('');
   const [contactMethod, setContactMethod] = React.useState('');
+  const [messageLegalConsent, setMessageLegalConsent] = React.useState(DEFAULT_FORM_LEGAL_CONSENT);
   const [protectionOpen, setProtectionOpen] = React.useState(false);
   const [lessInfoOpen, setLessInfoOpen] = React.useState(false);
   const [autoInfoOpen, setAutoInfoOpen] = React.useState(false);
@@ -1297,9 +1300,6 @@ export default function ProductDetailPage() {
   const TARGET_HEIGHT = GALLERY_HEIGHT;
   const pinchRef = React.useRef<number | null>(null);
 
-  const [eurRate, setEurRate] = React.useState<number>(RATES.eur_to_rub);
-  React.useEffect(() => { (async () => { const v = await refreshRates(); setEurRate(v); })(); }, []);
-
   // Delivery state
   const [deliveryMethod, setDeliveryMethod] = React.useState<'standard' | 'fast' | 'premium'>('standard');
   const [premiumSubType, setPremiumSubType] = React.useState<'group' | 'individual'>('group');
@@ -1371,10 +1371,10 @@ export default function ProductDetailPage() {
     }
   };
 
-  // NEW PRICING: Simplified to EMS default, no cargo insurance
+  // Product page uses the same calculator as booking checkout for consistency.
   const calc = React.useMemo(() => {
     const price = product?.discountPrice ?? product?.price ?? 0;
-    return calculatePriceBreakdown(price, 'EMS', false); // EMS €220, no cargo insurance
+    return calculateCheckoutCashflow({ bikePriceEur: price, deliveryId: 'Cargo', addons: {} });
   }, [product]);
 
   React.useEffect(() => {
@@ -1563,9 +1563,10 @@ export default function ProductDetailPage() {
   }, [product?.description]);
 
 
-  const totalEurRounded = Math.round(calc.details.finalPriceEur || 0);
+  const totalEurRounded = Math.round(calc.totalEur || 0);
   const totalRubRounded = Math.round(calc.totalRub || 0);
-  const depositAmount = calc.bookingRub;
+  const depositAmount = calc.reservationRub;
+  const displayExchangeRate = Number(calc.exchangeRate || RATES.eur_to_rub || 96);
   const infoYear = product?.characteristics?.['Год'] ?? (product?.year ?? '—');
   const infoFrame = product?.characteristics?.['Размер рамы'] ?? (product?.frameSize || '—');
   const infoWheel = product?.characteristics?.['Колеса'] ?? (product?.wheelDiameter || '—');
@@ -1574,8 +1575,9 @@ export default function ProductDetailPage() {
   const discountPercent = oldPriceBase && oldPriceBase > currentPrice ? Math.round(100 - (currentPrice / oldPriceBase) * 100) : 0;
   const oldPriceRub = React.useMemo(() => {
     if (!oldPriceBase) return null;
-    return Math.round(calculateMarketingBreakdown(oldPriceBase).totalRub);
-  }, [oldPriceBase, eurRate]);
+    const legacyCalc = calculateCheckoutCashflow({ bikePriceEur: oldPriceBase, deliveryId: 'Cargo', addons: {} });
+    return Math.round(legacyCalc.totalRub || 0);
+  }, [oldPriceBase]);
   const savingsRub = oldPriceRub && totalRubRounded ? Math.round(oldPriceRub - totalRubRounded) : 0;
 
   if (!product) {
@@ -1958,7 +1960,7 @@ export default function ProductDetailPage() {
                               <TooltipContent className="bg-black text-white p-3 rounded-xl text-xs z-50">
                                 <div className="font-bold mb-1">Расчетный курс евро</div>
                                 <div className="opacity-80">Обновлено: Сегодня</div>
-                                <div className="opacity-80">1 EUR = {eurRate.toFixed(2)} RUB</div>
+                                <div className="opacity-80">1 EUR = {displayExchangeRate.toFixed(2)} RUB</div>
                               </TooltipContent>
                             </Tooltip>
                           </TooltipProvider>
@@ -1998,14 +2000,14 @@ export default function ProductDetailPage() {
                   {breakdownOpen && (
                     <div className="mt-3 rounded-2xl bg-gray-50/50 p-4 text-sm space-y-2">
                       <div className="flex items-center justify-between"><span>Цена велосипеда</span><span className="font-medium">{currentPrice.toLocaleString()} €</span></div>
-                      <div className="flex items-center justify-between"><span>Сервис</span><span className="font-medium">{Math.round(calc.details.serviceFeeEur).toLocaleString()} €</span></div>
-                      <div className="flex items-center justify-between"><span>Доставка (EMS)</span><span className="font-medium">{Math.round(calc.details.shippingCostEur).toLocaleString()} €</span></div>
-                      <div className="flex items-center justify-between"><span>Платежные сборы</span><span className="font-medium">{Math.round(calc.details.insuranceFeesEur).toLocaleString()} €</span></div>
-                      {calc.details.cargoInsuranceEur > 0 && (
-                        <div className="flex items-center justify-between"><span>Страховка груза</span><span className="font-medium">{Math.round(calc.details.cargoInsuranceEur).toLocaleString()} €</span></div>
+                      <div className="flex items-center justify-between"><span>Сервис</span><span className="font-medium">{Math.round(calc.serviceEur).toLocaleString()} €</span></div>
+                      <div className="flex items-center justify-between"><span>Доставка (Cargo)</span><span className="font-medium">{Math.round(calc.deliveryEur).toLocaleString()} €</span></div>
+                      <div className="flex items-center justify-between"><span>Безопасная оплата</span><span className="font-medium">{Math.round(calc.insuranceFeesEur).toLocaleString()} €</span></div>
+                      {calc.cargoInsuranceEur > 0 && (
+                        <div className="flex items-center justify-between"><span>Страховка груза</span><span className="font-medium">{Math.round(calc.cargoInsuranceEur).toLocaleString()} €</span></div>
                       )}
-                      <div className="border-t pt-1.5 flex items-center justify-between text-xs text-muted-foreground"><span>Промежуточная сумма</span><span>{Math.round(calc.details.subtotalEur).toLocaleString()} €</span></div>
-                      <div className="flex items-center justify-between"><span>Комиссия за перевод (7%)</span><span className="font-medium">{Math.round(calc.details.paymentCommissionEur).toLocaleString()} €</span></div>
+                      <div className="border-t pt-1.5 flex items-center justify-between text-xs text-muted-foreground"><span>Промежуточная сумма</span><span>{Math.round(calc.subtotalEur).toLocaleString()} €</span></div>
+                      <div className="flex items-center justify-between"><span>Комиссия за перевод (7%)</span><span className="font-medium">{Math.round(calc.paymentCommissionEur).toLocaleString()} €</span></div>
                       <div className="mt-2 pt-2 border-t flex items-center justify-between font-bold text-base"><span>Итого</span><span>{totalEurRounded.toLocaleString()} € • {totalRubRounded.toLocaleString()} ₽</span></div>
                     </div>
                   )}
@@ -2034,17 +2036,17 @@ export default function ProductDetailPage() {
                   </div>
 
                   <div className="mt-2 space-y-3 pt-2" ref={deliveryRef}>
-                    {/* Simplified Delivery Display - EMS Default */}
+                    {/* Simplified Delivery Display - Cargo Default */}
                     <div className="rounded-xl border-2 border-gray-200 bg-gray-50/50 p-3">
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
                           <Truck className="w-5 h-5 text-gray-600" />
                           <span className="font-bold text-sm">Доставка включена</span>
                         </div>
-                        <span className="font-bold text-lg">220 €</span>
+                        <span className="font-bold text-lg">{Math.round(calc.deliveryEur).toLocaleString()} €</span>
                       </div>
                       <div className="flex items-center justify-between">
-                        <div className="text-xs text-muted-foreground">EMS Курьер • 14-18 дней</div>
+                        <div className="text-xs text-muted-foreground">Cargo • 20-24 дня</div>
                         <button
                           onClick={() => window.location.href = `/booking-checkout/${product.id}`}
                           className="text-xs font-medium text-blue-600 hover:text-blue-700 border-b border-dashed border-blue-600/50 hover:border-blue-700 transition-colors"
@@ -2053,7 +2055,7 @@ export default function ProductDetailPage() {
                         </button>
                       </div>
                       <p className="text-[10px] text-gray-500 mt-2 leading-relaxed">
-                        Вы сможете выбрать другой способ доставки при оформлении заказа (Карго €170, Премиум €450+)
+                        Вы сможете выбрать ускоренный и другие способы доставки при оформлении заказа.
                       </p>
                     </div>
 
@@ -2560,7 +2562,15 @@ export default function ProductDetailPage() {
           </DialogContent>
         </Dialog>
 
-        <Dialog open={messageOpen} onOpenChange={setMessageOpen}>
+        <Dialog
+          open={messageOpen}
+          onOpenChange={(open) => {
+            setMessageOpen(open);
+            if (open) {
+              setMessageLegalConsent(DEFAULT_FORM_LEGAL_CONSENT);
+            }
+          }}
+        >
           <DialogContent className="sm:max-w-lg rounded-3xl p-0 overflow-hidden">
             <div className="bg-muted/30 p-6 pb-8 text-center space-y-3 relative">
               <button
@@ -2601,18 +2611,24 @@ export default function ProductDetailPage() {
                 </div>
               </div>
 
+              <LegalConsentFields value={messageLegalConsent} onChange={setMessageLegalConsent} compact />
+
               <div className="flex gap-3 pt-2">
                 <Button variant="ghost" className="flex-1 h-12 rounded-full text-muted-foreground hover:text-foreground" onClick={() => setMessageOpen(false)}>
                   Назад
                 </Button>
                 <Button
                   className="flex-[2] h-12 rounded-full font-medium shadow-lg shadow-primary/20"
-                  disabled={!contactMessage.trim() || !contactMethod.trim()}
+                  disabled={!contactMessage.trim() || !contactMethod.trim() || !hasRequiredFormLegalConsent(messageLegalConsent)}
                   onClick={async () => {
+                    if (!hasRequiredFormLegalConsent(messageLegalConsent)) {
+                      return;
+                    }
+                    const legalAudit = buildLegalAuditLine(messageLegalConsent.marketingAccepted);
                     try {
                       await crmApi.createMessage({
                         subject: `Вопрос по байку ID: ${product.id} - ${product.title}`,
-                        body: contactMessage,
+                        body: `${contactMessage}\n${legalAudit}`,
                         bike_id: product.id,
                         contact_method: 'contact_form',
                         contact_value: contactMethod,

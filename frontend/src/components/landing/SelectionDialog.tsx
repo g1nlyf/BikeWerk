@@ -9,9 +9,11 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Share2, CheckCircle, ArrowRight, ArrowLeft } from "lucide-react";
+import { LegalConsentFields } from "@/components/legal/LegalConsentFields";
 import { apiPost } from "@/api";
 import { useCheckoutUI } from "@/lib/checkout-ui";
 import { metricsApi } from "@/api";
+import { DEFAULT_FORM_LEGAL_CONSENT, buildLegalAuditLine, hasRequiredFormLegalConsent } from "@/lib/legal";
 
 type ContactMethod = "telegram" | "whatsapp" | "email" | "call";
 
@@ -60,6 +62,7 @@ export default function SelectionDialog() {
   const [wiz, setWiz] = React.useState<WizardState>(() => loadState());
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<null | { message: string; raw?: unknown }>(null);
+  const [legalConsent, setLegalConsent] = React.useState(DEFAULT_FORM_LEGAL_CONSENT);
 
   React.useEffect(() => {
     if (state.selectionOpen) {
@@ -79,16 +82,23 @@ export default function SelectionDialog() {
   })();
 
   const submit = async () => {
+    if (!hasRequiredFormLegalConsent(legalConsent)) {
+      setError({ message: "Подтвердите согласие с условиями оферты и обработкой персональных данных." });
+      return;
+    }
     setSubmitting(true);
     setError(null);
     const contact_method = wiz.method === "call" ? "phone" : wiz.method ?? "";
     const contact_value = wiz.method === "email" ? wiz.value.trim() : digits(wiz.value);
+    const legalAudit = buildLegalAuditLine(legalConsent.marketingAccepted);
     try {
       const res = await apiPost("/v1/crm/applications", {
         name: wiz.name.trim(),
         contact_method,
         contact_value,
-        notes: wiz.notes ? `Подбор велосипеда. Пожелания: ${wiz.notes}` : "Подбор велосипеда",
+        notes: wiz.notes
+          ? `Подбор велосипеда. Пожелания: ${wiz.notes}. ${legalAudit}`
+          : `Подбор велосипеда. ${legalAudit}`,
       });
       if (res?.success) {
         const id = String(res.application_id || "");
@@ -177,6 +187,8 @@ export default function SelectionDialog() {
                    className="rounded-xl min-h-[80px]"
                  />
               </div>
+
+              <LegalConsentFields value={legalConsent} onChange={setLegalConsent} />
 
               {error && (
                 <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
